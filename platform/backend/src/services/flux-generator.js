@@ -1,9 +1,11 @@
 import path from 'path';
 import fs from 'fs/promises';
+import crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
 
 const FAL_BASE = 'https://fal.run';
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
+const FAL_MODEL = process.env.FAL_MODEL || 'fal-ai/ideogram/v2';
 
 // Ideogram v2 uses aspect_ratio strings, not pixel sizes
 const FORMAT_TO_ASPECT = {
@@ -120,9 +122,19 @@ export async function generateFluxCreative(product, _logoKey, format = '1x1', op
   const prompt = buildPrompt(product, slot, options);
   const fmt = String(format).replace(':', 'x');
   const aspectRatio = FORMAT_TO_ASPECT[fmt] || '1:1';
+  const cacheKey = crypto.createHash('sha256').update(JSON.stringify({
+    model: FAL_MODEL, prompt, aspectRatio, slot,
+    productId: product.id || product.sku || product.title,
+  })).digest('hex');
+  const cachedFilename = `cr_flux_cache_${cacheKey}.jpg`;
+  const cachedPath = path.join(UPLOADS_DIR, cachedFilename);
+  try {
+    await fs.access(cachedPath);
+    return { url: `/uploads/${cachedFilename}`, thumbnail: `/uploads/${cachedFilename}`, style: 'flux', language: options.language || 'fr', prompt, slot, cached: true };
+  } catch { /* cache miss */ }
 
   // Ideogram v2 — best-in-class text rendering for ad creatives
-  const falRes = await fetch(`${FAL_BASE}/fal-ai/ideogram/v2`, {
+  const falRes = await fetch(`${FAL_BASE}/${FAL_MODEL}`, {
     method: 'POST',
     headers: {
       'Authorization': `Key ${key}`,
@@ -158,6 +170,7 @@ export async function generateFluxCreative(product, _logoKey, format = '1x1', op
   await Promise.all([
     fs.writeFile(path.join(UPLOADS_DIR, filename), imgBuf),
     fs.writeFile(path.join(UPLOADS_DIR, thumbname), imgBuf),
+    fs.writeFile(cachedPath, imgBuf),
   ]);
 
   return {
