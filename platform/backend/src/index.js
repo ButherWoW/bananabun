@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createReadStream, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -31,7 +31,8 @@ import { landingRoutes } from './api/routes/landings.js';
 import { adSettingsRoutes } from './api/routes/adSettings.js';
 import { trackRoutes } from './api/routes/track.js';
 import { startScrapeRecovery } from './services/scrape-jobs.js';
-import { db } from './db/client.js';
+import { db, pool } from './db/client.js';
+import { startCreativeWorker } from './services/creative-jobs.js';
 
 const app = Fastify({ logger: true });
 
@@ -42,7 +43,7 @@ await app.register(jwt, { secret: process.env.JWT_SECRET, sign: { expiresIn: '7d
 await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
 // Serve uploaded files
-const uploadsDir = join(__dirname, '..', 'uploads');
+const uploadsDir = process.env.UPLOADS_DIR ? resolve(process.env.UPLOADS_DIR) : join(__dirname, '..', 'uploads');
 await app.register(staticPlugin, { root: uploadsDir, prefix: '/uploads/', decorateReply: false });
 
 // Auth decorator
@@ -83,10 +84,19 @@ app.register(trackRoutes, { prefix: '/api/t' });
 
 app.get('/health', () => ({ ok: true, ts: new Date() }));
 
+let stopCreatives;
+app.addHook('onClose', async () => { await stopCreatives?.(); });
+for (const signal of ['SIGTERM','SIGINT']) process.once(signal, async () => {
+  await app.close();
+  await pool.end();
+  process.exit(0);
+});
+
 try {
-  await app.listen({ port: Number(process.env.PORT) || 4000, host: '0.0.0.0' });
+  await app.listen({ port: Number(process.env.PORT) || 4000, host: process.env.HOST || '0.0.0.0' });
   console.log('Backend running on port 4000');
   startScrapeRecovery();
+  stopCreatives = startCreativeWorker();
 } catch (err) {
   app.log.error(err);
   process.exit(1);

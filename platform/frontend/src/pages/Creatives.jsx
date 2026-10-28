@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { products as productsApi, creatives as creativesApi, presets as presetsApi, keitaro as keitaroApi } from '../api/client.js';
+import { products as productsApi, creatives as creativesApi, presets as presetsApi } from '../api/client.js';
 import clsx from 'clsx';
 
 const LANGUAGES = [
@@ -31,16 +31,15 @@ export default function CreativesPage() {
   const [language, setLanguage] = useState('fr');
   const [format, setFormat] = useState('1:1');
   const [count, setCount] = useState(1);
-  const [diversify, setDiversify] = useState(false);
+  const [diversify, setDiversify] = useState(true);
+  const [uploadError, setUploadError] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
   const [references, setReferences] = useState([]); // max 4
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showFmtMenu, setShowFmtMenu] = useState(false);
   const [showCountMenu, setShowCountMenu] = useState(false);
-  const [showLandingMenu, setShowLandingMenu] = useState(false);
-  const [landingTemplateId, setLandingTemplateId] = useState('');
-  const [landing, setLanding] = useState('Лендинг');
 
   // List state
   const [search, setSearch] = useState('');
@@ -55,14 +54,6 @@ export default function CreativesPage() {
   const [showPresetSave, setShowPresetSave] = useState(false);
   const [presetName, setPresetName] = useState('');
 
-  // Keitaro landing templates
-  const { data: landingTemplatesList = [] } = useQuery({
-    queryKey: ['keitaro', 'landings'],
-    queryFn: keitaroApi.landings,
-    staleTime: 300000,
-    select: d => Array.isArray(d) ? d : [],
-  });
-
   // Load creative presets
   const { data: creativePresets = [], refetch: refetchPresets } = useQuery({
     queryKey: ['presets', 'creatives'],
@@ -76,17 +67,10 @@ export default function CreativesPage() {
     mutationFn: async (name) => {
       let logo_key = savedLogoKey;
       if (logoFile) {
-        const fd = new FormData();
-        fd.append('file', logoFile);
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${API_BASE}/api/creatives/upload-logo`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: fd,
-        });
-        if (res.ok) { const d = await res.json(); logo_key = d.key; }
+        logo_key = await uploadImage(logoFile,'upload-logo');
+        setSavedLogoKey(logo_key);
       }
-      return presetsApi.saveCreativePreset({ name, params: { idea, language, format, count: String(count), diversify, logo_key, landing_template_id: landingTemplateId || undefined } });
+      return presetsApi.saveCreativePreset({ name, params: { headline: idea, language, format, count: String(count), diversify, logo_key } });
     },
     onSuccess: () => { refetchPresets(); setShowPresetSave(false); setPresetName(''); },
   });
@@ -94,21 +78,19 @@ export default function CreativesPage() {
   function loadPreset(preset) {
     let p = preset.params || preset.template || {};
     if (typeof p === 'string') { try { p = JSON.parse(p); } catch { p = {}; } }
-    if (p.idea !== undefined) setIdea(p.idea);
+    setIdea(p.headline ?? p.idea ?? '');
     if (p.language) setLanguage(p.language);
-    if (p.format) setFormat(p.format);
-    if (p.count) setCount(Number(p.count));
+    if (p.format) setFormat(p.format.replace('x',':'));
+    if (p.count) setCount(Math.max(1,Math.min(10,Math.floor(Number(p.count) || 1))));
     if (p.diversify !== undefined) setDiversify(Boolean(p.diversify));
     if (p.logo_key) {
       setSavedLogoKey(p.logo_key);
       setLogoPreview(`${API_BASE}${p.logo_key}`);
       setLogoFile(null);
+    } else {
+      setSavedLogoKey(null); setLogoPreview(null); setLogoFile(null);
     }
-    if (p.landing_template_id) {
-      setLandingTemplateId(p.landing_template_id);
-      const tpl = landingTemplatesList.find(t => String(t.id) === String(p.landing_template_id));
-      if (tpl) setLanding(tpl.name || tpl.title || String(tpl.id));
-    }
+
   }
 
   // Load product list for selector
@@ -125,7 +107,7 @@ export default function CreativesPage() {
     queryFn: () => creativesApi.list(productIdFilter ? { product_id: productIdFilter } : {}),
     refetchInterval: (query) => {
       const rows = query?.state?.data;
-      return Array.isArray(rows) && rows.some(c => c.status === 'processing') ? 3000 : false;
+      return Array.isArray(rows) && rows.some(c => ['pending','processing'].includes(c.status)) ? 3000 : false;
     },
   });
 
@@ -148,7 +130,7 @@ export default function CreativesPage() {
   const favoritesCount = allCreatives.filter(c => c.favorite).length;
 
   const done = allCreatives.filter(c => c.status === 'done');
-  const processing = allCreatives.filter(c => c.status === 'processing');
+  const processing = allCreatives.filter(c => ['pending','processing'].includes(c.status));
 
   const generateMutation = useMutation({
     meta: { inlineError: true },
@@ -171,46 +153,34 @@ export default function CreativesPage() {
     onSuccess: () => qc.invalidateQueries(['creatives']),
   });
 
-  async function handleGenerate() {
-    if (!productIdFilter) return;
-    let logo_key;
-    if (logoFile) {
-      const fd = new FormData();
-      fd.append('file', logoFile);
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE}/api/creatives/upload-logo`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        logo_key = data.key;
-      }
-    }
-    const reference_keys = [];
-    for (const r of references) {
-      const fd = new FormData();
-      fd.append('file', r.file);
-      const res = await fetch(`${API_BASE}/api/creatives/upload-reference`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: fd,
-      });
-      if (res.ok) reference_keys.push((await res.json()).key);
-    }
-    generateMutation.mutate({
-      source: 'local',
-      product_id: productIdFilter,
-      language,
-      format: format.replace(':', 'x'),
-      count,
-      idea: idea.trim() || undefined,
-      diversify,
-      logo_key,
-      landing_template_id: landingTemplateId || undefined,
-      reference_keys: reference_keys.length ? reference_keys : undefined,
+  async function uploadImage(file, endpoint) {
+    const fd = new FormData(); fd.append('file',file);
+    const res = await fetch(API_BASE + '/api/creatives/' + endpoint, {
+      method:'POST', headers:{ Authorization:'Bearer ' + localStorage.getItem('token') }, body:fd,
     });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить картинку');
+    return data.key;
+  }
+
+  async function handleGenerate() {
+    if (!productIdFilter || uploading) return;
+    setUploadError(''); setUploading(true);
+    try {
+      let logo_key = savedLogoKey;
+      if (logoFile) {
+        logo_key = await uploadImage(logoFile,'upload-logo');
+        setSavedLogoKey(logo_key);
+      }
+      const reference_keys = [];
+      for (const reference of references) reference_keys.push(await uploadImage(reference.file,'upload-reference'));
+      generateMutation.mutate({
+        source:'local', product_id:productIdFilter, language, format:format.replace(':','x'), count,
+        headline:idea.trim() || undefined, diversify, logo_key,
+        reference_keys:reference_keys.length ? reference_keys : undefined,
+      });
+    } catch (error) { setUploadError(error.message || 'Не удалось загрузить картинку'); }
+    finally { setUploading(false); }
   }
 
   function handleReset() {
@@ -218,13 +188,12 @@ export default function CreativesPage() {
     setLanguage('fr');
     setFormat('1:1');
     setCount(1);
-    setDiversify(false);
+    setDiversify(true);
     setLogoFile(null);
     setLogoPreview(null);
     setSavedLogoKey(null);
-    setLandingTemplateId('');
-    setLanding('Лендинг');
     setReferences([]);
+    setUploadError('');
   }
 
   function handleLogoChange(e) {
@@ -289,13 +258,13 @@ export default function CreativesPage() {
           </div>
         )}
 
-        <p className="px-4 pt-3 text-xs text-gray-400">Собственные шаблоны: фото товара, язык, формат и референсы. Идея, логотип и выбранный лендинг пока не влияют на результат.</p>
+        <p className="px-4 pt-3 text-xs text-gray-400">Собственные шаблоны: фото товара, надпись и ваш логотип. До пяти стилей; при большем количестве стили повторяются. Референсы используются как фото.</p>
         {/* Idea textarea */}
         <div className="px-4 pt-3">
           <textarea
             value={idea}
             onChange={e => setIdea(e.target.value)}
-            placeholder="Идея креатива: композиция, тон, акцент"
+            placeholder="Надпись на креативе (до 200 символов)"
             rows={3}
             maxLength={200}
             className="w-full bg-transparent text-white text-sm placeholder-gray-600 focus:outline-none resize-none leading-relaxed"
@@ -373,7 +342,7 @@ export default function CreativesPage() {
           {/* Language */}
           <div className="relative">
             <button
-              onClick={() => { setShowLangMenu(v => !v); setShowFmtMenu(false); setShowCountMenu(false); setShowLandingMenu(false); }}
+              onClick={() => { setShowLangMenu(v => !v); setShowFmtMenu(false); setShowCountMenu(false); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-[color:var(--c2d3148)] text-gray-300 hover:text-white hover:border-[color:var(--c3d4168)] transition-colors font-medium"
             >
               {langObj.flag} {langObj.label}
@@ -397,45 +366,10 @@ export default function CreativesPage() {
             )}
           </div>
 
-          {/* Landing */}
-          <div className="relative">
-            <button
-              onClick={() => { setShowLandingMenu(v => !v); setShowLangMenu(false); setShowFmtMenu(false); setShowCountMenu(false); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-[color:var(--c2d3148)] text-gray-300 hover:text-white hover:border-[color:var(--c3d4168)] transition-colors"
-            >
-              <span>📋</span> {landing}
-            </button>
-            {showLandingMenu && (
-              <div className="absolute top-full left-0 mt-1 bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-xl overflow-hidden z-20 min-w-[200px] shadow-xl max-h-56 overflow-y-auto">
-                <button
-                  onClick={() => { setLandingTemplateId(''); setLanding('Лендинг'); setShowLandingMenu(false); }}
-                  className={clsx('w-full px-3 py-2 text-xs hover:bg-[color:var(--c1e2240)] transition-colors text-left', !landingTemplateId ? 'text-indigo-300' : 'text-gray-300')}
-                >
-                  Без лендинга {!landingTemplateId && '✓'}
-                </button>
-                {landingTemplatesList.map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => { setLandingTemplateId(String(t.id)); setLanding(t.name || t.title || String(t.id)); setShowLandingMenu(false); }}
-                    className={clsx(
-                      'w-full px-3 py-2 text-xs hover:bg-[color:var(--c1e2240)] transition-colors text-left',
-                      String(landingTemplateId) === String(t.id) ? 'text-indigo-300' : 'text-gray-300'
-                    )}
-                  >
-                    {t.name || t.title || t.id} {String(landingTemplateId) === String(t.id) && '✓'}
-                  </button>
-                ))}
-                {landingTemplatesList.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-gray-600">Нет шаблонов из Keitaro</div>
-                )}
-              </div>
-            )}
-          </div>
-
           {/* Format */}
           <div className="relative">
             <button
-              onClick={() => { setShowFmtMenu(v => !v); setShowLangMenu(false); setShowCountMenu(false); setShowLandingMenu(false); }}
+              onClick={() => { setShowFmtMenu(v => !v); setShowLangMenu(false); setShowCountMenu(false); }}
               className="px-3 py-1.5 rounded-full text-xs border border-[color:var(--c2d3148)] text-gray-300 hover:text-white hover:border-[color:var(--c3d4168)] transition-colors font-mono"
             >
               {format}
@@ -461,7 +395,7 @@ export default function CreativesPage() {
           {/* Count */}
           <div className="relative">
             <button
-              onClick={() => { setShowCountMenu(v => !v); setShowLangMenu(false); setShowFmtMenu(false); setShowLandingMenu(false); }}
+              onClick={() => { setShowCountMenu(v => !v); setShowLangMenu(false); setShowFmtMenu(false); }}
               className="px-3 py-1.5 rounded-full text-xs border border-[color:var(--c2d3148)] text-gray-300 hover:text-white hover:border-[color:var(--c3d4168)] transition-colors"
             >
               ×{count}
@@ -494,7 +428,7 @@ export default function CreativesPage() {
                 : 'border-[color:var(--c2d3148)] text-gray-500 hover:text-gray-300 hover:border-[color:var(--c3d4168)]'
             )}
           >
-            Разнообразить
+            Разные стили
           </button>
 
           <div className="flex-1" />
@@ -543,11 +477,11 @@ export default function CreativesPage() {
           <div className="flex flex-col items-end">
             <button
               onClick={handleGenerate}
-              disabled={!productIdFilter || generateMutation.isPending || idea.length > 200}
-              title={!productIdFilter ? 'Сначала выбери товар наверху страницы' : idea.length > 200 ? 'Идея слишком длинная (макс 200 символов)' : ''}
+              disabled={!productIdFilter || uploading || generateMutation.isPending || idea.length > 200}
+              title={!productIdFilter ? 'Сначала выбери товар наверху страницы' : idea.length > 200 ? 'Надпись слишком длинная (макс 200 символов)' : ''}
               className="px-5 py-1.5 rounded-full text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/40 disabled:cursor-not-allowed text-white font-medium transition-colors"
             >
-              {generateMutation.isPending ? 'Генерирую…' : 'Сгенерировать'}
+              {uploading ? 'Загружаю…' : generateMutation.isPending ? 'В очередь…' : 'Сгенерировать'}
             </button>
             {!productIdFilter && <div className="text-[10px] text-yellow-600 mt-1">↑ выбери товар</div>}
             {productIdFilter && <div className="text-[10px] text-gray-600 mt-1">Сегодня: {allCreatives.filter(c => new Date(c.created_at).toDateString() === new Date().toDateString()).length}</div>}
@@ -555,9 +489,9 @@ export default function CreativesPage() {
         </div>
 
         {/* Error */}
-        {generateMutation.error && (
+        {(uploadError || generateMutation.error || savePresetMutation.error) && (
           <div className="px-4 pb-3 text-xs text-red-400">
-            {generateMutation.error?.error || generateMutation.error?.message || 'Ошибка генерации'}
+            {uploadError || generateMutation.error?.error || generateMutation.error?.message || savePresetMutation.error?.message || 'Ошибка генерации'}
           </div>
         )}
       </div>
@@ -671,7 +605,7 @@ export default function CreativesPage() {
                     )}
                   >
                     <div className="aspect-square bg-[color:var(--c0a0c18)] relative overflow-hidden">
-                      {creative.status === 'processing' ? (
+                      {['pending','processing'].includes(creative.status) ? (
                         <div className="w-full h-full flex flex-col items-center justify-center gap-2">
                           <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                           <span className="text-[10px] text-gray-600">Генерация…</span>
@@ -805,10 +739,10 @@ export default function CreativesPage() {
       )}
 
       {/* Click outside to close dropdowns */}
-      {(showLangMenu || showFmtMenu || showCountMenu || showLandingMenu) && (
+      {(showLangMenu || showFmtMenu || showCountMenu) && (
         <div
           className="fixed inset-0 z-10"
-          onClick={() => { setShowLangMenu(false); setShowFmtMenu(false); setShowCountMenu(false); setShowLandingMenu(false); }}
+          onClick={() => { setShowLangMenu(false); setShowFmtMenu(false); setShowCountMenu(false); }}
         />
       )}
     </div>

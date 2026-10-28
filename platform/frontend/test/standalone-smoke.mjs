@@ -22,6 +22,10 @@ const origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch();
 const errors=[];
 const faRequests=[];
+let generationPayload=null;
+let generated=false;
+let creativePolls=0;
+let uploadFailure=false;
 try{
   const page=await browser.newPage({viewport:{width:1440,height:1000}});
   page.on('pageerror',error=>errors.push(error.message));
@@ -34,7 +38,20 @@ try{
     if(p==='/api/auth/me')data={user,workspace:{id:'ws_test',name:'Test workspace'}};
     else if(p==='/api/auth/login')data={user,token:'test-only-token'};
     else if(p==='/api/folders/counts')data={total:0,unfiled:0};
-    else if(p==='/api/products')data={items:[],total:0,page:1,limit:24};
+    else if(p==='/api/products')data={items:[{id:'product',title:'Fixture product',images:[]}],total:1,page:1,limit:24};
+    else if(p==='/api/presets/creatives')data=[{id:'saved',name:'Saved logo preset',template:{headline:'Saved caption',logo_key:'/uploads/logos/logo_1234567890123456.png',count:1,language:'en',format:'1x1'}}];
+    else if(p==='/api/creatives/generate'){
+      generationPayload=route.request().postDataJSON();generated=true;
+      data={creatives:[],total:1,source:'local'};
+    }
+    else if(p==='/api/creatives/upload-logo'){
+      if(uploadFailure)return route.fulfill({status:400,json:{error:'Test upload failure'}});
+      data={key:'/uploads/logos/logo_1234567890123456.png'};
+    }
+    else if(p==='/api/creatives' && generated){
+      creativePolls++;
+      data=[{id:'creative',product_id:'product',created_at:new Date().toISOString(),status:creativePolls<2?'pending':'done',type:'image',format:'1x1',file_url:'/uploads/fixture.jpg',metadata:{source:'local',language:'en'}}];
+    }
     else if(p==='/api/agent/status')data={online:false,configured:false};
     else if(p==='/api/keitaro/settings')data={keitaro_url:'',keitaro_api_key:''};
     else if(p==='/api/push/options')data={products:[],creatives:[],cabinets:[],landings:[],domains:[],presets:[]};
@@ -54,7 +71,21 @@ try{
     await page.waitForTimeout(300);
     assert.equal(await page.getByRole('button',{name:/FA/}).count(),0);
   }
+  await page.goto(origin+'/creatives?product_id=product');
+  await page.locator('select').filter({has:page.locator('option[value="saved"]')}).selectOption('saved');
+  assert.equal(await page.getByPlaceholder('Надпись на креативе (до 200 символов)').inputValue(),'Saved caption');
+  await page.getByRole('button',{name:'Сгенерировать',exact:true}).click();
+  await page.getByText('Готов',{exact:true}).waitFor({timeout:12000});
+  assert.equal(generationPayload.headline,'Saved caption');
+  assert.equal(generationPayload.logo_key,'/uploads/logos/logo_1234567890123456.png');
+  assert.ok(creativePolls>=2,'Pending jobs must continue polling');
+  assert.equal(await page.getByRole('button',{name:/Лендинг/}).count(),0);
+  generationPayload=null;uploadFailure=true;
+  await page.locator('input[type=file]').first().setInputFiles({name:'test.png',mimeType:'image/png',buffer:Buffer.from('test fixture')});
+  await page.getByRole('button',{name:'Сгенерировать',exact:true}).click();
+  await page.getByText('Test upload failure',{exact:true}).waitFor();
+  assert.equal(generationPayload,null,'Failed upload must not silently generate without the logo');
   assert.deepEqual(faRequests,[],'UI must not poll or import FA content');
   assert.deepEqual(errors,[]);
-  console.log('UI passed: own creatives and landings; no FA requests, no FA buttons, no uncaught browser errors.');
+  console.log('UI passed: saved caption/logo, pending polling, visible upload errors; no FA requests or uncaught browser errors.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
