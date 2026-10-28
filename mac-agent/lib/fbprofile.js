@@ -135,11 +135,21 @@ export async function readFbCampaigns(g, opts = {}) {
     try {
       const camps = await getAll(g, `${a.id}/campaigns`, {
         fields: 'id,name,status,effective_status,daily_budget,spend_cap,created_time,'
-          + 'insights.date_preset(today).as(t){spend},insights.date_preset(yesterday).as(y){spend},insights.date_preset(last_7d).as(w){spend},'
-          + 'insights.date_preset(last_3d).as(d3){spend},insights.date_preset(last_30d).as(d30){spend}',
+          + 'insights.date_preset(today).as(t){spend},insights.date_preset(yesterday).as(y){spend},insights.date_preset(last_7d).as(w){spend}',
         effective_status: LIVE,
       });
       if (!camps.length) { readActs.push(a.id); continue; }
+      // 3 and 30 days come from the account's insights by campaign: more nested insights in the
+      // campaign request made Facebook silently drop some of them. A failed read stays unknown, not zero.
+      const spendBy = async (preset) => {
+        try {
+          const rows = await getAll(g, `${a.id}/insights`, { level: 'campaign', date_preset: preset, fields: 'campaign_id,spend' });
+          return new Map(rows.map((r) => [String(r.campaign_id), Number(r.spend) || 0]));
+        } catch (e) { if (e.fatal) throw e; return null; }
+      };
+      const s3 = await spendBy('last_3d');
+      const s30 = await spendBy('last_30d');
+      const periodSpend = (m, id) => (m ? (m.get(String(id)) ?? 0) : undefined);
       const adsets = await getAll(g, `${a.id}/adsets`, {
         fields: 'id,name,campaign_id,status,effective_status,daily_budget,bid_amount,targeting{age_min,age_max,genders,geo_locations}',
         effective_status: [...LIVE, 'CAMPAIGN_PAUSED'],
@@ -165,7 +175,8 @@ export async function readFbCampaigns(g, opts = {}) {
           daily_budget: c.daily_budget != null ? Number(c.daily_budget) : null,
           spend_cap: Number(c.spend_cap) > 0 && String(c.spend_cap) !== NO_SPEND_CAP ? Number(c.spend_cap) : null,
           created_time: c.created_time,
-          spend_today: spend(c.t), spend_yesterday: spend(c.y), spend_7d: spend(c.w), spend_3d: spend(c.d3), spend_30d: spend(c.d30),
+          spend_today: spend(c.t), spend_yesterday: spend(c.y), spend_7d: spend(c.w),
+          spend_3d: periodSpend(s3, c.id), spend_30d: periodSpend(s30, c.id),
           adsets: adsets.filter((s) => s.campaign_id === c.id).map((s) => ({
             id: s.id, name: s.name, status: s.status, effective_status: s.effective_status,
             daily_budget: s.daily_budget != null ? Number(s.daily_budget) : null,

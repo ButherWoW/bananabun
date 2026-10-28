@@ -69,14 +69,20 @@ export async function recoverScrapes() {
       .catch(e => console.error('[scrape] recover:', e.message));
   }
   // 2) Waiting too long, or no job at all (scrapes started before this change, old FA rows): fail with a reason.
+  // The stuck product's job is cancelled too if it still waits in the queue, so the agent doesn't run it for nothing.
   await db.query(`
+    WITH stuck AS (
     UPDATE products p SET scrape_status = 'failed',
            scrape_error = CASE WHEN p.scrape_job_id IS NULL
              THEN 'Скрап прервался (перезапуск сервера или старый движок) — нажмите «Ещё раз»'
              ELSE 'Агент на Mac не вернул страницу за ${STUCK_MIN} мин — проверьте агента и AdsPower и нажмите «Ещё раз»' END
      WHERE p.scrape_status = 'processing'
        AND COALESCE(p.scrape_started_at, p.updated_at, p.created_at) < NOW() - INTERVAL '${STUCK_MIN} minutes'
-       AND NOT EXISTS (SELECT 1 FROM agent_jobs j WHERE j.id = p.scrape_job_id AND j.status IN ('done', 'failed'))`);
+       AND NOT EXISTS (SELECT 1 FROM agent_jobs j WHERE j.id = p.scrape_job_id AND j.status IN ('done', 'failed'))
+    RETURNING p.scrape_job_id)
+    UPDATE agent_jobs SET status = 'failed', done_at = NOW(),
+           result = '{"ok":false,"error":"Отменено: товар ждал дольше ${STUCK_MIN} мин","data":null}'::jsonb
+     WHERE id IN (SELECT scrape_job_id FROM stuck WHERE scrape_job_id IS NOT NULL) AND status = 'pending'`);
 }
 
 export function startScrapeRecovery() {

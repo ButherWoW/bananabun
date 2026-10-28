@@ -1,4 +1,4 @@
-import { assertProductAccess } from '../../middleware/access.js';
+import { assertProductAccess, assertFolderAccess, assertRecordAccess } from '../../middleware/access.js';
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
 import { enqueueOwnScrape } from '../../services/scrape-jobs.js';
@@ -25,6 +25,13 @@ function parseBundles(raw) {
 
 function logScrapeError(err) {
   console.error('[scrape]', err?.message || err);
+}
+
+// Folder and presets a scrape refers to must be the caller's (same rules as everywhere: access.js).
+async function assertScrapeRefs(req, folderId, bundlePresetId, creativePresetId) {
+  await assertFolderAccess(req, folderId);
+  if (bundlePresetId) await assertRecordAccess(req, 'bundle_presets', bundlePresetId);
+  if (creativePresetId) await assertRecordAccess(req, 'creative_presets', creativePresetId);
 }
 
 async function assertCreativePreset(ws, id) {
@@ -119,6 +126,7 @@ export async function scrapeRoutes(app) {
   app.post('/product', auth, async (req) => {
     const { ws, id: userId } = req.user;
     const { asin, link, marketplace = 'fr', folder_id, bundle_preset_id, creative_preset_id } = req.body;
+    await assertScrapeRefs(req, folder_id, bundle_preset_id, creative_preset_id);
     const { engine, products } = await startScrapes({
       ws, userId, inputs: [link || asin].filter(Boolean), marketplace, folderId: folder_id,
       presetId: bundle_preset_id, creativePresetId: creative_preset_id,
@@ -133,6 +141,7 @@ export async function scrapeRoutes(app) {
     const inputs = (Array.isArray(links) ? links : Array.isArray(asins) ? asins : []).map(s => String(s).trim()).filter(Boolean);
     if (!inputs.length) throw badRequest('Нужна хотя бы одна ссылка');
     if (inputs.length > 50) throw badRequest('Не больше 50 ссылок за раз');
+    await assertScrapeRefs(req, folder_id, bundle_preset_id, creative_preset_id);
 
     const { engine, products } = await startScrapes({
       ws, userId, inputs, marketplace, folderId: folder_id, presetId: bundle_preset_id, creativePresetId: creative_preset_id,
@@ -147,6 +156,7 @@ export async function scrapeRoutes(app) {
   app.get('/engine', auth, async () => ({ engine: currentEngine() }));
 
   app.get('/status/:productId', auth, async (req, reply) => {
+    await assertProductAccess(req, req.params.productId);
     const product = await db.findOne('products', { id: req.params.productId, workspace_id: req.user.ws });
     if (!product) return reply.status(404).send({ error: 'Not found' });
     return { id: product.id, scrape_status: product.scrape_status, scrape_error: product.scrape_error, title: product.title };

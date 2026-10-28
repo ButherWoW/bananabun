@@ -4,25 +4,37 @@ import { amazonUrl } from './engine.js';
 import { writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { nanoid } from 'nanoid';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const IMAGES_DIR = join(__dirname, '..', '..', 'uploads', 'images');
 
+// Only Amazon's image CDN over https: the URL comes from a scraped page, so nothing else is fetched.
+const IMAGE_HOST = /(^|\.)(media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com)$/i;
+const RASTER = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+const MAX_IMAGE = 15 * 1024 * 1024;
+
 async function downloadImage(url, asin, index) {
   try {
-    const res = await fetch(url, {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' || !IMAGE_HOST.test(u.hostname)) return null;
+    const res = await fetch(u, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         'Referer': 'https://www.amazon.fr/',
       },
+      redirect: 'error',
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) return null;
+    const ext = RASTER[String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()];
+    if (!ext || Number(res.headers.get('content-length') || 0) > MAX_IMAGE) return null;
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 1000) return null; // skip empty/error images
+    if (buf.length < 1000 || buf.length > MAX_IMAGE) return null; // empty/error image or too big
     await mkdir(IMAGES_DIR, { recursive: true });
-    const safeAsin = asin.replace(/[^A-Za-z0-9]/g, ''); // strip ? and other chars
-    const filename = `${safeAsin}-${index}.jpg`;
+    const safeAsin = String(asin || 'img').replace(/[^A-Za-z0-9]/g, '').slice(0, 20) || 'img';
+    // Unique per download: two products (teams, marketplaces, re-scrapes) never overwrite each other's photos.
+    const filename = `${safeAsin}-${index}-${nanoid(10)}.${ext}`;
     await writeFile(join(IMAGES_DIR, filename), buf);
     return `/uploads/images/${filename}`;
   } catch {
