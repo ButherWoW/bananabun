@@ -26,6 +26,52 @@ function Field({ label, value, onChange, type = 'text', placeholder }) {
   );
 }
 
+function SelectField({ label, value, onChange, options = [], placeholder = '—' }) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1.5">{label}</label>
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        className="w-full bg-[color:var(--c0d0f1f)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-indigo-500"
+      >
+        <option value="">{placeholder}</option>
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function MultiSelectField({ label, values = [], onChange, options = [] }) {
+  const toggle = (id) => {
+    const next = values.includes(id) ? values.filter(v => v !== id) : [...values, id];
+    onChange(next);
+  };
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1.5">{label}</label>
+      <div className="space-y-1 max-h-40 overflow-y-auto rounded-lg border border-[color:var(--c2d3148)] bg-[color:var(--c0d0f1f)] p-2">
+        {options.length === 0 && (
+          <p className="text-xs text-gray-600 px-1">Загрузка...</p>
+        )}
+        {options.map(o => (
+          <label key={o.value} className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-[color:var(--c2d3148)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={values.includes(o.value)}
+              onChange={() => toggle(o.value)}
+              className="rounded border-gray-600 bg-transparent"
+            />
+            <span className="text-xs text-gray-300">{o.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StatusBadge({ status }) {
   if (!status) return null;
   const ok = status.ok;
@@ -41,18 +87,78 @@ export default function SettingsPage() {
   const [kKey, setKKey] = useState('');
   const [kStatus, setKStatus] = useState(null);
 
+  // auto-campaign defaults
+  const [kDomainId, setKDomainId] = useState(null);
+  const [kGroupId, setKGroupId] = useState(null);
+  const [kOfferIds, setKOfferIds] = useState([]);
+  const [kWhiteId, setKWhiteId] = useState(null);
+
   const [apStatus, setApStatus] = useState(null);
 
-  // react-query v5 has no onSuccess on useQuery: seed the form from data. The key comes back
-  // masked ('***'); an empty field means "keep the saved key".
   const { data: kSettings } = useQuery({ queryKey: ['keitaro-settings'], queryFn: keitaroApi.settings });
-  useEffect(() => { if (kSettings) setKUrl(kSettings.keitaro_url || ''); }, [kSettings]);
+  useEffect(() => {
+    if (kSettings) {
+      setKUrl(kSettings.keitaro_url || '');
+      setKDomainId(kSettings.keitaro_domain_id ?? null);
+      setKGroupId(kSettings.keitaro_group_id ?? null);
+      setKOfferIds(Array.isArray(kSettings.keitaro_offer_ids) ? kSettings.keitaro_offer_ids : []);
+      setKWhiteId(kSettings.keitaro_white_id ?? null);
+    }
+  }, [kSettings]);
+
+  const connected = !!(kSettings?.keitaro_url && kSettings?.keitaro_api_key);
+
+  const { data: ktDomains = [] } = useQuery({
+    queryKey: ['keitaro-domains'],
+    queryFn: keitaroApi.domains,
+    enabled: connected,
+  });
+  const { data: ktGroups = [] } = useQuery({
+    queryKey: ['keitaro-groups'],
+    queryFn: keitaroApi.groups,
+    enabled: connected,
+  });
+  const { data: ktOffers = [] } = useQuery({
+    queryKey: ['keitaro-offers'],
+    queryFn: keitaroApi.offers,
+    enabled: connected,
+  });
+  const { data: ktLandings = [] } = useQuery({
+    queryKey: ['keitaro-landings'],
+    queryFn: keitaroApi.landings,
+    enabled: connected,
+  });
+
+  const domainOptions = (Array.isArray(ktDomains) ? ktDomains : []).map(d => ({
+    value: d.id,
+    label: d.domain || d.name || String(d.id),
+  }));
+  const groupOptions = (Array.isArray(ktGroups) ? ktGroups : []).map(g => ({
+    value: g.id,
+    label: g.name || String(g.id),
+  }));
+  const offerOptions = (Array.isArray(ktOffers) ? ktOffers : []).map(o => ({
+    value: o.id,
+    label: `${o.name || o.id}${o.price ? ` [${o.price} ${o.currency || ''}]` : ''}`,
+  }));
+  const landingOptions = (Array.isArray(ktLandings) ? ktLandings : (ktLandings?.rows || [])).map(l => ({
+    value: l.id,
+    label: l.name || l.url || String(l.id),
+  }));
+
   const keyPayload = () => (kKey && kKey !== '***' ? { keitaro_api_key: kKey } : {});
 
   const { data: agentSt } = useQuery({ queryKey: ['agent-status'], queryFn: agentApi.status, refetchInterval: 30000 });
 
   const kSave = useMutation({
-    mutationFn: () => keitaroApi.saveSettings({ keitaro_url: kUrl, ...keyPayload() }),
+    mutationFn: () => keitaroApi.saveSettings({
+      keitaro_url: kUrl,
+      ...keyPayload(),
+      keitaro_domain_id: kDomainId,
+      keitaro_group_id: kGroupId,
+      keitaro_offer_ids: kOfferIds,
+      keitaro_white_id: kWhiteId,
+    }),
   });
 
   const kTest = useMutation({
@@ -61,7 +167,6 @@ export default function SettingsPage() {
     onError: (e) => setKStatus({ ok: false, error: e.error || e.message || 'Ошибка' }),
   });
 
-  // AdsPower lives on the Mac: the agent re-reads it and reports the profile count.
   const apTest = useMutation({
     mutationFn: async () => waitAgentJob((await adspowerApi.test()).job_id, { timeoutMs: 60000 }),
     onSuccess: (d) => setApStatus({ ok: true, extra: `${d.total} профилей` }),
@@ -98,6 +203,49 @@ export default function SettingsPage() {
             <StatusBadge status={kStatus} />
           </div>
         </SettingsSection>
+
+        {connected && (
+          <SettingsSection title="Автокампания при создании лендинга">
+            <p className="text-xs text-gray-600">При создании лендинга в Keitaro автоматически создаётся кампания с этими настройками.</p>
+            <SelectField
+              label="Домен (domain_id)"
+              value={kDomainId}
+              onChange={setKDomainId}
+              options={domainOptions}
+              placeholder="Выберите домен"
+            />
+            <SelectField
+              label="Группа (group_id)"
+              value={kGroupId}
+              onChange={setKGroupId}
+              options={groupOptions}
+              placeholder="Выберите группу"
+            />
+            <MultiSelectField
+              label="Офферы (offer_ids)"
+              values={kOfferIds}
+              onChange={setKOfferIds}
+              options={offerOptions}
+            />
+            <SelectField
+              label="Белый лендинг (white_landing_id)"
+              value={kWhiteId}
+              onChange={setKWhiteId}
+              options={landingOptions}
+              placeholder="Выберите белую страницу"
+            />
+            <div className="pt-1">
+              <button
+                onClick={() => kSave.mutate()}
+                disabled={kSave.isPending}
+                className="text-sm px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+              >
+                {kSave.isPending ? 'Сохранение...' : 'Сохранить настройки кампании'}
+              </button>
+              {kSave.isSuccess && <span className="ml-3 text-xs text-emerald-400">Сохранено</span>}
+            </div>
+          </SettingsSection>
+        )}
 
         <SettingsSection title="AdsPower">
           <p className="text-xs text-gray-400 flex items-center gap-2">
