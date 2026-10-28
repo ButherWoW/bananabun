@@ -48,7 +48,7 @@ export async function applyScrapeResult(ws, jobId, ok, data, error) {
            photo_reviews_count = $7, has_photo_reviews = $8, bundle_config = COALESCE($9::jsonb, bundle_config),
            scrape_status = 'done', scrape_error = NULL, updated_at = NOW(),
            preset_creatives_due_at = CASE WHEN creative_preset_id IS NOT NULL THEN NOW() ELSE NULL END,
-           preset_creatives_lease_at = NULL
+           preset_creatives_lease_at = NULL, preset_creatives_attempts = 0, preset_creatives_error = NULL
      WHERE id = $10 AND workspace_id = $11 AND scrape_job_id = $12 AND scrape_status = 'processing'`,
     [d.title, d.description, d.price, JSON.stringify(d.images), d.rating, d.reviews_count,
      // null = unknown: Amazon shows the photo-review count only to signed-in visitors.
@@ -67,7 +67,7 @@ export async function runPresetCreatives(ws, productId) {
        AND (preset_creatives_lease_at IS NULL OR preset_creatives_lease_at < NOW() - INTERVAL '5 minutes')
     RETURNING preset_creatives_due_at::text AS due`, [productId, ws]);
   if (!p) return;
-  const clear = () => db.query(`UPDATE products SET preset_creatives_due_at = NULL, preset_creatives_lease_at = NULL
+  const clear = () => db.query(`UPDATE products SET preset_creatives_due_at = NULL, preset_creatives_lease_at = NULL, preset_creatives_error = NULL
                                  WHERE id = $1 AND preset_creatives_due_at = $2::timestamptz`, [productId, p.due]);
   const { rows: [already] } = await db.query(
     `SELECT 1 FROM creatives WHERE product_id = $1 AND created_at >= $2::timestamptz LIMIT 1`, [productId, p.due]);
@@ -76,7 +76,16 @@ export async function runPresetCreatives(ws, productId) {
     const { generateFromScrapePreset } = await import('../api/routes/creatives.js');
     await generateFromScrapePreset(productId);
   } catch (e) {
-    console.error('[scrape] creatives after scrape:', e.message);
+    // Keep the mark: release the lease, count the attempt, show why. After 3 failures stop retrying,
+    // the reason stays visible on the product.
+    const reason = String(e?.message || 'Не удалось поставить креативы по пресету').slice(0, 500);
+    console.error('[scrape] creatives after scrape:', reason);
+    await db.query(`
+      UPDATE products SET preset_creatives_lease_at = NULL, preset_creatives_attempts = preset_creatives_attempts + 1,
+             preset_creatives_error = $3,
+             preset_creatives_due_at = CASE WHEN preset_creatives_attempts + 1 >= 3 THEN NULL ELSE preset_creatives_due_at END
+       WHERE id = $1 AND preset_creatives_due_at = $2::timestamptz`, [productId, p.due, reason]);
+    return;
   }
   await clear();
 }

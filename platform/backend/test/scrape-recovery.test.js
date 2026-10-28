@@ -158,6 +158,27 @@ test('own scrape survives restarts', { skip: !testUrl }, async t => {
     assert.equal((await row('p9')).preset_creatives_due_at, null);
   });
 
+  await t.test('a failed preset generation keeps the mark, counts attempts, stops after 3 with the reason', async () => {
+    await pool.query(`INSERT INTO creative_presets(id,workspace_id,created_by,name,template)
+                      VALUES ('cpbad','w1','a','Broken','{"format":"7x7"}')`);
+    await product('p10');
+    await db.query(`UPDATE products SET creative_preset_id = 'cpbad' WHERE id = 'p10'`);
+    const jobId = await enqueueOwnScrape('w1', 'p10', 'B0TEST0001', 'fr');
+    await applyScrapeResult('w1', jobId, true, page);
+    let p = await row('p10'); remember(p);
+    assert.equal(p.scrape_status, 'done');
+    assert.notEqual(p.preset_creatives_due_at, null, 'the mark survives a failed attempt');
+    assert.equal(p.preset_creatives_attempts, 1);
+    assert.ok(p.preset_creatives_error, 'the reason is stored');
+    await runPresetCreatives('w1', 'p10');
+    await runPresetCreatives('w1', 'p10');
+    p = await row('p10');
+    assert.equal(p.preset_creatives_attempts, 3);
+    assert.equal(p.preset_creatives_due_at, null, 'no endless retries');
+    assert.ok(p.preset_creatives_error);
+    assert.equal(await batches('p10'), 0);
+  });
+
   await t.test('no request left the test except the Amazon image CDN', () => {
     assert.deepEqual(outside, [], 'the non-Amazon image URL must be refused before any request');
   });
