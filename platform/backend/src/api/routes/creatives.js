@@ -6,6 +6,7 @@ import { db } from '../../db/client.js';
 import { wakeCreativeWorker } from '../../services/creative-jobs.js';
 import { localImageData, rasterType } from '../../services/creative-assets.js';
 import { creativePlan } from '../../services/creative-plan.js';
+import { fluxEnabled } from '../../services/flux-generator.js';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 
@@ -16,7 +17,7 @@ async function saveImageUpload(req, dir, prefix) {
   if (!data) throw Object.assign(new Error('No file'), { statusCode: 400 });
   const ext = path.extname(data.filename || '').toLowerCase();
   if (!IMAGE_EXT.has(ext) || !String(data.mimetype || '').startsWith('image/')) {
-    throw Object.assign(new Error('Нужна картинка JPG, PNG или WEBP'), { statusCode: 400 });
+    throw Object.assign(new Error('РќСѓР¶РЅР° РєР°СЂС‚РёРЅРєР° JPG, PNG РёР»Рё WEBP'), { statusCode: 400 });
   }
   const buf = await data.toBuffer();
   const detected = rasterType(buf);
@@ -53,10 +54,14 @@ export async function startGeneration({ ws, userId, product, body, batchKey }) {
   const { language = 'fr', landing_price, features } = body;
   const { format, headline, styles: pickedStyles } = creativePlan(body);
   const logo_key = body.logo_key || null;
-  if (logo_key && !/^\/uploads\/logos\/logo_[A-Za-z0-9_-]{16}\.(jpg|jpeg|png|webp)$/.test(logo_key)) throw Object.assign(new Error('Загрузите свой логотип'), { statusCode: 400 });
+  if (logo_key && !/^\/uploads\/logos\/logo_[A-Za-z0-9_-]{16}\.(jpg|jpeg|png|webp)$/.test(logo_key)) throw Object.assign(new Error('Р—Р°РіСЂСѓР·РёС‚Рµ СЃРІРѕР№ Р»РѕРіРѕС‚РёРї'), { statusCode: 400 });
   if (logo_key) await localImageData(logo_key);
   const product_id = product.id;
   const references = cleanReferenceKeys(body.reference_keys);
+
+  // Allow FLUX source only when API key is configured
+  const requestedSource = body.source === 'flux' && fluxEnabled() ? 'flux' : 'local';
+
   const planned = pickedStyles.map((style, index) => ({
       id: `cr_${nanoid(20)}`,
       product_id,
@@ -65,7 +70,7 @@ export async function startGeneration({ ws, userId, product, body, batchKey }) {
       type: 'image',
       format,
       status: 'pending',
-      metadata: { source: 'local', style, language, ...(batchKey ? {auto_batch_key:batchKey,auto_slot:index} : {}), options: { language, landing_price, features, format, headline, logo_key, image: references.length ? references[index % references.length] : undefined } },
+      metadata: { source: requestedSource, style, language, ...(batchKey ? {auto_batch_key:batchKey,auto_slot:index} : {}), options: { language, landing_price, features, format, headline, logo_key, image: references.length ? references[index % references.length] : undefined } },
     }));
   // One SQL statement: a failure must not leave a partially created batch.
   const { rows: records } = await db.query(`INSERT INTO creatives
@@ -74,7 +79,7 @@ export async function startGeneration({ ws, userId, product, body, batchKey }) {
     FROM jsonb_to_recordset($1::jsonb) AS batch(id text,product_id text,workspace_id text,
       created_by text,type text,format text,status text,metadata jsonb) ON CONFLICT DO NOTHING RETURNING *`, [JSON.stringify(planned)]);
   wakeCreativeWorker();
-  return { creatives: records, total: records.length, source: 'local' };
+  return { creatives: records, total: records.length, source: requestedSource };
 }
 
 // Runs the creative preset chosen at scrape time once the product has data.
@@ -122,13 +127,13 @@ export async function creativeRoutes(app) {
     return startGeneration({ ws, userId, product, body: req.body });
   });
 
-  // Info endpoint — which source is active
+  // Info endpoint вЂ” which source is active
   app.get('/source', auth, async () => ({
     fa_available: false,
-    active: 'local',
-    engine: 'own',
-    renderer: 'html-templates',
-    generative_ai: false,
+    active: fluxEnabled() ? 'flux' : 'local',
+    engine: fluxEnabled() ? 'flux-ai' : 'own',
+    renderer: fluxEnabled() ? 'fal-ai/flux/schnell' : 'html-templates',
+    generative_ai: fluxEnabled(),
     supported_scrapers: ['amazon', 'walmart'],
   }));
 
@@ -147,18 +152,18 @@ export async function creativeRoutes(app) {
   app.post('/:id/retry', auth, async (req, reply) => {
     const creative = await db.findOne('creatives', { id: req.params.id, workspace_id: req.user.ws });
     if (!creative) return reply.status(404).send({ error: 'Not found' });
-    if (req.user.role === 'buyer' && creative.created_by !== req.user.id) return reply.status(403).send({ error: 'Это не ваш креатив' });
+    if (req.user.role === 'buyer' && creative.created_by !== req.user.id) return reply.status(403).send({ error: 'Р­С‚Рѕ РЅРµ РІР°С€ РєСЂРµР°С‚РёРІ' });
     if (creative.status !== 'failed') return reply.status(400).send({ error: 'Only failed creatives can be retried' });
 
     const product = await db.findOne('products', { id: creative.product_id, workspace_id: req.user.ws });
     if (!product) return reply.status(404).send({ error: 'Product not found' });
 
     await assertProductAccess(req, product.id);
-    const metadata = { ...creative.metadata, source: 'local', error: null, image_pending: false };
+    const metadata = { ...creative.metadata, error: null, image_pending: false };
     const { rowCount } = await db.query(`UPDATE creatives SET status='pending',metadata=$1::jsonb,
       render_attempts=0,render_token=NULL,render_started_at=NULL
       WHERE id=$2 AND workspace_id=$3 AND status='failed'`, [JSON.stringify(metadata),creative.id,req.user.ws]);
-    if (!rowCount) return reply.status(409).send({ error: 'Повтор уже запущен' });
+    if (!rowCount) return reply.status(409).send({ error: 'РџРѕРІС‚РѕСЂ СѓР¶Рµ Р·Р°РїСѓС‰РµРЅ' });
     wakeCreativeWorker();
 
     return { ok: true };
@@ -175,9 +180,9 @@ export async function creativeRoutes(app) {
   });
 
   // Template rendering has no FA usage bill. Null means not measured, not zero cost.
-  app.get('/spend', auth, async () => ({ total_usd: null, count: 0, source: 'local' }));
+  app.get('/spend', auth, async () => ({ total_usd: null, count: 0, source: fluxEnabled() ? 'flux' : 'local' }));
   // Legacy URLs are explicit retired features; never contact an external service.
-  const retired = async (req, reply) => reply.status(410).send({ error: 'FA отключён. Используйте собственные креативы.', code: 'FA_DISABLED' });
+  const retired = async (req, reply) => reply.status(410).send({ error: 'FA РѕС‚РєР»СЋС‡С‘РЅ. РСЃРїРѕР»СЊР·СѓР№С‚Рµ СЃРѕР±СЃС‚РІРµРЅРЅС‹Рµ РєСЂРµР°С‚РёРІС‹.', code: 'FA_DISABLED' });
   app.get('/ready-images', auth, retired);
   app.post('/import-ready/:genId', auth, retired);
   app.get('/fa-ready', auth, async () => ({ ready: [], pending: [], disabled: true }));
