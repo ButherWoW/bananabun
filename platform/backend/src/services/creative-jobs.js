@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { db } from '../db/client.js';
 import { generateCreative, closeCreativeBrowser } from './creative-generator.js';
 import { generateFluxCreative } from './flux-generator.js';
+import { renderBanner } from './banner-renderer.js';
 
-const SOURCES = "'local','flux'";
+const SOURCES = "'local','flux','banner'";
 
 // A renderer holds a five-minute lease. Interrupted jobs resume after the lease expires;
 // three interrupted attempts fail visibly instead of retrying forever.
@@ -27,10 +28,12 @@ export async function runCreativeJobs({ render = generateCreative, limit = 2 } =
       if (!product) throw new Error('РўРѕРІР°СЂ Р±РѕР»СЊС€Рµ РЅРµ РґРѕСЃС‚СѓРїРµРЅ');
       const options = { ...record.metadata?.options, language: record.metadata?.language || 'fr', style: record.metadata?.style };
       const source = record.metadata?.source;
-      const slot = typeof record.metadata?.auto_slot === 'number' ? record.metadata.auto_slot : (record.metadata?.style ? 0 : 0);
+      const slot = typeof record.metadata?.auto_slot === 'number' ? record.metadata.auto_slot : 0;
       const result = source === 'flux'
         ? await generateFluxCreative(product, null, record.format, options, slot)
-        : await render(product, null, record.format, options);
+        : source === 'banner'
+          ? await renderBanner(product, record.format, options, slot)
+          : await render(product, null, record.format, options);
       if (!result?.url || !result?.thumbnail) throw new Error('Р”РІРёР¶РѕРє РЅРµ СЃРѕР·РґР°Р» С„Р°Р№Р» РёР·РѕР±СЂР°Р¶РµРЅРёСЏ');
       await db.query(`UPDATE creatives SET status='done', file_url=$1, thumbnail_url=$2, render_token=NULL,
         metadata=metadata || $3::jsonb WHERE id=$4 AND render_token=$5 AND status='processing'`,

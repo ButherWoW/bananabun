@@ -40,7 +40,8 @@ export default function CreativesPage() {
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showFmtMenu, setShowFmtMenu] = useState(false);
   const [showCountMenu, setShowCountMenu] = useState(false);
-  const [useFlux, setUseFlux] = useState(true);
+  const [useFlux, setUseFlux] = useState(false);
+  const [useBanner, setUseBanner] = useState(true);
 
   // List state
   const [search, setSearch] = useState('');
@@ -182,7 +183,7 @@ export default function CreativesPage() {
       const reference_keys = [];
       for (const reference of references) reference_keys.push(await uploadImage(reference.file,'upload-reference'));
       generateMutation.mutate({
-        source: useFlux && sourceInfo?.generative_ai ? 'flux' : 'local', product_id:productIdFilter, language, format:format.replace(':','x'), count,
+        source: useFlux && sourceInfo?.generative_ai ? 'flux' : useBanner ? 'banner' : 'local', product_id:productIdFilter, language, format:format.replace(':','x'), count,
         headline:idea.trim() || undefined, diversify, logo_key,
         reference_keys:reference_keys.length ? reference_keys : undefined,
       });
@@ -429,10 +430,23 @@ export default function CreativesPage() {
             )}
           </div>
 
+          {/* Banner toggle — server-side sharp renderer */}
+          <button
+            onClick={() => { setUseBanner(v => !v); if (!useBanner) setUseFlux(false); }}
+            className={clsx(
+              'px-3 py-1.5 rounded-full text-xs border transition-colors',
+              useBanner && !useFlux
+                ? 'border-blue-500 text-blue-300 bg-blue-600/10'
+                : 'border-[color:var(--c2d3148)] text-gray-500 hover:text-gray-300 hover:border-[color:var(--c3d4168)]'
+            )}
+          >
+            🖼 Баннер
+          </button>
+
           {/* FLUX AI toggle — only when FAL_API_KEY is configured on the server */}
           {sourceInfo?.generative_ai && (
             <button
-              onClick={() => setUseFlux(v => !v)}
+              onClick={() => { setUseFlux(v => !v); if (!useFlux) setUseBanner(false); }}
               className={clsx(
                 'px-3 py-1.5 rounded-full text-xs border transition-colors',
                 useFlux
@@ -440,7 +454,7 @@ export default function CreativesPage() {
                   : 'border-[color:var(--c2d3148)] text-gray-500 hover:text-gray-300 hover:border-[color:var(--c3d4168)]'
               )}
             >
-              ✦ FLUX AI
+              ✦ Ideogram AI
             </button>
           )}
 
