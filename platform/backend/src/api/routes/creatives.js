@@ -17,7 +17,7 @@ async function saveImageUpload(req, dir, prefix) {
   if (!data) throw Object.assign(new Error('No file'), { statusCode: 400 });
   const ext = path.extname(data.filename || '').toLowerCase();
   if (!IMAGE_EXT.has(ext) || !String(data.mimetype || '').startsWith('image/')) {
-    throw Object.assign(new Error('РќСѓР¶РЅР° РєР°СЂС‚РёРЅРєР° JPG, PNG РёР»Рё WEBP'), { statusCode: 400 });
+    throw Object.assign(new Error('Нужна картинка JPG, PNG или WEBP'), { statusCode: 400 });
   }
   const buf = await data.toBuffer();
   const detected = rasterType(buf);
@@ -54,7 +54,7 @@ export async function startGeneration({ ws, userId, product, body, batchKey }) {
   const { language = 'fr', landing_price, features } = body;
   const { format, headline, styles: pickedStyles } = creativePlan(body);
   const logo_key = body.logo_key || null;
-  if (logo_key && !/^\/uploads\/logos\/logo_[A-Za-z0-9_-]{16}\.(jpg|jpeg|png|webp)$/.test(logo_key)) throw Object.assign(new Error('Р—Р°РіСЂСѓР·РёС‚Рµ СЃРІРѕР№ Р»РѕРіРѕС‚РёРї'), { statusCode: 400 });
+  if (logo_key && !/^\/uploads\/logos\/logo_[A-Za-z0-9_-]{16}\.(jpg|jpeg|png|webp)$/.test(logo_key)) throw Object.assign(new Error('Загрузите свой логотип'), { statusCode: 400 });
   if (logo_key) await localImageData(logo_key);
   const product_id = product.id;
   const references = cleanReferenceKeys(body.reference_keys);

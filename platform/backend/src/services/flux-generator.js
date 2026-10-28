@@ -31,7 +31,7 @@ function buildPrompt(product, options = {}) {
   const parts = [
     `Professional e-commerce Facebook advertisement for product "${title}".`,
     'Product shown prominently in center, photorealistic, high quality.',
-    price ? `Bold price badge showing ${price}в‚¬${oldPrice ? ` (crossed out original ${oldPrice}в‚¬)` : ''}.` : '',
+    price ? `Bold price badge showing ${price}€${oldPrice ? ` (crossed out original ${oldPrice}€)` : ''}.` : '',
     `Call-to-action text: "${headline || cta}".`,
     'Clean modern ad design, vibrant gradient background, high contrast typography, mobile-optimized social media format.',
   ].filter(Boolean);
@@ -76,7 +76,7 @@ export async function generateFluxCreative(product, _logoKey, format = '1x1', op
   if (!imageUrl) throw new Error('fal.ai РЅРµ РІРµСЂРЅСѓР» РёР·РѕР±СЂР°Р¶РµРЅРёРµ');
 
   const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(60_000) });
-  if (!imgRes.ok) throw new Error(`РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РёР·РѕР±СЂР°Р¶РµРЅРёСЏ СЃ fal.ai: ${imgRes.status}`);
+  if (!imgRes.ok) throw new Error(`Ошибка загрузки изображения с fal.ai: ${imgRes.status}`);
   const imgBuf = Buffer.from(await imgRes.arrayBuffer());
 
   await fs.mkdir(UPLOADS_DIR, { recursive: true });
