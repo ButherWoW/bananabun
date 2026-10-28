@@ -122,8 +122,12 @@ const spend = (x) => (x?.data?.[0]?.spend != null ? Number(x.data[0].spend) : 0)
 
 // Read-only: live campaigns and adsets of every ad account the token sees, with spend
 // (today / yesterday / 7 days, in account currency). Budgets and bids stay in cents.
-export async function readFbCampaigns(g) {
-  const accounts = await getAll(g, 'me/adaccounts', { fields: 'id,name,currency,account_status,adtrust_dsl' });
+// opts.act — read only this ad account (the «Обновить» of one campaign); the server prunes only read_acts.
+export async function readFbCampaigns(g, opts = {}) {
+  const all = await getAll(g, 'me/adaccounts', { fields: 'id,name,currency,account_status,adtrust_dsl' });
+  const only = opts.act ? `act_${String(opts.act).replace(/^act_/, '')}` : null;
+  const accounts = only ? all.filter(a => a.id === only) : all;
+  if (only && !accounts.length) throw new Error(`Кабинет ${only} не найден в профиле`);
   const campaigns = [];
   const errors = [];
   const readActs = [];
@@ -131,7 +135,8 @@ export async function readFbCampaigns(g) {
     try {
       const camps = await getAll(g, `${a.id}/campaigns`, {
         fields: 'id,name,status,effective_status,daily_budget,spend_cap,created_time,'
-          + 'insights.date_preset(today).as(t){spend},insights.date_preset(yesterday).as(y){spend},insights.date_preset(last_7d).as(w){spend}',
+          + 'insights.date_preset(today).as(t){spend},insights.date_preset(yesterday).as(y){spend},insights.date_preset(last_7d).as(w){spend},'
+          + 'insights.date_preset(last_3d).as(d3){spend},insights.date_preset(last_30d).as(d30){spend}',
         effective_status: LIVE,
       });
       if (!camps.length) { readActs.push(a.id); continue; }
@@ -160,7 +165,7 @@ export async function readFbCampaigns(g) {
           daily_budget: c.daily_budget != null ? Number(c.daily_budget) : null,
           spend_cap: Number(c.spend_cap) > 0 && String(c.spend_cap) !== NO_SPEND_CAP ? Number(c.spend_cap) : null,
           created_time: c.created_time,
-          spend_today: spend(c.t), spend_yesterday: spend(c.y), spend_7d: spend(c.w),
+          spend_today: spend(c.t), spend_yesterday: spend(c.y), spend_7d: spend(c.w), spend_3d: spend(c.d3), spend_30d: spend(c.d30),
           adsets: adsets.filter((s) => s.campaign_id === c.id).map((s) => ({
             id: s.id, name: s.name, status: s.status, effective_status: s.effective_status,
             daily_budget: s.daily_budget != null ? Number(s.daily_budget) : null,

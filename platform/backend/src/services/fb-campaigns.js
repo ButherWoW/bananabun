@@ -61,16 +61,19 @@ export async function saveFbCampaigns(ws, userId, data) {
     const moderation = adsets.some(s => Array.isArray(s.ads)) ? labelModeration(adsets) : null;
     await db.query(`
       INSERT INTO fb_campaigns (id, workspace_id, fb_account_id, act_id, act_name, currency, name, status, effective_status,
-                                daily_budget, spend_today, spend_yesterday, spend_7d, adsets, created_time, moderation, account_status, spend_cap, synced_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16::jsonb,$17,$18,NOW())
+                                daily_budget, spend_today, spend_yesterday, spend_7d, adsets, created_time, moderation, account_status, spend_cap,
+                                spend_3d, spend_30d, synced_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16::jsonb,$17,$18,$19,$20,NOW())
       ON CONFLICT (id) DO UPDATE SET fb_account_id=$3, act_id=$4, act_name=$5, currency=$6, name=$7, status=$8,
         effective_status=$9, daily_budget=$10, spend_today=$11, spend_yesterday=$12, spend_7d=$13, adsets=$14::jsonb,
-        created_time=$15, moderation=$16::jsonb, account_status=$17, spend_cap=$18, synced_at=NOW()
+        created_time=$15, moderation=$16::jsonb, account_status=$17, spend_cap=$18, spend_3d=$19, spend_30d=$20, synced_at=NOW()
       WHERE fb_campaigns.workspace_id = $2`,
       [String(c.id), ws, accountId, c.act, c.act_name, c.currency, c.name, c.status, c.effective_status,
        c.daily_budget, Number(c.spend_today) || 0, Number(c.spend_yesterday) || 0, Number(c.spend_7d) || 0,
        JSON.stringify(adsets), c.created_time || null, moderation ? JSON.stringify(moderation) : null,
-       c.account_status != null ? Number(c.account_status) : null, Number(c.spend_cap) > 0 ? Number(c.spend_cap) : null]);
+       c.account_status != null ? Number(c.account_status) : null, Number(c.spend_cap) > 0 ? Number(c.spend_cap) : null,
+       // An older agent doesn't read 3/30 days: unknown, not zero.
+       c.spend_3d !== undefined ? Number(c.spend_3d) || 0 : null, c.spend_30d !== undefined ? Number(c.spend_30d) || 0 : null]);
   }
   // Cabinet limits for the «where to push» hint.
   for (const a of Array.isArray(data?.accounts_info) ? data.accounts_info : []) {

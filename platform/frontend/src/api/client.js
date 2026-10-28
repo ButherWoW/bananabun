@@ -114,6 +114,9 @@ export const campaigns = {
   fbApplyPreset: (id, data) => api.post(`/api/campaigns/fb/${id}/apply-preset`, data),
   fbBulk: (data) => api.post('/api/campaigns/fb/bulk', data),
   fbHistory: (id) => api.get(`/api/campaigns/fb/${id}/history`),
+  fbRefreshOne: (id) => api.post(`/api/campaigns/fb/${id}/refresh`),
+  fbArchive: (ids, off_first = false) => api.post('/api/campaigns/fb/archive', { ids, off_first }),
+  fbUnarchive: (ids) => api.post('/api/campaigns/fb/archive', { ids, restore: true }),
   fbSummary: (id) => api.get(`/api/campaigns/fb/${id}/summary`),
 };
 

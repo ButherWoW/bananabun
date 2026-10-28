@@ -54,13 +54,14 @@ function parseCampaignName(name = '') {
 const PERIODS = [
   { key: 'today', label: 'Сегодня' },
   { key: 'yesterday', label: 'Вчера' },
+  { key: 'last_3_days', label: '3 дня' },
   { key: 'last_7_days', label: '7 дней' },
   { key: 'last_30_days', label: '30 дней' },
 ];
 
 const METRIC_COLUMNS = [
   { key: 'budget', label: 'Бюджет $' },
-  { key: 'spend', label: 'Расход €' },
+  { key: 'spend', label: 'Расход $' },
   { key: 'clicks', label: 'Клики' },
   { key: 'offer', label: 'На оффер' },
   { key: 'sales', label: 'Продажи' },
@@ -707,7 +708,7 @@ export default function CampaignsPage() {
     queryFn: campaignsApi.list,
   });
 
-  const fbPeriod = ['today', 'yesterday', 'last_7_days'].includes(period) ? period : 'today';
+  const fbPeriod = ['today', 'yesterday', 'last_3_days', 'last_7_days', 'last_30_days'].includes(period) ? period : 'today';
   const { data: fbData } = useQuery({
     queryKey: ['campaigns', 'fb', fbPeriod],
     queryFn: () => campaignsApi.fbList(fbPeriod),
@@ -715,6 +716,30 @@ export default function CampaignsPage() {
     placeholderData: (prev) => prev,
   });
   const [fbRefreshing, setFbRefreshing] = useState('');
+  const [fbBusy, setFbBusy] = useState(null);
+  // Row actions on our FB list: re-read one campaign, «В архив» (platform mark), back from the archive.
+  const fbRowAction = async (c, kind) => {
+    let offFirst = false;
+    if (kind === 'archive' && c.status === 'active') {
+      if (!window.confirm(`«${c.name}» включена. Выключить её в Facebook и убрать в архив платформы?`)) return;
+      offFirst = true;
+    }
+    setFbBusy(c.id);
+    try {
+      if (kind === 'refresh') {
+        const { job_id } = await campaignsApi.fbRefreshOne(c.id);
+        await waitAgentJob(job_id, { timeoutMs: 300000 });
+      } else if (kind === 'archive') {
+        const { job_ids = [] } = await campaignsApi.fbArchive([c.id], offFirst);
+        await Promise.all(job_ids.map(id => waitAgentJob(id, { timeoutMs: 300000 }).catch(() => {})));
+      } else {
+        await campaignsApi.fbUnarchive([c.id]);
+      }
+      qc.invalidateQueries({ queryKey: ['campaigns', 'fb'] });
+    } catch (e) {
+      window.alert(e?.error || e?.message || 'Не получилось');
+    } finally { setFbBusy(null); }
+  };
   const refreshFromFb = async () => {
     if (!window.confirm('Обновить кампании из Facebook? Агент на Mac откроет профили AdsPower с кабинетами.')) return;
     setFbRefreshing('…');
@@ -933,7 +958,8 @@ export default function CampaignsPage() {
         return {
           ...c,
           display: meta.product || c.name,
-          status: c.effective_status === 'ACTIVE' ? 'active' : c.status === 'PAUSED' || c.effective_status === 'WITH_ISSUES' || c.effective_status === 'IN_PROCESS' ? 'paused' : 'archive',
+          // A platform «В архив» mark wins over the FB status.
+          status: c.archived ? 'archive' : c.effective_status === 'ACTIVE' ? 'active' : c.status === 'PAUSED' || c.effective_status === 'WITH_ISSUES' || c.effective_status === 'IN_PROCESS' ? 'paused' : 'archive',
           geo: meta.geo,
           group: c.buyer || meta.buyer,
           product: meta.product,
@@ -1242,6 +1268,16 @@ export default function CampaignsPage() {
                           className="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded hover:bg-emerald-400/10 transition-colors"
                           title="Запустить"
                         >▶</button>
+                      )}
+                      {c.source === 'fb' && (
+                        <>
+                          <button onClick={() => fbRowAction(c, 'refresh')} disabled={fbBusy === c.id}
+                            className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded hover:bg-blue-400/10 transition-colors disabled:opacity-50"
+                            title="Перечитать эту кампанию из Facebook (ничего не меняет)">{fbBusy === c.id ? '…' : '↻'}</button>
+                          <button onClick={() => fbRowAction(c, c.archived ? 'unarchive' : 'archive')} disabled={fbBusy === c.id}
+                            className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded hover:bg-white/5 transition-colors disabled:opacity-50"
+                            title={c.archived ? 'Вернуть из архива платформы' : 'В архив платформы (в Facebook кампания не архивируется)'}>{c.archived ? '⤺' : '🗄'}</button>
+                        </>
                       )}
                       {c.source === 'keitaro' && c.status !== 'archive' && (
                         <button

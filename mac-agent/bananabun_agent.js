@@ -127,7 +127,9 @@ async function runJob(job) {
     if (!/^[a-z0-9]+$/i.test(uid)) throw new Error('bad user_id');
     const { graph } = await openFbSession(uid);
     try {
-      return job.type === 'fb_campaigns' ? await readFbCampaigns(graph) : await editFbObjects(graph, job.payload.ops || []);
+      return job.type === 'fb_campaigns'
+        ? await readFbCampaigns(graph, { act: job.payload?.act })
+        : await editFbObjects(graph, job.payload.ops || []);
     } finally { graph.close(); }
   }
   if (job.type === 'totp') {
