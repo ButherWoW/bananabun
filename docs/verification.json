@@ -38,7 +38,7 @@
     "visible_upload_error": true
   },
   "not_verified": [
-    "own non-Amazon marketplace adapters",
+    "own Target/Best Buy/Etsy marketplace adapters",
     "live checkout/order delivery",
     "live paused Facebook push for this release"
   ],
@@ -49,12 +49,13 @@
     "date": "2026-10-28"
   },
   "combined_tests": {
-    "passed": 48,
+    "passed": 49,
     "failed": 0,
     "skipped": 0,
     "real_postgresql": true,
     "real_backend_startup_and_render": true,
-    "node": "20.20.2"
+    "node": "20.20.2",
+    "merged_walmart": true
   },
   "creative_features": [
     "literal caption",
