@@ -1,7 +1,7 @@
 export const CREATIVE_STYLES = ['clean', 'dark', 'gradient', 'bold', 'minimal'];
 export function creativePlan(body = {}) {
   const bad = message => { throw Object.assign(new Error(message), { statusCode: 400 }); };
-  if (body.source && !['local', 'own'].includes(body.source)) {
+  if (body.source && !['local', 'own', 'flux'].includes(body.source)) {
     throw Object.assign(new Error('FA отключён. Выберите собственную генерацию.'), { statusCode: 410, code: 'FA_DISABLED' });
   }
   const count = Number(body.count ?? 3);
