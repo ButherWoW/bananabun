@@ -6,7 +6,9 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "db:migrate": "node src/db/migrate.js",
-    "db:seed": "node src/db/seed.js"
+    "db:seed": "node src/db/seed.js",
+    "test": "node --test test/*.test.js",
+    "test:browser": "node test/standalone-browser.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

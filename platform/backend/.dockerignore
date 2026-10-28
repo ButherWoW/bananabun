@@ -1,0 +1,8 @@
+node_modules
+uploads
+dist
+.env
+.env.*
+.git
+*.key
+*.pem
