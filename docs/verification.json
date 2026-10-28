@@ -4,7 +4,7 @@
   "mode": "own",
   "fa_required": false,
   "fa_network_enabled": false,
-  "scope": "own creatives plus current main, local integration validation",
+  "scope": "own creatives and final merged outbox/retry implementation, local integration validation",
   "unit_checks": {
     "passed": 9,
     "storage": "mocked for standalone orchestration; filesystem tests use local temporary files"
@@ -45,7 +45,7 @@
   ],
   "dependency_audit": "not rerun against the live registry in this follow-up",
   "combined_tests": {
-    "passed": 35,
+    "passed": 41,
     "failed": 0,
     "skipped": 0,
     "real_postgresql": true,
@@ -56,7 +56,10 @@
     "uploaded logo",
     "durable queued rendering",
     "served JPEG URL",
-    "visible upload errors"
+    "visible upload errors",
+    "automatic preset recovery",
+    "automatic batch deduplication",
+    "product-card failure banner"
   ],
   "deployment": "handed to Claude; own creative changes not deployed by ChatGPT"
 }

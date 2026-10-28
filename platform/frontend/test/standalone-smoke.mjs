@@ -22,6 +22,7 @@ const origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch();
 const errors=[];
 const faRequests=[];
+const productFixture={id:'product',title:'Fixture product',source:'manual',engine:'own',scrape_status:'done',images:[],specs:[],bundle_config:[],preset_creatives_error:'Preset asset missing'};
 let generationPayload=null;
 let generated=false;
 let creativePolls=0;
@@ -38,7 +39,8 @@ try{
     if(p==='/api/auth/me')data={user,workspace:{id:'ws_test',name:'Test workspace'}};
     else if(p==='/api/auth/login')data={user,token:'test-only-token'};
     else if(p==='/api/folders/counts')data={total:0,unfiled:0};
-    else if(p==='/api/products')data={items:[{id:'product',title:'Fixture product',images:[]}],total:1,page:1,limit:24};
+    else if(p==='/api/products')data={items:[productFixture],total:1,page:1,limit:24};
+    else if(p==='/api/products/product')data=productFixture;
     else if(p==='/api/presets/creatives')data=[{id:'saved',name:'Saved logo preset',template:{headline:'Saved caption',logo_key:'/uploads/logos/logo_1234567890123456.png',count:1,language:'en',format:'1x1'}}];
     else if(p==='/api/creatives/generate'){
       generationPayload=route.request().postDataJSON();generated=true;
@@ -71,6 +73,10 @@ try{
     await page.waitForTimeout(300);
     assert.equal(await page.getByRole('button',{name:/FA/}).count(),0);
   }
+  await page.goto(origin+'/products');
+  await page.getByText('Fixture product',{exact:true}).first().click();
+  await page.getByText('Preset asset missing',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('link',{name:'Открыть креативы',exact:true}).getAttribute('href'),'/creatives?product_id=product');
   await page.goto(origin+'/creatives?product_id=product');
   await page.locator('select').filter({has:page.locator('option[value="saved"]')}).selectOption('saved');
   assert.equal(await page.getByPlaceholder('Надпись на креативе (до 200 символов)').inputValue(),'Saved caption');
