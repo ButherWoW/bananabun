@@ -40,7 +40,7 @@ export default function CreativesPage() {
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showFmtMenu, setShowFmtMenu] = useState(false);
   const [showCountMenu, setShowCountMenu] = useState(false);
-  const [useFlux, setUseFlux] = useState(false);
+  const [useFlux, setUseFlux] = useState(true);
 
   // List state
   const [search, setSearch] = useState('');
