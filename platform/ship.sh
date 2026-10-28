@@ -17,9 +17,21 @@ rsync -az --delete-after --exclude '._*' --exclude .DS_Store \
   ./backend/src/ "$HOST:/opt/affiliate/backend/src/"
 rsync -az --delete-after --exclude '._*' --exclude .DS_Store --exclude node_modules --exclude dist \
   ./frontend/src/ "$HOST:/opt/affiliate/frontend/src/"
+# Dependencies and build config travel with the code; npm ci runs only when a lockfile changed.
+rsync -az ./backend/package.json ./backend/package-lock.json "$HOST:/opt/affiliate/backend/"
+rsync -az ./frontend/package.json ./frontend/package-lock.json ./frontend/vite.config.js "$HOST:/opt/affiliate/frontend/"
 
 ssh "$HOST" 'set -e
-chown -R affiliate:affiliate /opt/affiliate/backend/src /opt/affiliate/frontend/src
+chown -R affiliate:affiliate /opt/affiliate/backend/src /opt/affiliate/frontend/src /opt/affiliate/backend/package.json /opt/affiliate/backend/package-lock.json /opt/affiliate/frontend/package.json /opt/affiliate/frontend/package-lock.json /opt/affiliate/frontend/vite.config.js
+for d in backend frontend; do
+  cd /opt/affiliate/$d
+  H=$(sha256sum package-lock.json | cut -c1-64)
+  if [ "$(cat .lock-installed 2>/dev/null)" != "$H" ]; then
+    echo "npm ci: $d"
+    if [ $d = backend ]; then sudo -u affiliate npm ci --omit=dev --no-audit --no-fund --loglevel=error; else sudo -u affiliate npm ci --no-audit --no-fund --loglevel=error; fi
+    echo "$H" > .lock-installed
+  fi
+done
 cd /opt/affiliate/backend && sudo -u affiliate node src/db/migrate.js > /tmp/migrate.log 2>&1 || { cat /tmp/migrate.log; exit 1; }; grep -v skip /tmp/migrate.log
 cd /opt/affiliate/frontend && printf "VITE_API_URL=\n" > .env && npx vite build --logLevel error && echo "frontend built"
 systemctl restart affiliate-backend
