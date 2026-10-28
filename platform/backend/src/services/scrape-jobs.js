@@ -2,7 +2,7 @@ import { db } from '../db/client.js';
 import { enqueueAgentJob } from '../api/routes/agent.js';
 import { amazonUrl, withRealOldPrice, MARKET_CURRENCY } from './engine.js';
 import { AMAZON_MARKETS, productFromAgentData } from './scraper.js';
-import { scrapeWalmartViaScraperApi, scrapeAmazonViaScraperApi, scraperApiEnabled } from './scraper-walmart-api.js';
+import { scrapeWalmartViaScraperApi, scrapeAmazonViaScraperApi, scrapeAmazonReviewsViaScraperApi, scraperApiEnabled } from './scraper-walmart-api.js';
 
 // Own Amazon scrape that survives a backend restart: the product↔job link is stored
 // (products.scrape_job_id), the agent's result is applied when it arrives (routes/agent.js),
@@ -97,6 +97,28 @@ async function fail(ws, productId, jobId, message) {
     [String(message || 'Неизвестная ошибка').slice(0, 500), productId, ws, jobId]);
 }
 
+async function fetchAndSaveReviews(productId, asin, marketplace) {
+  if (!asin || !scraperApiEnabled()) return;
+  try {
+    const reviews = await scrapeAmazonReviewsViaScraperApi(asin, marketplace || 'fr');
+    if (!reviews?.length) return;
+    const { rows } = await db.query(
+      'SELECT COUNT(*) AS c FROM product_reviews WHERE product_id = // Applies one finished job AND scraped = true',
+      [productId]);
+    if (Number(rows[0]?.c) > 0) return;
+    for (const rv of reviews.slice(0, 10)) {
+      if (!rv.text) continue;
+      const { nanoid: _nanoid } = await import('nanoid');
+      await db.query(
+        `INSERT INTO product_reviews (id, product_id, author, rating, text, images, scraped)
+         VALUES (// Applies one finished job, $2, $3, $4, $5, $6::jsonb, true)
+         ON CONFLICT (id) DO NOTHING`,
+        [`rev_${_nanoid(20)}`, productId, rv.author, rv.rating, rv.text, JSON.stringify(rv.images || [])]);
+    }
+  } catch (e) {
+    console.warn('[reviews] fetch failed:', e.message);
+  }
+}
 // Applies one finished job to its product — only if the product still waits for exactly this job
 // (a newer «Ещё раз» replaced it otherwise). Safe to call twice.
 export async function applyScrapeResult(ws, jobId, ok, data, error) {
@@ -120,7 +142,7 @@ export async function applyScrapeResult(ws, jobId, ok, data, error) {
      // null = unknown: Amazon shows the photo-review count only to signed-in visitors.
      d.photo_reviews_count ?? null, !!d.has_photo_reviews,
      bundles.length ? JSON.stringify(withRealOldPrice(bundles, d.price, d.currency || MARKET_CURRENCY[p.marketplace])) : null, p.id, ws, jobId]);
-  if (rowCount) await runPresetCreatives(ws, p.id);
+  if (rowCount) { await runPresetCreatives(ws, p.id); fetchAndSaveReviews(p.id, p.source_id, p.marketplace).catch(() => {}); }
 }
 
 // Queues the scrape preset's creatives once. The «due» mark is set with scrape_status='done';
