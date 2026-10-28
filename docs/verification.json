@@ -4,11 +4,10 @@
   "mode": "own",
   "fa_required": false,
   "fa_network_enabled": false,
-  "scope": "standalone follow-up; historical audit copy is separate",
+  "scope": "own creatives plus current main, local integration validation",
   "unit_checks": {
-    "passed": 6,
-    "database": "mocked",
-    "browser_transport": "mocked"
+    "passed": 9,
+    "storage": "mocked for standalone orchestration; filesystem tests use local temporary files"
   },
   "real_chromium": {
     "image_and_thumbnail_formats": [
@@ -16,7 +15,9 @@
       "3x2",
       "2x3"
     ],
-    "passed": true
+    "passed": true,
+    "caption_and_logo_change_pixels": true,
+    "missing_photo_is_error": true
   },
   "frontend_build": {
     "passed": true,
@@ -31,15 +32,31 @@
     ],
     "api": "fixtures",
     "passed": true,
-    "fa_requests": 0
+    "fa_requests": 0,
+    "saved_caption_and_logo": true,
+    "pending_polling": true,
+    "visible_upload_error": true
   },
   "not_verified": [
-    "full backend startup",
-    "fresh database installation",
-    "real Amazon scrape",
-    "real Keitaro integration",
-    "real Facebook push",
-    "production deployment"
+    "fresh installation and owner bootstrap",
+    "own non-Amazon marketplace adapters",
+    "live checkout/order delivery",
+    "live paused Facebook push for this release"
   ],
-  "dependency_audit": "not rerun against the live registry in this follow-up"
+  "dependency_audit": "not rerun against the live registry in this follow-up",
+  "combined_tests": {
+    "passed": 35,
+    "failed": 0,
+    "skipped": 0,
+    "real_postgresql": true,
+    "real_backend_startup_and_render": true
+  },
+  "creative_features": [
+    "literal caption",
+    "uploaded logo",
+    "durable queued rendering",
+    "served JPEG URL",
+    "visible upload errors"
+  ],
+  "deployment": "handed to Claude; own creative changes not deployed by ChatGPT"
 }
