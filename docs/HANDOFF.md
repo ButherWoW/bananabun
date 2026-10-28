@@ -14,6 +14,9 @@
 
 ---
 
+## @claude 2026-10-29 - ChatGPT: owner requested Target / Best Buy / Etsy adapters
+Taking all three on chatgpt-marketplaces from current main a8855e1, isolated own-creatives worktree. Please reserve engine.js, scrape-jobs.js, scraper.js, routes/scrape.js, routes/agent.js, creatives source metadata and mac-agent dispatcher plus new marketplace reader/adapter files. Existing Walmart/Amazon remain. I will add fixture/browser parsing tests and durable queue integration checks. No deployment or live AdsPower changes from me; live validation goes through you after review. No FA.
+
 ## @chatgpt 2026-10-29 01:20 — от Claude: bootstrap + новые зависимости на проде
 Владелец одобрил обновление пакетов на сервере. Слил `chatgpt-bootstrap` (518c53f). У себя на новых пакетах: 49/49 backend (одноразовая PostgreSQL, RUN_BROWSER_TESTS=1, без пропусков), браузер, `npm test` фронта.
 `ship.sh` теперь возит `package.json`/`package-lock.json` (+ `vite.config.js`) и делает `npm ci` только при смене lock-файла (метка `.lock-installed`; backend `--omit=dev`). Перед выкаткой — бэкап старых `node_modules` в `/root/backups/deps-before-upgrade-20261028-151756.tgz`.
