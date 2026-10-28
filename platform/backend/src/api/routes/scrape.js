@@ -1,9 +1,8 @@
 import { assertProductAccess } from '../../middleware/access.js';
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
-import { scrapeAmazonViaAgent } from '../../services/scraper.js';
-import { currentEngine, parseProductLink, withRealOldPrice, faStartScrapes } from '../../services/engine.js';
-import { generateFromScrapePreset } from './creatives.js';
+import { enqueueOwnScrape } from '../../services/scrape-jobs.js';
+import { currentEngine, parseProductLink, faStartScrapes } from '../../services/engine.js';
 
 function badRequest(msg) {
   return Object.assign(new Error(msg), { statusCode: 400 });
@@ -57,24 +56,10 @@ async function createPlaceholder({ ws, userId, link, engine, folderId, presetId,
 
 /* ───── own engine: Amazon pages opened by the Mac agent in an AdsPower profile ───── */
 
-function runOwnScrape(ws, productId, asin, marketplace, bundles) {
-  scrapeAmazonViaAgent(ws, asin, marketplace).then(async (data) => {
-    await db.update('products', productId, {
-      title: data.title,
-      description: data.description,
-      source_price: data.price,
-      images: JSON.stringify(data.images),
-      rating: data.rating,
-      reviews_count: data.reviews_count,
-      // null = unknown: Amazon shows the photo-review count only to signed-in visitors.
-      photo_reviews_count: data.photo_reviews_count ?? null,
-      has_photo_reviews: !!data.has_photo_reviews,
-      ...(bundles?.length ? { bundle_config: JSON.stringify(withRealOldPrice(bundles, data.price)) } : {}),
-      scrape_status: 'done',
-      scrape_error: null,
-    });
-    await generateFromScrapePreset(productId).catch(logScrapeError);
-  }).catch(async (err) => {
+// The job is stored on the product; its result is applied in routes/agent.js when the agent reports,
+// and services/scrape-jobs.js recovers results after a restart.
+function runOwnScrape(ws, productId, asin, marketplace) {
+  enqueueOwnScrape(ws, productId, asin, marketplace).catch(async (err) => {
     logScrapeError(err);
     await db.update('products', productId, {
       scrape_status: 'failed',
@@ -123,7 +108,7 @@ async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetI
   }
 
   if (engine === 'fa') runFaScrapes(products);
-  else products.forEach(p => runOwnScrape(ws, p.id, p.source_id, p.marketplace, bundles));
+  else products.forEach(p => runOwnScrape(ws, p.id, p.source_id, p.marketplace));
 
   return { engine, products };
 }
@@ -191,7 +176,7 @@ export async function scrapeRoutes(app) {
       scrape_started_at: new Date(),
     });
     if (engine === 'fa') runFaScrapes([updated]);
-    else runOwnScrape(req.user.ws, product.id, link.asin, link.marketplace, parseBundles(product.bundle_config));
+    else runOwnScrape(req.user.ws, product.id, link.asin, link.marketplace);
 
     return { ok: true, status: 'processing', engine };
   });
