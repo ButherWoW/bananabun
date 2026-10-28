@@ -60,7 +60,8 @@ export async function startGeneration({ ws, userId, product, body, batchKey }) {
   const references = cleanReferenceKeys(body.reference_keys);
 
   // Allow FLUX source only when API key is configured
-  const requestedSource = body.source === 'flux' && fluxEnabled() ? 'flux' : 'local';
+  const requestedSource = body.source === 'flux' && fluxEnabled() ? 'flux'
+    : body.source === 'banner' ? 'banner' : 'local';
 
   const planned = pickedStyles.map((style, index) => ({
       id: `cr_${nanoid(20)}`,

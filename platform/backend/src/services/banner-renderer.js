@@ -188,6 +188,12 @@ async function loadProductImage(product) {
   return null;
 }
 
+async function loadLogo(options = {}) {
+  const key = options.logo_key;
+  if (!key || !/^\/uploads\/logos\/logo_[A-Za-z0-9_-]{16}\.(jpg|jpeg|png|webp)$/.test(key)) return null;
+  try { return await fs.readFile(path.join(UPLOADS_DIR, key.slice('/uploads/'.length))); } catch { return null; }
+}
+
 export async function renderBanner(product, format = '1x1', options = {}, slot = 0) {
   const fmt = String(format).replace(':', 'x');
   const { w, h } = FORMAT_SIZE[fmt] || FORMAT_SIZE['1x1'];
@@ -217,6 +223,14 @@ export async function renderBanner(product, format = '1x1', options = {}, slot =
 
   const composites = [];
 
+  // Draw the designed background/text first; the real product photo then sits above
+  // the background on the visual side, while the text remains readable on the left.
+  const svgData = buildSVG(w, h, slot, {
+    title, specs, newPrice, oldPrice, currency, cta,
+    headline: headline || null, pct,
+  });
+  composites.push({ input: Buffer.from(svgData), left: 0, top: 0, blend: 'over' });
+
   // 2. Product image — right half in landscape, top in portrait
   const imgBuf = await loadProductImage(product);
   if (imgBuf) {
@@ -235,16 +249,11 @@ export async function renderBanner(product, format = '1x1', options = {}, slot =
     } catch { /* skip if image broken */ }
   }
 
-  // 3. SVG text overlay
-  const svgData = buildSVG(w, h, slot, {
-    title, specs, newPrice, oldPrice, currency, cta,
-    headline: headline || null, pct,
-  });
-
-  composites.push({
-    input: Buffer.from(svgData),
-    left: 0, top: 0, blend: 'over',
-  });
+  const logo = await loadLogo(options);
+  if (logo) {
+    const logoBuf = await sharp(logo).resize(Math.round(w * 0.18), Math.round(h * 0.10), { fit: 'contain' }).png().toBuffer();
+    composites.push({ input: logoBuf, left: Math.round(w * 0.05), top: Math.round(h * 0.035), blend: 'over' });
+  }
 
   // 4. Composite everything
   const outBuf = await base.composite(composites).jpeg({ quality: 90 }).toBuffer();
