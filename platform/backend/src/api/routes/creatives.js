@@ -1,4 +1,4 @@
-import { assertProductAccess } from '../../middleware/access.js';
+import { assertProductAccess, ownUser } from '../../middleware/access.js';
 import { nanoid } from 'nanoid';
 import path from 'path';
 import fs from 'fs/promises';
@@ -116,10 +116,12 @@ export async function creativeRoutes(app) {
   app.get('/', auth, async (req) => {
     const { product_id, status } = req.query;
     const { ws } = req.user;
+    if (product_id) await assertProductAccess(req, product_id);
 
     let sql = `SELECT * FROM creatives WHERE workspace_id = $1`;
     const vals = [ws];
     let i = 2;
+    if (ownUser(req)) { sql += ` AND created_by = $${i++}`; vals.push(req.user.id); }
     if (product_id) { sql += ` AND product_id = $${i++}`; vals.push(product_id); }
     if (status) { sql += ` AND status = $${i++}`; vals.push(status); }
     sql += ' ORDER BY created_at DESC';
@@ -184,8 +186,8 @@ export async function creativeRoutes(app) {
   // Toggle favorite
   app.patch('/:id/favorite', auth, async (req, reply) => {
     const { rows } = await db.query(
-      `UPDATE creatives SET favorite = NOT favorite WHERE id = $1 AND workspace_id = $2 RETURNING favorite`,
-      [req.params.id, req.user.ws]
+      `UPDATE creatives SET favorite = NOT favorite WHERE id = $1 AND workspace_id = $2 AND ($3::text IS NULL OR created_by = $3) RETURNING favorite`,
+      [req.params.id, req.user.ws, ownUser(req)]
     );
     if (!rows.length) return reply.status(404).send({ error: 'Not found' });
     return { favorite: rows[0].favorite };

@@ -1,4 +1,4 @@
-import { assertProductAccess } from '../../middleware/access.js';
+import { assertProductAccess, assertFolderAccess, assertRecordAccess } from '../../middleware/access.js';
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
 import { writeFile, mkdir } from 'fs/promises';
@@ -33,9 +33,9 @@ export async function productRoutes(app) {
     const vals = [ws];
     let i = 2;
 
-    // Buyers see their own products plus everything in shared folders.
+    // Sharing a category must not disclose another buyer's products.
     if (isBuyer) {
-      sql += ` AND (p.created_by = $${i} OR p.folder_id IN (SELECT id FROM folders WHERE workspace_id = $1 AND shared))`;
+      sql += ` AND p.created_by = $${i}`;
       i++; vals.push(req.user.id);
     }
     if (folder_id === 'none') sql += ` AND p.folder_id IS NULL`;
@@ -64,10 +64,7 @@ export async function productRoutes(app) {
   app.get('/:id', auth, async (req, reply) => {
     const product = await db.findOne('products', { id: req.params.id, workspace_id: req.user.ws });
     if (!product) return reply.status(404).send({ error: 'Not found' });
-    if (req.user.role === 'buyer' && product.created_by !== req.user.id) {
-      const folder = product.folder_id ? await db.findOne('folders', { id: product.folder_id, workspace_id: req.user.ws }) : null;
-      if (!folder?.shared) return reply.status(404).send({ error: 'Not found' });
-    }
+    await assertProductAccess(req, product.id);
     return product;
   });
 
@@ -76,6 +73,8 @@ export async function productRoutes(app) {
     const { ws, id: userId } = req.user;
     const { folder_id, title, description, specs, source_price, bundle_preset_id } = req.body || {};
     if (!title || !String(title).trim()) throw Object.assign(new Error('Нужен заголовок'), { statusCode: 400 });
+    await assertFolderAccess(req, folder_id);
+    if (bundle_preset_id) await assertRecordAccess(req, 'bundle_presets', bundle_preset_id);
     return db.insert('products', {
       id: `prd_${nanoid(20)}`,
       workspace_id: ws,
@@ -106,6 +105,8 @@ export async function productRoutes(app) {
     for (const key of allowed) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
     }
+    if (data.folder_id) await assertFolderAccess(req, data.folder_id);
+    if (data.bundle_preset_id) await assertRecordAccess(req, 'bundle_presets', data.bundle_preset_id);
     if (data.specs !== undefined) data.specs = JSON.stringify(cleanSpecs(data.specs));
 
     return db.update('products', product.id, data);
@@ -154,6 +155,7 @@ export async function productRoutes(app) {
   // Move to folder (bulk)
   app.post('/move', auth, async (req) => {
     const { ids, folder_id } = req.body;
+    await assertFolderAccess(req, folder_id);
     await assertProductAccess(req, ids);
     const { ws } = req.user;
     await db.query(
@@ -206,6 +208,7 @@ export async function productRoutes(app) {
 
   // Reviews
   app.get('/:id/reviews', auth, async (req, reply) => {
+    await assertProductAccess(req, req.params.id);
     const { rows } = await db.query(
       `SELECT r.* FROM product_reviews r JOIN products p ON p.id = r.product_id
         WHERE r.product_id = $1 AND p.workspace_id = $2 ORDER BY r.created_at DESC`,

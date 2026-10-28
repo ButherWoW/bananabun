@@ -1,6 +1,7 @@
 import { db } from '../../db/client.js';
 import { runPush } from '../../services/push.js';
 import { keitaroClient } from '../../services/keitaro.js';
+import { assertProductAccess, assertCreativeAccess, assertRecordAccess, ownUser } from '../../middleware/access.js';
 
 const ownOnly = (req) => (req.user.role === 'buyer' ? req.user.id : null);
 
@@ -38,6 +39,12 @@ export async function pushRoutes(app) {
 
     if (!product_id || !creative_ids?.length || !cabinet_external_id || !pixel_id)
       throw Object.assign(new Error('Missing required fields'), { statusCode: 400 });
+    await assertProductAccess(req, product_id);
+    if (!Array.isArray(creative_ids) || new Set(creative_ids).size !== creative_ids.length)
+      throw Object.assign(new Error('Нужен список различных креативов'), { statusCode: 400 });
+    await assertCreativeAccess(req, creative_ids, { productId: product_id, ready: true });
+    if (preset_id) await assertRecordAccess(req, 'ad_settings', preset_id);
+    if (landing_id) await assertRecordAccess(req, 'landing_templates', landing_id);
     if (!(await buyerOwnsCabinet(req, cabinet_external_id)))
       throw Object.assign(new Error('Это не ваш кабинет'), { statusCode: 403 });
     // Bid and daily budget are set per geo with the lead — never defaulted.
@@ -181,6 +188,8 @@ export async function pushRoutes(app) {
   app.post('/compile-landing', auth, async (req, reply) => {
     const { template_id, product_id, geo = 'FR' } = req.body;
     if (!template_id || !product_id) return reply.status(400).send({ error: 'template_id and product_id required' });
+    await assertProductAccess(req, product_id);
+    await assertRecordAccess(req, 'landing_templates', template_id);
     try {
       const { compileLanding } = await import('../../services/landing-compiler.js');
       const { html, product, template } = await compileLanding(template_id, product_id, geo, req.user.ws);
@@ -194,6 +203,8 @@ export async function pushRoutes(app) {
   app.post('/upload-landing-keitaro', auth, async (req, reply) => {
     const { template_id, product_id, geo = 'FR', name } = req.body;
     if (!template_id || !product_id) return reply.status(400).send({ error: 'template_id and product_id required' });
+    await assertProductAccess(req, product_id);
+    await assertRecordAccess(req, 'landing_templates', template_id);
     try {
       const { compileLanding } = await import('../../services/landing-compiler.js');
       const { html, product, template } = await compileLanding(template_id, product_id, geo, req.user.ws);
@@ -233,8 +244,8 @@ export async function pushRoutes(app) {
       localTemplatesRes,
     ] = await Promise.all([
       db.query(
-        `SELECT id, title as name, COALESCE(images->0->>'url', images->>0) as cover, photo_reviews_count FROM products WHERE workspace_id=$1 AND scrape_status='done' ORDER BY created_at DESC`,
-        [ws]
+        `SELECT id, title as name, COALESCE(images->0->>'url', images->>0) as cover, photo_reviews_count FROM products WHERE workspace_id=$1 AND ($2::text IS NULL OR created_by=$2) AND scrape_status='done' ORDER BY created_at DESC`,
+        [ws, ownUser(req)]
       ),
       db.query(
         // «Куда лить»: ready cabinets first, then the most daily limit left, then the fewest running ads.
@@ -266,10 +277,10 @@ export async function pushRoutes(app) {
                   c.name`,
         [ws, req.user.role === 'buyer' ? String(req.user.email || '').toLowerCase() : null]
       ),
-      db.query(`SELECT * FROM ad_settings WHERE workspace_id=$1 ORDER BY name`, [ws]),
+      db.query(`SELECT * FROM ad_settings WHERE workspace_id=$1 AND ($2::text IS NULL OR created_by=$2) ORDER BY name`, [ws, ownUser(req)]),
       db.query(
-        `SELECT id, product_id, file_url as url, thumbnail_url, metadata->>'language' as language, type, status FROM creatives WHERE workspace_id=$1 AND status='done' ORDER BY created_at DESC`,
-        [ws]
+        `SELECT id, product_id, file_url as url, thumbnail_url, metadata->>'language' as language, type, status FROM creatives WHERE workspace_id=$1 AND ($2::text IS NULL OR created_by=$2) AND status='done' AND file_url IS NOT NULL ORDER BY created_at DESC`,
+        [ws, ownUser(req)]
       ),
       wsRow?.keitaro_url && wsRow?.keitaro_api_key
         ? keitaroClient(wsRow.keitaro_url, wsRow.keitaro_api_key).landingPages().catch(() => [])
@@ -279,9 +290,9 @@ export async function pushRoutes(app) {
         : Promise.resolve([]),
       // Only templates that can be compiled: FA-synced rows without HTML would upload a blank page.
       db.query(`SELECT id, name, store, state, geos, versions, type FROM landing_templates
-                 WHERE workspace_id=$1 AND state='ready' AND COALESCE(type, '') <> 'white'
+                 WHERE workspace_id=$1 AND ($2::text IS NULL OR created_by=$2) AND state='ready' AND COALESCE(type, '') <> 'white'
                    AND (COALESCE(html, '') <> '' OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(versions, '[]'::jsonb)) v WHERE COALESCE(v->>'html', '') <> ''))
-                 ORDER BY name`, [ws]),
+                 ORDER BY name`, [ws, ownUser(req)]),
     ]);
 
     // Merge local templates + Keitaro landings (local templates first, marked with source)
@@ -314,6 +325,7 @@ export async function pushRoutes(app) {
 
     const product = await db.findOne('products', { id: product_id, workspace_id: ws });
     if (!product) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
+    await assertProductAccess(req, product_id);
 
     // No generator configured: say so instead of handing out canned claims (discounts, «official», guarantees).
     if (!process.env.ANTHROPIC_API_KEY) {

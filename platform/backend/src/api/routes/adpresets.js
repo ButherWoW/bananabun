@@ -1,13 +1,14 @@
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
+import { ownUser, assertRecordAccess } from '../../middleware/access.js';
 
 export async function adPresetRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
 
   app.get('/', auth, async (req) => {
     const { rows } = await db.query(
-      `SELECT * FROM ad_presets WHERE workspace_id = $1 ORDER BY created_at DESC`,
-      [req.user.ws]
+      `SELECT * FROM ad_presets WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2) ORDER BY created_at DESC`,
+      [req.user.ws, ownUser(req)]
     );
     return rows;
   });
@@ -49,6 +50,7 @@ export async function adPresetRoutes(app) {
   });
 
   app.patch('/:id', auth, async (req, reply) => {
+    await assertRecordAccess(req, 'ad_presets', req.params.id);
     const { rows: existing } = await db.query(
       `SELECT id FROM ad_presets WHERE id = $1 AND workspace_id = $2`,
       [req.params.id, req.user.ws]
@@ -77,6 +79,7 @@ export async function adPresetRoutes(app) {
   });
 
   app.delete('/:id', auth, async (req, reply) => {
+    await assertRecordAccess(req, 'ad_presets', req.params.id);
     const { rows } = await db.query(
       `DELETE FROM ad_presets WHERE id = $1 AND workspace_id = $2 RETURNING id`,
       [req.params.id, req.user.ws]

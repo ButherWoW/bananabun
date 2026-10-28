@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
+import { ownUser, assertRecordAccess, assertProductAccess } from '../../middleware/access.js';
 
 export async function adSettingsRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
@@ -8,9 +9,9 @@ export async function adSettingsRoutes(app) {
     const { rows } = await db.query(
       `SELECT params->>'preset_id' as preset_id, COUNT(*) as uses
        FROM pushes
-       WHERE workspace_id = $1 AND params->>'preset_id' IS NOT NULL
+       WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2) AND params->>'preset_id' IS NOT NULL
        GROUP BY params->>'preset_id'`,
-      [req.user.ws]
+      [req.user.ws, ownUser(req)]
     );
     const map = {};
     for (const r of rows) map[r.preset_id] = Number(r.uses);
@@ -19,8 +20,8 @@ export async function adSettingsRoutes(app) {
 
   app.get('/', auth, async (req) => {
     const { rows } = await db.query(
-      'SELECT * FROM ad_settings WHERE workspace_id = $1 ORDER BY created_at DESC',
-      [req.user.ws]
+      'SELECT * FROM ad_settings WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2) ORDER BY created_at DESC',
+      [req.user.ws, ownUser(req)]
     );
     return rows;
   });
@@ -49,18 +50,22 @@ export async function adSettingsRoutes(app) {
 
   app.post('/', auth, async (req) => {
     const { ws, id: userId } = req.user;
+    if (req.body?.product_ids?.length) await assertProductAccess(req, req.body.product_ids);
     return db.insert('ad_settings', { id: `ads_${nanoid(20)}`, workspace_id: ws, created_by: userId, ...pick(req.body) });
   });
 
   app.patch('/:id', auth, async (req, reply) => {
     const row = await db.findOne('ad_settings', { id: req.params.id, workspace_id: req.user.ws });
     if (!row) return reply.status(404).send({ error: 'Not found' });
+    await assertRecordAccess(req, 'ad_settings', row.id);
+    if (req.body?.product_ids?.length) await assertProductAccess(req, req.body.product_ids);
     const data = pick(req.body);
     if (!Object.keys(data).length) return reply.status(400).send({ error: 'Нет полей для обновления' });
     return db.update('ad_settings', row.id, data);
   });
 
   app.delete('/:id', auth, async (req) => {
+    await assertRecordAccess(req, 'ad_settings', req.params.id);
     await db.query('DELETE FROM ad_settings WHERE id = $1 AND workspace_id = $2', [req.params.id, req.user.ws]);
     return { ok: true };
   });
