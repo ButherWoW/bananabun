@@ -371,7 +371,12 @@ function CardTab({ product, qc }) {
             ? <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{landingResult.error}</p>
             : <div className="text-xs text-emerald-400 bg-emerald-500/10 rounded-lg px-3 py-2 space-y-0.5">
                 <p className="font-medium">{landingResult.landing_name}</p>
-                <p className="text-gray-500">ID: {landingResult.landing_id} · {landingResult.local_path}</p>
+                <p className="text-gray-500">Лендинг ID: {landingResult.landing_id} · {landingResult.local_path}</p>
+                {landingResult.campaign_id
+                  ? <p className="text-emerald-300">Кампания: {landingResult.campaign_name} (ID: {landingResult.campaign_id}, alias: {landingResult.campaign_alias})</p>
+                  : landingResult.campaign_skipped
+                    ? <p className="text-yellow-600">{landingResult.campaign_skipped}</p>
+                    : null}
               </div>
         )}
       </div>
