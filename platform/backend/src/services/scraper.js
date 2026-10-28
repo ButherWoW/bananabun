@@ -10,8 +10,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Same uploads root as the static server and the creative renderer (UPLOADS_DIR when set).
 const IMAGES_DIR = process.env.UPLOADS_DIR ? join(resolve(process.env.UPLOADS_DIR), 'images') : join(__dirname, '..', '..', 'uploads', 'images');
 
-// Only Amazon's image CDN over https: the URL comes from a scraped page, so nothing else is fetched.
-const IMAGE_HOST = /(^|\.)(media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com)$/i;
+// Only the shops' image CDNs over https: the URL comes from a scraped page, so nothing else is fetched.
+const IMAGE_HOST = /(^|\.)(media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com|walmartimages\.com)$/i;
+const refererOf = (host) => (/walmartimages\.com$/i.test(host) ? 'https://www.walmart.com/' : 'https://www.amazon.fr/');
 const RASTER = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 const MAX_IMAGE = 15 * 1024 * 1024;
 
@@ -22,7 +23,7 @@ async function downloadImage(url, asin, index) {
     const res = await fetch(u, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'Referer': 'https://www.amazon.fr/',
+        'Referer': refererOf(u.hostname),
       },
       redirect: 'error',
       signal: AbortSignal.timeout(15000),
@@ -64,6 +65,7 @@ export async function productFromAgentData(data, asin) {
     title: data.title, price: data.price, rating: data.rating, reviews_count: data.reviews_count || 0,
     description: data.description, photo_reviews_count: data.photo_reviews_count ?? null, has_photo_reviews: !!data.has_photo_reviews,
     images: localImages.filter(Boolean),
+    currency: typeof data.currency === 'string' && /^[A-Z]{3}$/.test(data.currency) ? data.currency : null,
   };
 }
 
