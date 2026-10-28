@@ -1,0 +1,34 @@
+.login-money-rain {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.login-money-bill {
+  position: absolute;
+  top: -100px;
+  width: var(--size);
+  opacity: 0;
+  animation: login-money-fall var(--duration) var(--delay) linear infinite;
+  will-change: transform;
+}
+
+.login-money-bill svg { display: block; width: 100%; }
+
+@keyframes login-money-fall {
+  0% { transform: translate3d(0, -40px, 0) rotate(-25deg); opacity: 0; }
+  8% { opacity: .38; }
+  50% { transform: translate3d(calc(var(--drift) * -.35), 55vh, 0) rotate(calc(var(--turn) * .45)); opacity: .28; }
+  90% { opacity: .38; }
+  100% { transform: translate3d(var(--drift), calc(100vh + 180px), 0) rotate(var(--turn)); opacity: 0; }
+}
+
+@media (max-width: 600px) {
+  .login-money-bill:nth-child(n + 15) { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-money-rain { display: none; }
+}
