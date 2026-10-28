@@ -48,7 +48,8 @@ export function presetToGenerateBody(template = {}) {
   };
 }
 
-export async function startGeneration({ ws, userId, product, body }) {
+export async function startGeneration({ ws, userId, product, body, batchKey }) {
+  if (batchKey !== undefined && (typeof batchKey !== 'string' || !batchKey || batchKey.length > 120)) throw new Error('Invalid internal creative batch key');
   const { language = 'fr', landing_price, features } = body;
   const { format, headline, styles: pickedStyles } = creativePlan(body);
   const logo_key = body.logo_key || null;
@@ -64,20 +65,20 @@ export async function startGeneration({ ws, userId, product, body }) {
       type: 'image',
       format,
       status: 'pending',
-      metadata: { source: 'local', style, language, options: { language, landing_price, features, format, headline, logo_key, image: references.length ? references[index % references.length] : undefined } },
+      metadata: { source: 'local', style, language, ...(batchKey ? {auto_batch_key:batchKey,auto_slot:index} : {}), options: { language, landing_price, features, format, headline, logo_key, image: references.length ? references[index % references.length] : undefined } },
     }));
   // One SQL statement: a failure must not leave a partially created batch.
   const { rows: records } = await db.query(`INSERT INTO creatives
     (id,product_id,workspace_id,created_by,type,format,status,metadata)
     SELECT id,product_id,workspace_id,created_by,type,format,status,metadata
     FROM jsonb_to_recordset($1::jsonb) AS batch(id text,product_id text,workspace_id text,
-      created_by text,type text,format text,status text,metadata jsonb) RETURNING *`, [JSON.stringify(planned)]);
+      created_by text,type text,format text,status text,metadata jsonb) ON CONFLICT DO NOTHING RETURNING *`, [JSON.stringify(planned)]);
   wakeCreativeWorker();
   return { creatives: records, total: records.length, source: 'local' };
 }
 
 // Runs the creative preset chosen at scrape time once the product has data.
-export async function generateFromScrapePreset(productId) {
+export async function generateFromScrapePreset(productId, { batchKey } = {}) {
   const product = await db.findOne('products', { id: productId });
   if (!product?.creative_preset_id) return;
   const preset = await db.findOne('creative_presets', { id: product.creative_preset_id, workspace_id: product.workspace_id });
@@ -87,6 +88,7 @@ export async function generateFromScrapePreset(productId) {
     userId: product.created_by,
     product,
     body: presetToGenerateBody(preset.template),
+    batchKey,
   });
 }
 
