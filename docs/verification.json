@@ -4,7 +4,7 @@
   "mode": "own",
   "fa_required": false,
   "fa_network_enabled": false,
-  "scope": "own creatives and final merged outbox/retry implementation, local integration validation",
+  "scope": "own mode, durable creatives/outbox, fresh bootstrap and patched dependency validation",
   "unit_checks": {
     "passed": 9,
     "storage": "mocked for standalone orchestration; filesystem tests use local temporary files"
@@ -21,8 +21,8 @@
   },
   "frontend_build": {
     "passed": true,
-    "vite": "5.4.21",
-    "dependencies": "current lockfile, installed offline",
+    "vite": "8.3.5",
+    "dependencies": "current lockfile; online install and reproducible npm ci checked",
     "warning": "large JS bundle"
   },
   "ui": {
@@ -38,18 +38,24 @@
     "visible_upload_error": true
   },
   "not_verified": [
-    "fresh installation and owner bootstrap",
-    "own non-Amazon marketplace adapters",
+    "own Target/Best Buy/Etsy marketplace adapters",
     "live checkout/order delivery",
     "live paused Facebook push for this release"
   ],
-  "dependency_audit": "not rerun against the live registry in this follow-up",
+  "dependency_audit": {
+    "online": true,
+    "backend_vulnerabilities": 0,
+    "frontend_vulnerabilities": 0,
+    "date": "2026-10-28"
+  },
   "combined_tests": {
-    "passed": 41,
+    "passed": 49,
     "failed": 0,
     "skipped": 0,
     "real_postgresql": true,
-    "real_backend_startup_and_render": true
+    "real_backend_startup_and_render": true,
+    "node": "20.20.2",
+    "merged_walmart": true
   },
   "creative_features": [
     "literal caption",
@@ -61,5 +67,17 @@
     "automatic batch deduplication",
     "product-card failure banner"
   ],
-  "deployment": "handed to Claude; own creative changes not deployed by ChatGPT"
+  "deployment": "bootstrap/dependency changes prepared for Claude review; not deployed by ChatGPT",
+  "bootstrap": {
+    "passed": true,
+    "fresh_postgresql": true,
+    "migration_rollback": true,
+    "concurrent_migrations": true,
+    "existing_owner_preserved": true,
+    "legacy_bcrypt_compatible": true,
+    "docker_end_to_end": true,
+    "docker_restart_persistence": true,
+    "published_ports": "127.0.0.1",
+    "report": "docs/BOOTSTRAP_CHECKS.md"
+  }
 }

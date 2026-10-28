@@ -2,12 +2,13 @@ import { assertProductAccess, assertFolderAccess, assertRecordAccess } from '../
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
 import { writeFile, mkdir } from 'fs/promises';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { pipeline } from 'stream/promises';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const IMAGES_DIR = join(__dirname, '..', '..', '..', 'uploads', 'images');
+const UPLOADS_DIR = process.env.UPLOADS_DIR ? resolve(process.env.UPLOADS_DIR) : join(__dirname, '..', '..', '..', 'uploads');
+const IMAGES_DIR = join(UPLOADS_DIR, 'images');
 
 function cleanSpecs(specs) {
   if (!Array.isArray(specs)) return [];

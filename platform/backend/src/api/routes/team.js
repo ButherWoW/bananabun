@@ -1,5 +1,5 @@
 import { adminOnly } from '../../middleware/access.js';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
 

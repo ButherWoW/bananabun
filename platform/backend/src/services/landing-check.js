@@ -37,7 +37,7 @@ let launching = null;
 async function getBrowser() {
   if (browser?.isConnected()) return browser;
   if (!launching) {
-    launching = chromium.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] })
+    launching = chromium.launch({ executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined, args: ['--no-sandbox', '--disable-setuid-sandbox'] })
       .then((b) => { browser = b; return b; })
       .finally(() => { launching = null; });
   }

@@ -129,7 +129,7 @@ export async function creativeRoutes(app) {
     engine: 'own',
     renderer: 'html-templates',
     generative_ai: false,
-    supported_scrapers: ['amazon'],
+    supported_scrapers: ['amazon', 'walmart'],
   }));
 
   // Upload logo for creative generation
