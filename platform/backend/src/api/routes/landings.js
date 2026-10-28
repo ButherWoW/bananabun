@@ -396,7 +396,11 @@ function handleSubmit(e) {
         zipBuffer = await buildAngryZip({ product });
       } else {
         const { buildCdiscountZip } = await import('../../services/cdiscount-landing.js');
-        zipBuffer = await buildCdiscountZip({ product });
+        const { rows: reviews } = await db.query(
+          `SELECT author, rating, text FROM product_reviews WHERE product_id = $1 AND text IS NOT NULL ORDER BY created_at LIMIT 10`,
+          [product.id]
+        );
+        zipBuffer = await buildCdiscountZip({ product, reviews });
       }
 
       const client = keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
