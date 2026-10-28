@@ -26,23 +26,31 @@ export async function enqueueOwnScrape(ws, productId, asin, marketplace, source 
     type = 'scrape_walmart'; url = `https://www.walmart.com/ip/${asin}`;
 
     // Fast path: ScraperAPI handles Walmart server-side (~3-5 sec), no Mac agent needed.
-    // Falls back silently to the agent job when the key is absent or the API fails.
+    // Job is created with status='taken' so the Mac agent never picks it up.
+    // Falls back to status='pending' (agent picks up) only when ScraperAPI fails.
     if (scraperApiEnabled()) {
-      const jobId = await enqueueAgentJob(ws, type, { url, product_id: productId, asin });
+      // Insert directly with taken status so the agent skips it.
+      const { rows: [job] } = await db.query(
+        `INSERT INTO agent_jobs (workspace_id, type, payload, status, taken_at)
+         VALUES ($1, $2, $3::jsonb, 'taken', NOW()) RETURNING id`,
+        [ws, type, JSON.stringify({ url, product_id: productId, asin, via: 'scraperapi' })]);
+      const jobId = job.id;
       await db.query(`UPDATE products SET scrape_job_id = $1, scrape_status = 'processing', scrape_error = NULL,
                        scrape_started_at = NOW() WHERE id = $2 AND workspace_id = $3`, [jobId, productId, ws]);
-      // Fire-and-forget: ScraperAPI runs immediately; on success the agent job is bypassed.
+
       scrapeWalmartViaScraperApi(asin)
         .then(async (data) => {
           await db.query(
-            `UPDATE agent_jobs SET status = 'done', done_at = NOW(),
-                    result = $1::jsonb WHERE id = $2 AND status = 'pending'`,
+            `UPDATE agent_jobs SET status = 'done', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
             [JSON.stringify({ ok: true, data }), jobId]);
           await applyScrapeResult(ws, jobId, true, data, null);
         })
         .catch(async (e) => {
-          // ScraperAPI failed — leave the job pending so the Mac agent picks it up.
+          // ScraperAPI failed — reset to pending so the Mac agent picks it up as fallback.
           console.warn(`[scraperapi] walmart/${asin} failed (agent fallback):`, e.message);
+          await db.query(
+            `UPDATE agent_jobs SET status = 'pending', taken_at = NULL WHERE id = $1`,
+            [jobId]);
         });
       return jobId;
     }
