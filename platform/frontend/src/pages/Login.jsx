@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../store/auth.js';
+import './Login.css';
 
 
 export default function LoginPage() {
@@ -70,6 +71,27 @@ export default function LoginPage() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #071a19 0%, #0b2422 50%, #071a19 100%)' }}>
+      <div className="login-money-rain" aria-hidden="true">
+        {Array.from({ length: 26 }, (_, i) => (
+          <span className="login-money-bill" key={i} style={{
+            left: `${(i * 37) % 100}%`,
+            '--duration': `${11 + (i % 7) * 1.4}s`,
+            '--delay': `${-i * 2.7}s`,
+            '--drift': `${(i % 2 ? 1 : -1) * (35 + i % 5 * 18)}px`,
+            '--turn': `${(i % 2 ? 1 : -1) * (90 + i * 13)}deg`,
+            '--size': `${48 + i % 4 * 12}px`,
+          }}>
+            <svg viewBox="0 0 120 54" fill="none">
+              <rect x="1" y="1" width="118" height="52" rx="4" fill="#9fc4a2" stroke="#477a61" strokeWidth="2" />
+              <rect x="7" y="7" width="106" height="40" rx="2" stroke="#477a61" />
+              <ellipse cx="60" cy="27" rx="18" ry="19" fill="#78a584" stroke="#477a61" />
+              <text x="60" y="36" textAnchor="middle" fill="#244e3b" fontSize="29" fontFamily="Georgia, serif" fontWeight="bold">$</text>
+              <text x="13" y="23" fill="#244e3b" fontSize="12" fontFamily="Georgia, serif">100</text>
+              <text x="85" y="40" fill="#244e3b" fontSize="12" fontFamily="Georgia, serif">100</text>
+            </svg>
+          </span>
+        ))}
+      </div>
       {/* Tiffany glow orb */}
       <div style={{ position: 'fixed', top: '20%', left: '50%', transform: 'translateX(-50%)', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(129,216,208,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
