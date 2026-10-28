@@ -310,7 +310,11 @@ function handleSubmit(e) {
     }
   });
   app.post('/generate', auth, async (req, reply) => {
-    const { product_id, group_id, name, type = 'cdiscount' } = req.body || {};
+    const {
+      product_id, group_id, name, type = 'cdiscount',
+      // Optional campaign overrides (fall back to workspace defaults)
+      domain_id: reqDomainId, offer_ids: reqOfferIds, white_landing_id: reqWhiteId,
+    } = req.body || {};
     if (!product_id) return reply.status(400).send({ error: 'Нужен product_id' });
     await assertProductAccess(req, product_id);
 
@@ -336,10 +340,102 @@ function handleSubmit(e) {
 
       const client = keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
       const landingName = name || `[BB] ${(product.title || '').slice(0, 60)} [FR]`;
-      const gId = group_id || ws.keitaro_group_id || 103;
+      const gId = group_id || ws.keitaro_group_id;
 
       const result = await client.uploadLandingZip(landingName, gId, zipBuffer);
-      return { ok: true, landing_id: result.id, landing_name: result.name, local_path: result.local_path };
+
+      // Auto-create a Keitaro campaign if defaults are configured in workspace settings
+      const domainId = Number(reqDomainId || ws.keitaro_domain_id);
+      const rawOfferIds = reqOfferIds
+        ? (Array.isArray(reqOfferIds) ? reqOfferIds : [reqOfferIds])
+        : (Array.isArray(ws.keitaro_offer_ids) ? ws.keitaro_offer_ids : []);
+      const offerIds = rawOfferIds.map(Number).filter(Boolean);
+      const whiteId = Number(reqWhiteId || ws.keitaro_white_id);
+
+      if (!domainId || !offerIds.length || !whiteId) {
+        return {
+          ok: true,
+          landing_id: result.id,
+          landing_name: result.name,
+          local_path: result.local_path,
+          campaign_skipped: 'Укажите домен, оффер и вайт в Настройки → Keitaro',
+        };
+      }
+
+      // Campaign parameters — same macros as the push flow
+      const KT_PARAMETERS = {
+        external_id:   { name: 'fbclid',       placeholder: '' },
+        ad_campaign_id:{ name: 'utm_campaign',  placeholder: '{{campaign.name}}' },
+        source:        { name: 'utm_source',    placeholder: '{{site_source_name}}' },
+        sub_id_1:      { name: 'utm_placement', placeholder: '{{placement}}' },
+        sub_id_2:      { name: 'campaign_id',   placeholder: '{{campaign.id}}' },
+        sub_id_3:      { name: 'adset_id',      placeholder: '{{adset.id}}' },
+        sub_id_4:      { name: 'ad_id',         placeholder: '{{ad.id}}' },
+        sub_id_5:      { name: 'adset_name',    placeholder: '{{adset.name}}' },
+        sub_id_7:      { name: 'ad_name',       placeholder: '{{ad.name}}' },
+      };
+
+      function translit(s) {
+        return String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+      }
+      function makeAlias(productName, taken) {
+        const words = translit(productName).split(/[^a-z0-9]+/).filter(w => w.length > 1).slice(0, 3);
+        const base = (words.map((w, i) => (i === 0 ? w.slice(0, 5) : w.slice(0, 3))).join('') || 'lnd').slice(0, 12);
+        for (let n = 0; n < 100; n++) {
+          const alias = `${base}${n ? n + 1 : ''}-lnd`;
+          if (!taken.has(alias)) return alias;
+        }
+        throw new Error('Не удалось подобрать alias для кампании Keitaro');
+      }
+
+      const allCampaigns = await client.allCampaigns();
+      const alias = makeAlias(product.title, new Set(allCampaigns.map(c => c.alias)));
+      const campaignName = landingName;
+
+      const campaign = await client.createCampaign({
+        name: campaignName,
+        alias,
+        type: 'position',
+        state: 'active',
+        domain_id: domainId,
+        ...(gId ? { group_id: Number(gId) } : {}),
+        cost_type: 'CPC',
+        cost_auto: true,
+        uniqueness_method: 'ip_ua',
+        parameters: KT_PARAMETERS,
+      });
+
+      const offerShares = offerIds.map((id, i) => {
+        const base = Math.floor(100 / offerIds.length);
+        return { offer_id: id, share: i === 0 ? 100 - base * (offerIds.length - 1) : base, state: 'active' };
+      });
+
+      await Promise.all([
+        client.createStream({
+          campaign_id: campaign.id, type: 'regular', name: 'Flow 1', position: 1, weight: 100,
+          schema: 'landings', action_type: 'http', state: 'active', collect_clicks: true,
+          filter_or: false, offer_selection: 'after_click', filters: [],
+          landings: [{ landing_id: Number(result.id), share: 100, state: 'active' }],
+          offers: offerShares,
+        }),
+        client.createStream({
+          campaign_id: campaign.id, type: 'default', name: 'White', position: 2, weight: 0,
+          schema: 'landings', action_type: 'http', state: 'active', collect_clicks: false,
+          filter_or: false, offer_selection: 'before_click', filters: [],
+          landings: [{ landing_id: whiteId, share: 100, state: 'active' }],
+          offers: [],
+        }),
+      ]);
+
+      return {
+        ok: true,
+        landing_id: result.id,
+        landing_name: result.name,
+        local_path: result.local_path,
+        campaign_id: campaign.id,
+        campaign_alias: campaign.alias,
+        campaign_name: campaign.name,
+      };
     } catch (e) {
       return reply.status(500).send({ error: e.message });
     }
