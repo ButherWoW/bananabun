@@ -121,6 +121,43 @@ test('own scrape survives restarts', { skip: !testUrl }, async t => {
     assert.match(legacy.scrape_error, /Ещё раз/);
   });
 
+  const { runPresetCreatives } = await import('../src/services/scrape-jobs.js');
+  await pool.query(`INSERT INTO creative_presets(id,workspace_id,created_by,name,template)
+                    VALUES ('cp1','w1','a','Preset','{"count":1,"format":"1x1","language":"fr"}')`);
+  const batches = async (id) => Number((await db.query('SELECT count(*) FROM creatives WHERE product_id = $1', [id])).rows[0].count);
+
+  await t.test('preset creatives are queued exactly once after the scrape', async () => {
+    await product('p7');
+    await db.query(`UPDATE products SET creative_preset_id = 'cp1' WHERE id = 'p7'`);
+    const jobId = await enqueueOwnScrape('w1', 'p7', 'B0TEST0001', 'fr');
+    await applyScrapeResult('w1', jobId, true, page);
+    const p = await row('p7'); remember(p);
+    assert.equal(await batches('p7'), 1);
+    assert.equal(p.preset_creatives_due_at, null, 'the mark is cleared once queued');
+    await Promise.all([recoverScrapes(), recoverScrapes()]);
+    assert.equal(await batches('p7'), 1, 'recovery does not generate again');
+  });
+
+  await t.test('crash right after «done»: recovery queues the preset once, even with two workers', async () => {
+    await product('p8');
+    await db.query(`UPDATE products SET creative_preset_id = 'cp1', scrape_status = 'done',
+                    preset_creatives_due_at = NOW() - INTERVAL '2 minutes' WHERE id = 'p8'`);
+    await Promise.all([recoverScrapes(), recoverScrapes(), runPresetCreatives('w1', 'p8')]);
+    assert.equal(await batches('p8'), 1);
+    assert.equal((await row('p8')).preset_creatives_due_at, null);
+  });
+
+  await t.test('crash after the batch insert: the mark is cleared without a second batch', async () => {
+    await product('p9');
+    await db.query(`UPDATE products SET creative_preset_id = 'cp1', scrape_status = 'done',
+                    preset_creatives_due_at = NOW() - INTERVAL '2 minutes' WHERE id = 'p9'`);
+    await pool.query(`INSERT INTO creatives(id,workspace_id,created_by,product_id,status,metadata)
+                      VALUES ('existing','w1','a','p9','pending','{"source":"local"}')`);
+    await recoverScrapes();
+    assert.equal(await batches('p9'), 1);
+    assert.equal((await row('p9')).preset_creatives_due_at, null);
+  });
+
   await t.test('no request left the test except the Amazon image CDN', () => {
     assert.deepEqual(outside, [], 'the non-Amazon image URL must be refused before any request');
   });

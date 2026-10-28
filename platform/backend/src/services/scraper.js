@@ -2,12 +2,13 @@ import { chromium } from 'playwright';
 import { enqueueAgentJob, waitAgentJobDone } from '../api/routes/agent.js';
 import { amazonUrl } from './engine.js';
 import { writeFile, mkdir } from 'fs/promises';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { nanoid } from 'nanoid';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const IMAGES_DIR = join(__dirname, '..', '..', 'uploads', 'images');
+// Same uploads root as the static server and the creative renderer (UPLOADS_DIR when set).
+const IMAGES_DIR = process.env.UPLOADS_DIR ? join(resolve(process.env.UPLOADS_DIR), 'images') : join(__dirname, '..', '..', 'uploads', 'images');
 
 // Only Amazon's image CDN over https: the URL comes from a scraped page, so nothing else is fetched.
 const IMAGE_HOST = /(^|\.)(media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com)$/i;

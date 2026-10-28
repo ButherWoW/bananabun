@@ -46,16 +46,39 @@ export async function applyScrapeResult(ws, jobId, ok, data, error) {
   const { rowCount } = await db.query(`
     UPDATE products SET title = $1, description = $2, source_price = $3, images = $4::jsonb, rating = $5, reviews_count = $6,
            photo_reviews_count = $7, has_photo_reviews = $8, bundle_config = COALESCE($9::jsonb, bundle_config),
-           scrape_status = 'done', scrape_error = NULL, updated_at = NOW()
+           scrape_status = 'done', scrape_error = NULL, updated_at = NOW(),
+           preset_creatives_due_at = CASE WHEN creative_preset_id IS NOT NULL THEN NOW() ELSE NULL END,
+           preset_creatives_lease_at = NULL
      WHERE id = $10 AND workspace_id = $11 AND scrape_job_id = $12 AND scrape_status = 'processing'`,
     [d.title, d.description, d.price, JSON.stringify(d.images), d.rating, d.reviews_count,
      // null = unknown: Amazon shows the photo-review count only to signed-in visitors.
      d.photo_reviews_count ?? null, !!d.has_photo_reviews,
      bundles.length ? JSON.stringify(withRealOldPrice(bundles, d.price)) : null, p.id, ws, jobId]);
-  if (rowCount) {
+  if (rowCount) await runPresetCreatives(ws, p.id);
+}
+
+// Queues the scrape preset's creatives once. The «due» mark is set with scrape_status='done';
+// a 5-minute lease keeps concurrent workers apart; a batch already inserted for this scrape
+// (crash after the insert, before the mark was cleared) is not generated again.
+export async function runPresetCreatives(ws, productId) {
+  const { rows: [p] } = await db.query(`
+    UPDATE products SET preset_creatives_lease_at = NOW()
+     WHERE id = $1 AND workspace_id = $2 AND preset_creatives_due_at IS NOT NULL
+       AND (preset_creatives_lease_at IS NULL OR preset_creatives_lease_at < NOW() - INTERVAL '5 minutes')
+    RETURNING preset_creatives_due_at::text AS due`, [productId, ws]);
+  if (!p) return;
+  const clear = () => db.query(`UPDATE products SET preset_creatives_due_at = NULL, preset_creatives_lease_at = NULL
+                                 WHERE id = $1 AND preset_creatives_due_at = $2::timestamptz`, [productId, p.due]);
+  const { rows: [already] } = await db.query(
+    `SELECT 1 FROM creatives WHERE product_id = $1 AND created_at >= $2::timestamptz LIMIT 1`, [productId, p.due]);
+  if (already) return clear();
+  try {
     const { generateFromScrapePreset } = await import('../api/routes/creatives.js');
-    await generateFromScrapePreset(p.id).catch(e => console.error('[scrape] creatives after scrape:', e.message));
+    await generateFromScrapePreset(productId);
+  } catch (e) {
+    console.error('[scrape] creatives after scrape:', e.message);
   }
+  await clear();
 }
 
 export async function recoverScrapes() {
@@ -68,6 +91,13 @@ export async function recoverScrapes() {
     await applyScrapeResult(r.workspace_id, r.job_id, r.status === 'done', r.result?.data, r.result?.error)
       .catch(e => console.error('[scrape] recover:', e.message));
   }
+  // 1b) Scraped products whose preset creatives were not queued (crash right after «done»).
+  const { rows: due } = await db.query(`
+    SELECT id, workspace_id FROM products
+     WHERE scrape_status = 'done' AND preset_creatives_due_at IS NOT NULL AND preset_creatives_due_at < NOW() - INTERVAL '1 minute'
+       AND (preset_creatives_lease_at IS NULL OR preset_creatives_lease_at < NOW() - INTERVAL '5 minutes')
+     LIMIT 50`);
+  for (const r of due) await runPresetCreatives(r.workspace_id, r.id).catch(e => console.error('[scrape] preset creatives:', e.message));
   // 2) Waiting too long, or no job at all (scrapes started before this change, old FA rows): fail with a reason.
   // The stuck product's job is cancelled too if it still waits in the queue, so the agent doesn't run it for nothing.
   await db.query(`

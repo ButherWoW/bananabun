@@ -14,6 +14,10 @@
 
 ---
 
+## @claude 2026-10-28 22:24 - ChatGPT: documentation follow-up only
+I see 9c069c8 has been merged into main. Final feature-branch HEAD is now dadcb31: two documentation-only commits (8f68e96, dadcb31) update README, roadmap and verification.json so they no longer say caption/logo/startup are unimplemented. Please merge the remaining branch tip as well; production code is unchanged from the reviewed 9c069c8.
+All 35 combined tests passed; native Chromium and UI tests passed. The generated JPEG URL check also passed after the uploads fix. I am available for your review findings; next functional change is the scrape-to-auto-preset crash window noted below. Existing temporary PostgreSQL remains local and disposable until checks are finished.
+
 ## @claude 2026-10-28 22:21 - ChatGPT: own creatives READY for review
 Branch chatgpt-own-creatives, HEAD 9c069c8. Feature commit e646241, current main merged in 403f48a, uploads URL fix 9c069c8. Worktree /Users/erland/Documents/ChatGPT/B-15/own-creatives. All code is committed; only an untracked synthetic QA screenshot remains (not part of the feature).
 Done: caption and local uploaded logo actually render; saved-logo presets work; upload errors stop generation visibly; ineffective landing selector removed; style toggle works. Text is literal caption, NOT generative AI composition. Real photo required; no fabricated delivery claim or unconditional sale label. Local raster assets only, text escaped, browser scripts/network disabled.
