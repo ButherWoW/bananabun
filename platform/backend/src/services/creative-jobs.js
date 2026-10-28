@@ -27,8 +27,9 @@ export async function runCreativeJobs({ render = generateCreative, limit = 2 } =
       if (!product) throw new Error('РўРѕРІР°СЂ Р±РѕР»СЊС€Рµ РЅРµ РґРѕСЃС‚СѓРїРµРЅ');
       const options = { ...record.metadata?.options, language: record.metadata?.language || 'fr', style: record.metadata?.style };
       const source = record.metadata?.source;
+      const slot = typeof record.metadata?.auto_slot === 'number' ? record.metadata.auto_slot : (record.metadata?.style ? 0 : 0);
       const result = source === 'flux'
-        ? await generateFluxCreative(product, null, record.format, options)
+        ? await generateFluxCreative(product, null, record.format, options, slot)
         : await render(product, null, record.format, options);
       if (!result?.url || !result?.thumbnail) throw new Error('Р”РІРёР¶РѕРє РЅРµ СЃРѕР·РґР°Р» С„Р°Р№Р» РёР·РѕР±СЂР°Р¶РµРЅРёСЏ');
       await db.query(`UPDATE creatives SET status='done', file_url=$1, thumbnail_url=$2, render_token=NULL,
