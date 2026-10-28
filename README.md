@@ -13,13 +13,13 @@
 После установки зависимостей в `platform/backend` и `platform/frontend`:
 
 ```sh
-node --test platform/backend/test/standalone.test.js
-npm run build --prefix platform/frontend
+npm test --prefix platform/backend
+npm test --prefix platform/frontend
 node platform/backend/test/standalone-browser.mjs
 node platform/frontend/test/standalone-smoke.mjs
 ```
 
-Браузерным проверкам нужен Chromium Playwright. Они не обращаются к рабочей базе и рекламным кабинетам. Границы проверки подробно описаны в передаче Claude.
+Браузерным проверкам нужен Chromium Playwright. Для полного набора задайте отдельную локальную тестовую базу по [инструкции](platform/README.md); без неё проверки PostgreSQL пропускаются. Рабочая база и рекламные кабинеты не используются. Результаты установки и обновления зависимостей: [docs/BOOTSTRAP_CHECKS.md](docs/BOOTSTRAP_CHECKS.md).
 
 ## Запуск и оставшаяся работа
 
