@@ -30,6 +30,7 @@ import { adminRoutes } from './api/routes/admin.js';
 import { landingRoutes } from './api/routes/landings.js';
 import { adSettingsRoutes } from './api/routes/adSettings.js';
 import { trackRoutes } from './api/routes/track.js';
+import { startScrapeRecovery } from './services/scrape-jobs.js';
 import { db } from './db/client.js';
 
 const app = Fastify({ logger: true });
@@ -85,6 +86,7 @@ app.get('/health', () => ({ ok: true, ts: new Date() }));
 try {
   await app.listen({ port: Number(process.env.PORT) || 4000, host: '0.0.0.0' });
   console.log('Backend running on port 4000');
+  startScrapeRecovery();
 } catch (err) {
   app.log.error(err);
   process.exit(1);

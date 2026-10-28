@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { saveAssets } from './accounts.js';
 import { applyPushResult } from '../../services/push.js';
+import { applyScrapeResult } from '../../services/scrape-jobs.js';
 import { applyFbEdits, saveFbCampaigns, closeFbEvents } from '../../services/fb-campaigns.js';
 import { db } from '../../db/client.js';
 import { adminOnly } from '../../middleware/access.js';
@@ -147,6 +148,10 @@ export async function agentRoutes(app) {
       await closeFbEvents(req.agentWs, req.params.id, ok, result.error);
     }
     if (type === 'push' && payload?.push_id) await applyPushResult(req.agentWs, payload.push_id, ok, result.error, result.data, req.params.id);
+    // Product scrape: applied after the answer (photo downloads take a while); recoverScrapes() covers a crash in between.
+    if (type === 'scrape_amazon' && payload?.product_id) {
+      applyScrapeResult(req.agentWs, req.params.id, ok, result.data, result.error).catch(e => req.log.error({ err: e.message }, 'scrape result'));
+    }
     return { ok: true };
   });
 }

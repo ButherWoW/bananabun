@@ -41,14 +41,10 @@ const AMAZON_DOMAINS = {
 
 // Amazon shows the server a robot check, so the page is opened by the Mac agent in a normal
 // AdsPower profile. A robot check there is never bypassed: the job fails and asks for a human.
-export async function scrapeAmazonViaAgent(ws, asin, marketplace = 'fr') {
-  // Same marketplace map as link parsing; an unknown marketplace fails instead of falling back to .fr.
-  if (!['fr', 'es', 'de', 'it', 'uk', 'com', 'nl', 'pl', 'be', 'se'].includes(marketplace)) {
-    throw new Error(`Неизвестный маркетплейс Amazon: ${marketplace}`);
-  }
-  const url = amazonUrl(asin, marketplace);
-  const jobId = await enqueueAgentJob(ws, 'scrape_amazon', { url });
-  const data = await waitAgentJobDone(ws, jobId);
+export const AMAZON_MARKETS = ['fr', 'es', 'de', 'it', 'uk', 'com', 'nl', 'pl', 'be', 'se'];
+
+// The agent's page data → our product fields, with the photos saved on our server.
+export async function productFromAgentData(data, asin) {
   if (!data?.title) throw new Error('На странице Amazon не найден товар — проверьте ссылку');
   const localImages = await Promise.all((data.images || []).slice(0, 8).map((url, i) => downloadImage(url, asin, i)));
   return {
@@ -56,6 +52,16 @@ export async function scrapeAmazonViaAgent(ws, asin, marketplace = 'fr') {
     description: data.description, photo_reviews_count: data.photo_reviews_count ?? null, has_photo_reviews: !!data.has_photo_reviews,
     images: localImages.filter(Boolean),
   };
+}
+
+export async function scrapeAmazonViaAgent(ws, asin, marketplace = 'fr') {
+  // Same marketplace map as link parsing; an unknown marketplace fails instead of falling back to .fr.
+  if (!AMAZON_MARKETS.includes(marketplace)) {
+    throw new Error(`Неизвестный маркетплейс Amazon: ${marketplace}`);
+  }
+  const url = amazonUrl(asin, marketplace);
+  const jobId = await enqueueAgentJob(ws, 'scrape_amazon', { url });
+  return productFromAgentData(await waitAgentJobDone(ws, jobId), asin);
 }
 
 export async function scrapeAmazonProduct(asin, marketplace = 'fr') {
