@@ -778,12 +778,29 @@ function ReviewsTab({ product, qc }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-500">{reviews.length} отзывов</span>
-        <button
-          onClick={() => setAdding(v => !v)}
-          className="text-xs text-indigo-400 hover:text-indigo-300 px-2 py-1 border border-indigo-600/30 rounded-lg"
-        >
-          + Добавить
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              try {
+                const r = await fetch(`${API_BASE}/api/products/${product.id}/reviews/scrape`, {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+                });
+                const d = await r.json();
+                if (r.ok && d.length) setReviews(prev => [...prev, ...d]);
+              } catch {}
+            }}
+            className="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 border border-emerald-600/30 rounded-lg"
+          >
+            ↓ Amazon
+          </button>
+          <button
+            onClick={() => setAdding(v => !v)}
+            className="text-xs text-indigo-400 hover:text-indigo-300 px-2 py-1 border border-indigo-600/30 rounded-lg"
+          >
+            + Добавить
+          </button>
+        </div>
       </div>
 
       {adding && (
@@ -849,6 +866,15 @@ function ReviewsTab({ product, qc }) {
             </button>
           </div>
           <p className="text-sm text-gray-300 mt-2 leading-relaxed">{rv.text}</p>
+          {Array.isArray(rv.images) && rv.images.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {rv.images.slice(0, 4).map((img, i) => (
+                <a key={i} href={img} target="_blank" rel="noopener noreferrer">
+                  <img src={img} alt="" className="w-16 h-16 object-cover rounded-lg border border-[color:var(--c2d3148)] hover:opacity-80 transition-opacity" />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </div>
