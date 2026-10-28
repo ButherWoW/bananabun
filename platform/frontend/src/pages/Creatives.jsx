@@ -40,6 +40,7 @@ export default function CreativesPage() {
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showFmtMenu, setShowFmtMenu] = useState(false);
   const [showCountMenu, setShowCountMenu] = useState(false);
+  const [useFlux, setUseFlux] = useState(false);
 
   // List state
   const [search, setSearch] = useState('');
@@ -117,6 +118,12 @@ export default function CreativesPage() {
     staleTime: 300000,
   });
 
+  const { data: sourceInfo } = useQuery({
+    queryKey: ['creatives', 'source'],
+    queryFn: creativesApi.source,
+    staleTime: 300000,
+  });
+
   // Filter + sort
   const filtered = allCreatives
     .filter(c => !search || (c.format || '').includes(search) || (c.metadata?.language || '').includes(search))
@@ -175,7 +182,7 @@ export default function CreativesPage() {
       const reference_keys = [];
       for (const reference of references) reference_keys.push(await uploadImage(reference.file,'upload-reference'));
       generateMutation.mutate({
-        source:'local', product_id:productIdFilter, language, format:format.replace(':','x'), count,
+        source: useFlux && sourceInfo?.generative_ai ? 'flux' : 'local', product_id:productIdFilter, language, format:format.replace(':','x'), count,
         headline:idea.trim() || undefined, diversify, logo_key,
         reference_keys:reference_keys.length ? reference_keys : undefined,
       });
@@ -258,7 +265,11 @@ export default function CreativesPage() {
           </div>
         )}
 
-        <p className="px-4 pt-3 text-xs text-gray-400">Собственные шаблоны: фото товара, надпись и ваш логотип. До пяти стилей; при большем количестве стили повторяются. Референсы используются как фото.</p>
+        <p className="px-4 pt-3 text-xs text-gray-400">
+          {useFlux && sourceInfo?.generative_ai
+            ? '✦ FLUX AI: нейросеть генерирует уникальный рекламный баннер по описанию товара. ~$0.003 за изображение.'
+            : 'Собственные шаблоны: фото товара, надпись и ваш логотип. До пяти стилей; при большем количестве стили повторяются. Референсы используются как фото.'}
+        </p>
         {/* Idea textarea */}
         <div className="px-4 pt-3">
           <textarea
@@ -417,6 +428,21 @@ export default function CreativesPage() {
               </div>
             )}
           </div>
+
+          {/* FLUX AI toggle — only when FAL_API_KEY is configured on the server */}
+          {sourceInfo?.generative_ai && (
+            <button
+              onClick={() => setUseFlux(v => !v)}
+              className={clsx(
+                'px-3 py-1.5 rounded-full text-xs border transition-colors',
+                useFlux
+                  ? 'border-purple-500 text-purple-300 bg-purple-600/10'
+                  : 'border-[color:var(--c2d3148)] text-gray-500 hover:text-gray-300 hover:border-[color:var(--c3d4168)]'
+              )}
+            >
+              ✦ FLUX AI
+            </button>
+          )}
 
           {/* Diversify */}
           <button
