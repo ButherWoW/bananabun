@@ -33,7 +33,7 @@ async function buyerOwnsCampaign(client, scope, id) {
 
 // Real spend from the FB cabinets read by the agent, instead of Keitaro's estimated cost.
 // Keitaro campaign → FB campaigns through sub_id_2; only periods we store FB spend for.
-const FB_SPEND_COL = { today: 'spend_today', yesterday: 'spend_yesterday', last_7_days: 'spend_7d' };
+const FB_SPEND_COL = { today: 'spend_today', yesterday: 'spend_yesterday', last_3_days: 'spend_3d', last_7_days: 'spend_7d', last_30_days: 'spend_30d' };
 async function withFbSpend(client, ws, range, rows) {
   const col = FB_SPEND_COL[range];
   for (const r of rows) r.spend_source = 'keitaro';
@@ -63,6 +63,7 @@ async function withFbSpend(client, ws, range, rows) {
     // Replace only a complete, single-currency, unshared picture; otherwise keep Keitaro's cost and say why.
     const currencies = new Set(known.map(f => String(f.currency || '').toUpperCase()));
     const why = known.length < ids.length ? 'не все FB-кампании прочитаны'
+      : known.some(f => f.spend === null || f.spend === undefined) ? 'расход FB за этот период ещё не прочитан агентом'
       : ids.some(id => owners.get(id) > 1) ? 'FB-кампания в нескольких кампаниях Keitaro'
       : currencies.size !== 1 || !currencies.has(trackerCurrency) ? 'валюта кабинета не совпадает с Keitaro' : null;
     if (why) { r.spend_note = why; continue; }

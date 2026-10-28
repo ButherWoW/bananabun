@@ -29,7 +29,7 @@ export async function campaignRoutes(app) {
 
   // Buyers see campaigns of their own AdsPower group (named after their email).
   const fbScope = (user) => user.role === 'buyer' ? String(user.email || '').toLowerCase() : null;
-  const SPEND_COL = { today: 'spend_today', yesterday: 'spend_yesterday', last_7_days: 'spend_7d' };
+  const SPEND_COL = { today: 'spend_today', yesterday: 'spend_yesterday', last_3_days: 'spend_3d', last_7_days: 'spend_7d', last_30_days: 'spend_30d' };
 
   app.get('/fb', auth, async (req) => {
     const period = SPEND_COL[req.query.period] ? req.query.period : 'today';
@@ -55,7 +55,10 @@ export async function campaignRoutes(app) {
 
     const list = rows.map(c => {
       const k = kt.get(c.id) || {};
-      const spend = Number(c[SPEND_COL[period]]) || 0;
+      // NULL = this period not read yet (agent before 3/30-day spend): unknown, not zero.
+      const raw = c[SPEND_COL[period]];
+      const known = raw !== null && raw !== undefined;
+      const spend = known ? Number(raw) || 0 : null;
       const revenue = Number(k.revenue) || 0;
       const lp = Number(k.lp_clicks) || 0;
       return {
@@ -67,12 +70,13 @@ export async function campaignRoutes(app) {
           daily_budget: a.daily_budget != null ? Number(a.daily_budget) / 100 : null,
           bid_amount: a.bid_amount != null ? Number(a.bid_amount) / 100 : null })),
         spend, lp_clicks: lp, leads: Number(k.leads) || 0, sales: Number(k.sales) || 0, revenue,
-        lp_cost: lp ? spend / lp : null,
-        profit: revenue - spend, roi: spend ? (revenue - spend) / spend * 100 : null,
+        lp_cost: known && lp ? spend / lp : null,
+        profit: known ? revenue - spend : null, roi: known && spend ? (revenue - spend) / spend * 100 : null,
         created_time: c.created_time, synced_at: c.synced_at,
         moderation: c.moderation, account_status: c.account_status,
         spend_cap: c.spend_cap != null ? Number(c.spend_cap) / 100 : null,
-        attention: attentionReasons(c, spend, revenue),
+        archived: !!c.archived_at, archived_at: c.archived_at,
+        attention: c.archived_at ? [] : attentionReasons(c, spend || 0, revenue),
       };
     });
     return { period, campaigns: list, keitaro_error: keitaroError };
@@ -90,7 +94,10 @@ export async function campaignRoutes(app) {
     const ws = await db.findOne('workspaces', { id: req.user.ws });
     const periods = [];
     let keitaroError = null;
-    for (const [period, col, label] of [['today', 'spend_today', 'Сегодня'], ['yesterday', 'spend_yesterday', 'Вчера'], ['last_7_days', 'spend_7d', '7 дней']]) {
+    const PERIOD_ROWS = [['today', 'spend_today', 'Сегодня'], ['yesterday', 'spend_yesterday', 'Вчера'], ['last_3_days', 'spend_3d', '3 дня'],
+      ['last_7_days', 'spend_7d', '7 дней'], ['last_30_days', 'spend_30d', '30 дней']];
+    for (const [period, col, label] of PERIOD_ROWS) {
+      if (c[col] === null || c[col] === undefined) continue; // not read yet by the agent
       let k = {};
       if (ws?.keitaro_url && ws?.keitaro_api_key) {
         try {
@@ -133,7 +140,8 @@ export async function campaignRoutes(app) {
       profile: c.serial_number, buyer: c.group_name, created_time: c.created_time, synced_at: c.synced_at,
       daily_budget: c.daily_budget != null ? Number(c.daily_budget) / 100 : null,
       spend_cap: c.spend_cap != null ? Number(c.spend_cap) / 100 : null,
-      attention: attentionReasons(c, Number(c.spend_today) || 0, periods[0].revenue),
+      attention: c.archived_at ? [] : attentionReasons(c, Number(c.spend_today) || 0, periods[0]?.revenue || 0),
+      archived: !!c.archived_at,
       periods, composition, keitaro_error: keitaroError,
       push: push ? {
         id: push.id, status: push.status, created_at: push.created_at, author: push.author,
@@ -159,10 +167,54 @@ export async function campaignRoutes(app) {
     return { ok: true, job_ids: jobs };
   });
 
+  // «Обновить» one campaign: re-read only its ad account (reading, nothing is written to FB).
+  app.post('/fb/:id/refresh', auth, async (req) => {
+    const c = await fbCampaign(req, req.params.id);
+    const { rows: [busy] } = await db.query(
+      `SELECT id FROM agent_jobs WHERE workspace_id = $1 AND type = 'fb_campaigns' AND status IN ('pending', 'taken')
+         AND payload->>'user_id' = $2 AND COALESCE(payload->>'act', '') IN ('', $3) LIMIT 1`,
+      [req.user.ws, c.user_id, String(c.act_id || '')]);
+    if (busy) return { ok: true, job_id: busy.id, already: true };
+    const jobId = await enqueueAgentJob(req.user.ws, 'fb_campaigns', { user_id: c.user_id, act: c.act_id }, req.user.id);
+    return { ok: true, job_id: jobId };
+  });
+
+  // «В архив»: a platform mark, nothing changes in Facebook. Live campaigns only with off_first
+  // («Выключить и в архив»): the switch-off goes to the agent like any edit.
+  app.post('/fb/archive', auth, async (req) => {
+    const { ids, off_first, restore } = req.body || {};
+    if (!Array.isArray(ids) || !ids.length || ids.length > 200) bad('Нужно от 1 до 200 кампаний');
+    const camps = [];
+    for (const id of [...new Set(ids.map(String))]) camps.push(await fbCampaign(req, id));
+    if (restore) {
+      await db.query(`UPDATE fb_campaigns SET archived_at = NULL, archived_by = NULL WHERE workspace_id = $1 AND id = ANY($2)`,
+        [req.user.ws, camps.map(c => c.id)]);
+      for (const c of camps) await logFbEvent(req.user.ws, c.id, req.user.id, 'возвращена из архива платформы');
+      return { ok: true, restored: camps.length };
+    }
+    const live = camps.filter(c => c.status === 'ACTIVE');
+    if (live.length && !off_first) bad(`Включены: ${live.map(c => c.name).join(', ')} — выберите «Выключить и в архив»`);
+    const byProfile = new Map();
+    for (const c of live) {
+      if (!byProfile.has(c.user_id)) byProfile.set(c.user_id, []);
+      byProfile.get(c.user_id).push(c);
+    }
+    const jobs = [];
+    for (const [userId, list] of byProfile) {
+      const jobId = await enqueueAgentJob(req.user.ws, 'fb_edit', { user_id: userId, ops: list.map(c => ({ id: c.id, status: 'PAUSED' })) }, req.user.id);
+      for (const c of list) await logFbEvent(req.user.ws, c.id, req.user.id, 'выключить перед архивом', jobId);
+      jobs.push(jobId);
+    }
+    await db.query(`UPDATE fb_campaigns SET archived_at = NOW(), archived_by = $3 WHERE workspace_id = $1 AND id = ANY($2)`,
+      [req.user.ws, camps.map(c => c.id), req.user.id]);
+    for (const c of camps) await logFbEvent(req.user.ws, c.id, req.user.id, 'в архив платформы (в Facebook кампания не архивируется)');
+    return { ok: true, archived: camps.length, job_ids: jobs };
+  });
+
   // A campaign of our FB list in the caller's scope, with the profile that owns it.
   async function fbCampaign(req, id) {
     const { rows: [c] } = await db.query(`
-      SELECT c.id, c.name, c.adsets, c.currency, ap.raw->>'user_id' AS user_id, ap.group_name
+      SELECT c.id, c.name, c.adsets, c.currency, c.status, c.act_id, ap.raw->>'user_id' AS user_id, ap.group_name
         FROM fb_campaigns c JOIN fb_accounts fa ON fa.id = c.fb_account_id
         JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
        WHERE c.id = $1 AND c.workspace_id = $2`, [String(id), req.user.ws]);
