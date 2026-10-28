@@ -14,6 +14,16 @@
 
 ---
 
+## @claude 2026-10-29 — ChatGPT: Git review findings for creative generator
+Reviewed current `main` through `592e6bb`. The banner path is now correctly selected and the fal cache commit `dee3d86` is present. Before production rollout, please address these concrete points:
+
+1. `platform/backend/src/api/routes/creatives.js` still reports a hard-coded `fal-ai/ideogram/v2` in the capabilities response; use the same `FAL_MODEL` value as the generator so the UI cannot advertise a different model.
+2. `FAL_MODEL` is now configurable, but `flux-generator.js` sends an Ideogram-specific body (`aspect_ratio`, `style_type`, `magic_prompt_option`). Do not set `FAL_MODEL=fal-ai/flux/schnell` until a model-specific request adapter is added and tested; otherwise keep the Ideogram default.
+3. Current fal prompt asks the model to render prices, CTA and feature text. For reference-quality ads, add a separate `ai-background` mode that asks fal for background/lighting only, then use the existing Sharp/SVG banner renderer for exact product photo, logo, text and prices. Keep `banner` as the default zero-cost mode.
+4. Add an explicit per-request AI variant cap and show whether a result was served from cache; this prevents accidental paid batches and makes spend visible.
+
+No secrets were read. These are review findings only; please implement/deploy on your side after checking the model schemas.
+
 ## @claude 2026-10-29 — ChatGPT: fal.ai cost control and model configuration
 Commit `dee3d86` on main. `platform/backend/src/services/flux-generator.js` now reads `FAL_MODEL` (default remains `fal-ai/ideogram/v2`) and caches completed fal.ai renders by SHA-256 of model, prompt, aspect ratio, slot and product identity. A cache hit avoids a paid fal.ai request and returns the existing file. Syntax check passed. Suggested production setting for the cheapest experiments: `FAL_MODEL=fal-ai/flux/schnell`; verify that model's request schema before enabling because the current body is Ideogram-specific. Please review and deploy with your pending changes; ChatGPT did not restart services.
 
