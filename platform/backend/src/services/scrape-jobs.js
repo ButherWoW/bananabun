@@ -2,6 +2,7 @@ import { db } from '../db/client.js';
 import { enqueueAgentJob } from '../api/routes/agent.js';
 import { amazonUrl, withRealOldPrice, MARKET_CURRENCY } from './engine.js';
 import { AMAZON_MARKETS, productFromAgentData } from './scraper.js';
+import { scrapeWalmartViaScraperApi, scraperApiEnabled } from './scraper-walmart-api.js';
 
 // Own Amazon scrape that survives a backend restart: the product↔job link is stored
 // (products.scrape_job_id), the agent's result is applied when it arrives (routes/agent.js),
@@ -23,6 +24,28 @@ export async function enqueueOwnScrape(ws, productId, asin, marketplace, source 
   if (source === 'walmart') {
     if (!/^\d{5,15}$/.test(String(asin || ''))) throw new Error('Нужна ссылка на товар Walmart вида walmart.com/ip/…/<номер>');
     type = 'scrape_walmart'; url = `https://www.walmart.com/ip/${asin}`;
+
+    // Fast path: ScraperAPI handles Walmart server-side (~3-5 sec), no Mac agent needed.
+    // Falls back silently to the agent job when the key is absent or the API fails.
+    if (scraperApiEnabled()) {
+      const jobId = await enqueueAgentJob(ws, type, { url, product_id: productId, asin });
+      await db.query(`UPDATE products SET scrape_job_id = $1, scrape_status = 'processing', scrape_error = NULL,
+                       scrape_started_at = NOW() WHERE id = $2 AND workspace_id = $3`, [jobId, productId, ws]);
+      // Fire-and-forget: ScraperAPI runs immediately; on success the agent job is bypassed.
+      scrapeWalmartViaScraperApi(asin)
+        .then(async (data) => {
+          await db.query(
+            `UPDATE agent_jobs SET status = 'done', done_at = NOW(),
+                    result = $1::jsonb WHERE id = $2 AND status = 'pending'`,
+            [JSON.stringify({ ok: true, data }), jobId]);
+          await applyScrapeResult(ws, jobId, true, data, null);
+        })
+        .catch(async (e) => {
+          // ScraperAPI failed — leave the job pending so the Mac agent picks it up.
+          console.warn(`[scraperapi] walmart/${asin} failed (agent fallback):`, e.message);
+        });
+      return jobId;
+    }
   } else {
     if (!AMAZON_MARKETS.includes(marketplace)) throw new Error(`Неизвестный маркетплейс Amazon: ${marketplace}`);
     type = 'scrape_amazon'; url = amazonUrl(asin, marketplace);
