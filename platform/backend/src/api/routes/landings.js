@@ -310,7 +310,7 @@ function handleSubmit(e) {
     }
   });
   app.post('/generate', auth, async (req, reply) => {
-    const { product_id, group_id, name } = req.body || {};
+    const { product_id, group_id, name, type = 'cdiscount' } = req.body || {};
     if (!product_id) return reply.status(400).send({ error: 'Нужен product_id' });
     await assertProductAccess(req, product_id);
 
@@ -323,10 +323,17 @@ function handleSubmit(e) {
     }
 
     try {
-      const { buildCdiscountZip } = await import('../../services/cdiscount-landing.js');
       const { keitaroClient } = await import('../../services/keitaro.js');
 
-      const zipBuffer = await buildCdiscountZip({ product });
+      let zipBuffer;
+      if (type === 'angry') {
+        const { buildAngryZip } = await import('../../services/angry-landing.js');
+        zipBuffer = await buildAngryZip({ product });
+      } else {
+        const { buildCdiscountZip } = await import('../../services/cdiscount-landing.js');
+        zipBuffer = await buildCdiscountZip({ product });
+      }
+
       const client = keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
       const landingName = name || `[BB] ${(product.title || '').slice(0, 60)} [FR]`;
       const gId = group_id || ws.keitaro_group_id || 103;
