@@ -1,0 +1,22 @@
+{
+  "act": "act_000000000000000",
+  "name": "FR_Product_buyer_test",
+  "page_id": "000000000000000",
+  "page_name": "Page name exactly as on Facebook",
+  "pixel_id": "000000000000000",
+  "custom_event_type": "LEAD",
+  "adsets": 3,
+  "daily_budget": null,
+  "bid_amount": null,
+  "targeting": {
+    "geo_locations": { "countries": ["FR"] },
+    "age_min": 25,
+    "age_max": 65
+  },
+  "link": "https://landing.example/?sub_id_2={{campaign.id}}",
+  "url_tags": "",
+  "cta": "SHOP_NOW",
+  "creatives": [
+    { "image": "/absolute/path/creo1.jpg", "primary_text": "", "headline": "", "description": "" }
+  ]
+}

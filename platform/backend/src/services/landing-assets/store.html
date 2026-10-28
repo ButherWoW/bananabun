@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<style>
+:root{--accent:#0a8f86;--accent-ink:#fff;--ink:#16211f;--muted:#5d6b68;--line:#e3e9e7;--bg:#f6f8f7;--card:#fff;--old:#8a9593}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5}
+img{max-width:100%;display:block}
+.top{background:var(--card);border-bottom:1px solid var(--line)}
+.top__in{max-width:1080px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.02em}
+.top__dot{width:22px;height:22px;border-radius:6px;background:var(--accent)}
+.wrap{max-width:1080px;margin:0 auto;padding:16px;display:grid;gap:24px;grid-template-columns:1fr}
+@media(min-width:880px){.wrap{grid-template-columns:1.1fr 1fr;padding:28px 16px}}
+.bb-gallery{display:grid;gap:8px;grid-template-columns:repeat(4,1fr)}
+.bb-gallery img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--card);border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.bb-gallery img:first-child{grid-column:1/-1;aspect-ratio:1/1;cursor:default}
+.info{display:flex;flex-direction:column;gap:14px;min-width:0}
+h1{font-size:clamp(20px,3.2vw,28px);line-height:1.25;margin:0}
+.bb-rating{color:#b07a00;font-weight:600;font-size:14px}
+.prices{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.price{font-size:30px;font-weight:800;color:var(--accent)}
+.old{color:var(--old);text-decoration:line-through}
+.save{background:#e6f5f3;color:var(--accent);border-radius:6px;padding:2px 8px;font-size:13px;font-weight:700}
+.choose{font-weight:700;font-size:15px;margin:4px 0 -4px}
+.bb-bundles{display:grid;gap:8px}
+.product-choice{display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);border:2px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+.product-choice.is-selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,143,134,.12)}
+.product-choice__radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex-shrink:0}
+.product-choice.is-selected .product-choice__radio{border:6px solid var(--accent)}
+.product-choice__name{flex:1;font-weight:600}
+.product-choice__price{font-weight:800;white-space:nowrap}
+.product-choice__price s{font-weight:400;color:var(--old);margin-left:6px;font-size:13px}
+.buy{appearance:none;border:0;border-radius:12px;background:var(--accent);color:var(--accent-ink);font:inherit;font-size:17px;font-weight:800;padding:16px;cursor:pointer;width:100%}
+.buy:hover{filter:brightness(1.07)}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+section h2{font-size:18px;margin:0 0 10px}
+.desc{color:#2b3735;overflow-wrap:anywhere}
+.bb-specs table{width:100%;border-collapse:collapse;font-size:14px}
+.bb-specs th,.bb-specs td{padding:7px 6px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
+.bb-specs th{color:var(--muted);font-weight:500;width:42%}
+.bb-review{border-top:1px solid var(--line);padding:12px 0}
+.bb-review:first-of-type{border-top:0}
+.bb-review p{margin:6px 0 0;color:#2b3735}
+.bb-stars{color:#b07a00;margin-left:6px}
+.full{grid-column:1/-1;display:grid;gap:16px}
+.sticky{position:sticky;bottom:0;padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,var(--bg) 30%)}
+@media(min-width:880px){.sticky{position:static;background:none;padding:0}}
+footer{max-width:1080px;margin:0 auto;padding:24px 16px 40px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="top"><div class="top__in"><span class="top__dot"></span><span>{{store}}</span></div></div>
+<main class="wrap">
+  <div>{{gallery_html}}</div>
+  <div class="info">
+    {{rating_html}}
+    <h1 data-block="title">{{title}}</h1>
+    <div class="prices" data-block="price">
+      <span class="price">{{price_fmt}}</span>
+      <span class="old">{{old_price_fmt}}</span>
+      {{save_html}}
+    </div>
+    {{bundles_html}}
+    <div class="sticky"><button type="button" class="buy" data-buy data-block="buy" onclick="location.href = window.buildKeitaroOfferUrl(false)">{{t.buy}}</button></div>
+  </div>
+  <div class="full">
+    {{description_html}}
+    {{specs_html}}
+    {{reviews_html}}
+  </div>
+</main>
+<footer>© {{year}} {{store}}</footer>
+</body>
+</html>

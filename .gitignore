@@ -1,0 +1,18 @@
+node_modules/
+dist/
+uploads/
+.DS_Store
+._*
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+mac-agent/.adspower_key
+mac-agent/.bananabun_agent_key
+mac-agent/.scrape_profile
+mac-agent/fb/
+mac-agent/logs/
+mac-agent/push/*/

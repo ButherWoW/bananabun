@@ -1,0 +1,354 @@
+import { db } from '../../db/client.js';
+import { runPush } from '../../services/push.js';
+import { keitaroClient } from '../../services/keitaro.js';
+
+const ownOnly = (req) => (req.user.role === 'buyer' ? req.user.id : null);
+
+// Buyers push only through cabinets of their own AdsPower group (named after their email).
+async function buyerOwnsCabinet(req, externalId) {
+  if (req.user.role !== 'buyer') return true;
+  const ext = String(externalId || '').replace(/^act_/, '');
+  const { rows } = await db.query(`
+    SELECT 1 FROM fb_cabinets c JOIN fb_accounts fa ON fa.id = c.fb_account_id
+      JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
+     WHERE c.workspace_id = $1 AND c.external_id IN ($2, $3) AND LOWER(ap.group_name) = $4 LIMIT 1`,
+    [req.user.ws, ext, `act_${ext}`, String(req.user.email || '').toLowerCase()]);
+  return rows.length > 0;
+}
+
+export async function pushRoutes(app) {
+  const auth = { onRequest: [app.authenticate] };
+
+  // Start a new push
+  app.post('/', auth, async (req) => {
+    const {
+      product_id, landing_id, landing_url, campaign_name,
+      domain_id, whitepage,
+      cabinet_id, cabinet_external_id,
+      page_external_id, pixel_id,
+      creative_ids, preset_id,
+      objective, daily_budget, bid_strategy, bid_amount,
+      optimization_goal, billing_event, pixel_event,
+      countries, age_min, age_max, auto_placement,
+      adsets_count, call_to_action,
+      genders, devices, platforms, bid_amounts, creo_mode, creo_per_adset,
+      ad_title, ad_body,
+      kt_landing_id, white_landing_id, offer_ids, kt_group_id,
+    } = req.body;
+
+    if (!product_id || !creative_ids?.length || !cabinet_external_id || !pixel_id)
+      throw Object.assign(new Error('Missing required fields'), { statusCode: 400 });
+    if (!(await buyerOwnsCabinet(req, cabinet_external_id)))
+      throw Object.assign(new Error('Это не ваш кабинет'), { statusCode: 403 });
+    // Bid and daily budget are set per geo with the lead — never defaulted.
+    if (!(Number(daily_budget) > 0) || !(Number(bid_amount) > 0))
+      throw Object.assign(new Error('Укажите дневной бюджет и ставку'), { statusCode: 400 });
+
+    const adsets = Math.min(Math.max(Number(adsets_count) || 3, 1), 20);
+    // A bid per adset (lead's choice) — exactly one per adset, or none and bid_amount goes to all.
+    const bids = Array.isArray(bid_amounts) && bid_amounts.length ? bid_amounts.map(Number) : null;
+    if (bids && (bids.length !== adsets || bids.some(b => !(b > 0))))
+      throw Object.assign(new Error(`Ставок по адсетам должно быть ${adsets}, каждая больше нуля`), { statusCode: 400 });
+    const placementList = auto_placement === false
+      ? (Array.isArray(platforms) ? platforms : []).filter(p => ['facebook', 'instagram', 'audience_network', 'messenger'].includes(p))
+      : [];
+    if (auto_placement === false && !placementList.length)
+      throw Object.assign(new Error('Авто-плейсменты выключены — выберите площадки'), { statusCode: 400 });
+    const perAdset = Math.min(Math.max(Number(creo_per_adset) || 1, 1), 50);
+    if (creo_mode === 'one-per' && perAdset * adsets > creative_ids.length)
+      throw Object.assign(new Error(`Раскладка «по ${perAdset} на адсет» × ${adsets} адсетов требует ${perAdset * adsets} креативов, выбрано ${creative_ids.length}`), { statusCode: 400 });
+
+    const params = {
+      product_id, landing_id, landing_url, campaign_name,
+      domain_id, whitepage,
+      cabinet_id, cabinet_external_id,
+      page_external_id, pixel_id,
+      creative_ids, preset_id,
+      objective: 'OUTCOME_LEADS',
+      daily_budget: Number(daily_budget),
+      bid_strategy: 'LOWEST_COST_WITH_BID_CAP',
+      bid_amount: Number(bid_amount),
+      optimization_goal: 'OFFSITE_CONVERSIONS',
+      billing_event: 'IMPRESSIONS',
+      pixel_event: pixel_event || 'LEAD',
+      countries: countries || [],
+      age_min: age_min || 18,
+      age_max: age_max || 65,
+      auto_placement: auto_placement !== false,
+      platforms: placementList,
+      adsets_count: adsets,
+      bid_amounts: bids,
+      genders: ['male', 'female'].includes(genders) ? genders : 'all',
+      devices: ['mobile', 'desktop'].includes(devices) ? devices : 'all',
+      creo_mode: creo_mode === 'one-per' ? 'one-per' : 'all-all',
+      creo_per_adset: perAdset,
+      call_to_action: call_to_action || 'SHOP_NOW',
+      ad_title, ad_body,
+      kt_landing_id, white_landing_id, kt_group_id,
+      offer_ids: (Array.isArray(offer_ids) ? offer_ids : [offer_ids]).filter(Boolean).map(Number),
+      // Everything is created PAUSED; activation is a separate, confirmed step.
+      run_now: false,
+    };
+
+    const push = await db.insert('pushes', {
+      workspace_id: req.user.ws,
+      product_id,
+      params,
+      status: 'pending',
+      created_by: req.user.id,
+      log: JSON.stringify([]),
+    });
+    const pushId = push.id;
+
+    // Run async (don't await)
+    runPush(pushId).catch(console.error);
+
+    return { id: pushId, status: 'pending' };
+  });
+
+  // List pushes
+  app.get('/', auth, async (req) => {
+    const { status, dismissed, limit = 50, offset = 0 } = req.query;
+    let where = 'p.workspace_id = $1';
+    const args = [req.user.ws];
+    if (req.user.role === 'buyer') { where += ` AND p.created_by = $${args.length + 1}`; args.push(req.user.id); }
+    if (status) { where += ` AND p.status = $${args.length + 1}`; args.push(status); }
+    // By default hide dismissed; pass dismissed=true to show only dismissed
+    if (dismissed === 'true') {
+      where += ` AND p.dismissed = true`;
+    } else {
+      where += ` AND (p.dismissed IS NULL OR p.dismissed = false)`;
+    }
+    const result = await db.query(
+      `SELECT p.*, pr.title as product_name
+       FROM pushes p
+       LEFT JOIN products pr ON pr.id = p.product_id
+       WHERE ${where}
+       ORDER BY p.created_at DESC
+       LIMIT $${args.length + 1} OFFSET $${args.length + 2}`,
+      [...args, limit, offset]
+    );
+    return result.rows;
+  });
+
+  // Dismiss push (move to dismissed tab)
+  app.post('/:id/dismiss', auth, async (req, reply) => {
+    const { rows } = await db.query(
+      `UPDATE pushes SET dismissed = true WHERE id = $1 AND workspace_id = $2 AND ($3::text IS NULL OR created_by = $3) RETURNING id`,
+      [req.params.id, req.user.ws, ownOnly(req)]
+    );
+    if (!rows.length) return reply.status(404).send({ error: 'Not found' });
+    return { ok: true };
+  });
+
+  // Restore dismissed push
+  app.post('/:id/restore', auth, async (req, reply) => {
+    const { rows } = await db.query(
+      `UPDATE pushes SET dismissed = false WHERE id = $1 AND workspace_id = $2 AND ($3::text IS NULL OR created_by = $3) RETURNING id`,
+      [req.params.id, req.user.ws, ownOnly(req)]
+    );
+    if (!rows.length) return reply.status(404).send({ error: 'Not found' });
+    return { ok: true };
+  });
+
+  // Get push status + log
+  app.get('/:id', auth, async (req) => {
+    const result = await db.query(
+      `SELECT p.*, pr.title as product_name FROM pushes p
+       LEFT JOIN products pr ON pr.id = p.product_id
+       WHERE p.id = $1 AND p.workspace_id = $2 AND ($3::text IS NULL OR p.created_by = $3)`,
+      [req.params.id, req.user.ws, ownOnly(req)]
+    );
+    if (!result.rows[0]) throw Object.assign(new Error('Not found'), { statusCode: 404 });
+    return result.rows[0];
+  });
+
+  // Retry failed push
+  // Only a failed push of this workspace (a buyer's own) is retried, and only once at a time:
+  // retrying a done or running push would create duplicate paid campaigns.
+  app.post('/:id/retry', auth, async (req, reply) => {
+    const { rows } = await db.query(
+      `UPDATE pushes SET status='pending', error=NULL, started_at=NULL, finished_at=NULL
+        WHERE id=$1 AND workspace_id=$2 AND status='failed' AND ($3::text IS NULL OR created_by = $3) RETURNING id`,
+      [req.params.id, req.user.ws, ownOnly(req)]
+    );
+    if (!rows.length) return reply.status(409).send({ error: 'Повторить можно только упавший залив' });
+    runPush(rows[0].id).catch(console.error);
+    return { ok: true };
+  });
+
+  // Compile landing HTML from local template + product data
+  app.post('/compile-landing', auth, async (req, reply) => {
+    const { template_id, product_id, geo = 'FR' } = req.body;
+    if (!template_id || !product_id) return reply.status(400).send({ error: 'template_id and product_id required' });
+    try {
+      const { compileLanding } = await import('../../services/landing-compiler.js');
+      const { html, product, template } = await compileLanding(template_id, product_id, geo, req.user.ws);
+      return { html, title: product.title || product.name, template_name: template.name };
+    } catch (e) {
+      return reply.status(400).send({ error: e.message });
+    }
+  });
+
+  // Compile landing + upload to Keitaro
+  app.post('/upload-landing-keitaro', auth, async (req, reply) => {
+    const { template_id, product_id, geo = 'FR', name } = req.body;
+    if (!template_id || !product_id) return reply.status(400).send({ error: 'template_id and product_id required' });
+    try {
+      const { compileLanding } = await import('../../services/landing-compiler.js');
+      const { html, product, template } = await compileLanding(template_id, product_id, geo, req.user.ws);
+      const landingName = name || `${template.name}_${product.title || product.name}_${geo}_${Date.now()}`;
+      const wsRow = await db.findOne('workspaces', { id: req.user.ws });
+      if (!wsRow?.keitaro_url || !wsRow?.keitaro_api_key)
+        return reply.status(400).send({ error: 'Keitaro не настроен' });
+      const result = await keitaroClient(wsRow.keitaro_url, wsRow.keitaro_api_key).createLanding(landingName, html);
+      return { ok: true, landing: result };
+    } catch (e) {
+      return reply.status(400).send({ error: e.message });
+    }
+  });
+
+  // Get FA push trace (step-by-step log)
+  app.get('/:id/trace', auth, async (req, reply) => {
+    const { faAvailable, faPushTrace } = await import('../../services/fa-client.js');
+    if (!faAvailable()) return { steps: [], status: 'no_fa' };
+    try {
+      const data = await faPushTrace(req.params.id);
+      return data;
+    } catch (e) {
+      return { steps: [], status: 'error', error: e.message };
+    }
+  });
+
+  // Get all options for push wizard
+  app.get('/options', auth, async (req) => {
+    const { ws } = req.user;
+    const wsRow = await db.findOne('workspaces', { id: ws });
+
+    const [
+      productsRes,
+      cabinetsRes,
+      presetsRes,
+      creativesRes,
+      landings,
+      domains,
+      localTemplatesRes,
+    ] = await Promise.all([
+      db.query(
+        `SELECT id, title as name, COALESCE(images->0->>'url', images->>0) as cover, photo_reviews_count FROM products WHERE workspace_id=$1 AND scrape_status='done' ORDER BY created_at DESC`,
+        [ws]
+      ),
+      db.query(
+        // «Куда лить»: ready cabinets first, then the most daily limit left, then the fewest running ads.
+        // Figures come from the last campaign read (every 15 min), never from a call to Facebook here.
+        `SELECT c.id, c.external_id, c.name, c.pixel_id, c.status, c.ready_kind, c.ready_label, c.payment_missing,
+           c.currency, c.daily_limit, c.account_status, c.limits_at, ap.serial_number AS profile,
+           st.spent_today, st.active_ads, st.data_at,
+           CASE WHEN c.daily_limit IS NULL THEN NULL ELSE GREATEST(c.daily_limit - st.spent_today, 0) END AS limit_left,
+           json_agg(DISTINCT jsonb_build_object('id', p.id, 'external_id', p.external_id, 'name', p.name))
+             FILTER (WHERE p.id IS NOT NULL) as pages
+         FROM fb_cabinets c
+         LEFT JOIN fb_pages p ON p.bm_id = c.bm_id AND p.workspace_id = c.workspace_id
+         LEFT JOIN fb_accounts fa ON fa.id = c.fb_account_id
+         LEFT JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(SUM(fc.spend_today), 0) AS spent_today, MAX(fc.synced_at) AS data_at,
+                  COALESCE(SUM((SELECT COUNT(*) FROM jsonb_array_elements(fc.adsets) s,
+                                  jsonb_array_elements(COALESCE(s->'ads', '[]'::jsonb)) a
+                                 WHERE a->>'effective_status' = 'ACTIVE')), 0)::int AS active_ads
+             FROM fb_campaigns fc
+            WHERE fc.workspace_id = c.workspace_id AND REPLACE(fc.act_id, 'act_', '') = REPLACE(c.external_id, 'act_', '')
+         ) st ON true
+         WHERE c.workspace_id = $1 AND c.status = 'active' AND ($2::text IS NULL OR LOWER(ap.group_name) = $2)
+         GROUP BY c.id, ap.serial_number, st.spent_today, st.active_ads, st.data_at
+         ORDER BY (c.ready_kind = 'ready' AND COALESCE(c.account_status, 1) = 1) DESC,
+                  (c.daily_limit IS NULL OR c.daily_limit > st.spent_today) DESC,
+                  st.active_ads ASC,
+                  CASE WHEN c.daily_limit IS NULL THEN NULL ELSE c.daily_limit - st.spent_today END DESC NULLS LAST,
+                  c.name`,
+        [ws, req.user.role === 'buyer' ? String(req.user.email || '').toLowerCase() : null]
+      ),
+      db.query(`SELECT * FROM ad_settings WHERE workspace_id=$1 ORDER BY name`, [ws]),
+      db.query(
+        `SELECT id, product_id, file_url as url, thumbnail_url, metadata->>'language' as language, type, status FROM creatives WHERE workspace_id=$1 AND status='done' ORDER BY created_at DESC`,
+        [ws]
+      ),
+      wsRow?.keitaro_url && wsRow?.keitaro_api_key
+        ? keitaroClient(wsRow.keitaro_url, wsRow.keitaro_api_key).landingPages().catch(() => [])
+        : Promise.resolve([]),
+      wsRow?.keitaro_url && wsRow?.keitaro_api_key
+        ? keitaroClient(wsRow.keitaro_url, wsRow.keitaro_api_key).domains().catch(() => [])
+        : Promise.resolve([]),
+      db.query(`SELECT id, name, store, state, geos, versions FROM landing_templates WHERE workspace_id=$1 AND state='ready' ORDER BY name`, [ws]),
+    ]);
+
+    // Merge local templates + Keitaro landings (local templates first, marked with source)
+    const localTemplates = localTemplatesRes.rows.map(t => ({
+      ...t,
+      source: 'local',
+      versions: typeof t.versions === 'string' ? JSON.parse(t.versions || '[]') : (t.versions || []),
+      geos: typeof t.geos === 'string' ? JSON.parse(t.geos || '[]') : (t.geos || []),
+    }));
+
+    const allLandings = [
+      ...localTemplates,
+      ...(Array.isArray(landings) ? landings : []).map(l => ({ ...l, source: 'keitaro' })),
+    ];
+
+    return {
+      products: productsRes.rows,
+      cabinets: cabinetsRes.rows,
+      presets: presetsRes.rows,
+      creatives: creativesRes.rows,
+      landings: allLandings,
+      domains,
+    };
+  });
+
+  // Generate FB ad texts via Claude
+  app.post('/generate-texts', auth, async (req) => {
+    const { product_id, geo, language } = req.body;
+    const { ws } = req.user;
+
+    const product = await db.findOne('products', { id: product_id, workspace_id: ws });
+    if (!product) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return {
+        variants: [
+          { title: product.title.slice(0, 40), body: `Закажи ${product.title} сейчас со скидкой!` },
+          { title: `${product.title} — официально`, body: `Быстрая доставка. Гарантия качества.` },
+        ],
+      };
+    }
+
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const prompt = `Ты копирайтер для Facebook рекламы. Напиши 3 варианта рекламного текста для товара.
+
+Товар: ${product.title}
+Описание: ${product.description || ''}
+Цена: ${product.price || ''} ${product.currency || ''}
+Страна: ${geo}
+Язык объявления: ${language}
+
+Для каждого варианта дай:
+- title: заголовок (до 40 символов)
+- body: основной текст (до 125 символов)
+
+Ответ строго в JSON: {"variants": [{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}]}
+Только JSON, без пояснений.`;
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-haiku-5-5',
+      max_tokens: 500,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const text = msg.content[0]?.text || '{}';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { variants: [] };
+    return { variants: parsed.variants || [] };
+  });
+}

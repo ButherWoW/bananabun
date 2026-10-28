@@ -1,0 +1,201 @@
+import { assertProductAccess } from '../../middleware/access.js';
+import { nanoid } from 'nanoid';
+import { db } from '../../db/client.js';
+import { scrapeAmazonViaAgent } from '../../services/scraper.js';
+import { currentEngine, parseProductLink, withRealOldPrice, faStartScrapes } from '../../services/engine.js';
+import { generateFromScrapePreset } from './creatives.js';
+
+function badRequest(msg) {
+  return Object.assign(new Error(msg), { statusCode: 400 });
+}
+
+async function loadPresetBundles(ws, presetId) {
+  if (!presetId) return [];
+  const preset = await db.findOne('bundle_presets', { id: presetId, workspace_id: ws });
+  if (!preset) throw badRequest('Пресет комплектов не найден');
+  const config = typeof preset.config === 'string' ? JSON.parse(preset.config) : preset.config;
+  return Array.isArray(config) ? config : [];
+}
+
+function parseBundles(raw) {
+  try {
+    const v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(v) ? v : [];
+  } catch { return []; }
+}
+
+function logScrapeError(err) {
+  console.error('[scrape]', err?.message || err);
+}
+
+async function assertCreativePreset(ws, id) {
+  if (!id) return null;
+  const preset = await db.findOne('creative_presets', { id, workspace_id: ws });
+  if (!preset) throw badRequest('Пресет креативов не найден');
+  return id;
+}
+
+async function createPlaceholder({ ws, userId, link, engine, folderId, presetId, bundles, creativePresetId }) {
+  return db.insert('products', {
+    id: `prd_${nanoid(20)}`,
+    workspace_id: ws,
+    folder_id: folderId || null,
+    created_by: userId,
+    source: link.source,
+    source_id: link.asin || null,
+    marketplace: link.marketplace || null,
+    source_url: link.url,
+    bundle_preset_id: presetId || null,
+    creative_preset_id: creativePresetId || null,
+    bundle_config: JSON.stringify(bundles),
+    engine,
+    status: 'draft',
+    scrape_status: 'processing',
+    scrape_started_at: new Date(),
+  });
+}
+
+/* ───── own engine: Amazon pages opened by the Mac agent in an AdsPower profile ───── */
+
+function runOwnScrape(ws, productId, asin, marketplace, bundles) {
+  scrapeAmazonViaAgent(ws, asin, marketplace).then(async (data) => {
+    await db.update('products', productId, {
+      title: data.title,
+      description: data.description,
+      source_price: data.price,
+      images: JSON.stringify(data.images),
+      rating: data.rating,
+      reviews_count: data.reviews_count,
+      // null = unknown: Amazon shows the photo-review count only to signed-in visitors.
+      photo_reviews_count: data.photo_reviews_count ?? null,
+      has_photo_reviews: !!data.has_photo_reviews,
+      ...(bundles?.length ? { bundle_config: JSON.stringify(withRealOldPrice(bundles, data.price)) } : {}),
+      scrape_status: 'done',
+      scrape_error: null,
+    });
+    await generateFromScrapePreset(productId).catch(logScrapeError);
+  }).catch(async (err) => {
+    logScrapeError(err);
+    await db.update('products', productId, {
+      scrape_status: 'failed',
+      scrape_error: String(err?.message || 'Неизвестная ошибка').slice(0, 500),
+    }).catch(logScrapeError);
+  });
+}
+
+/* ───── FA engine: FA scrapes, workers/product-sync.js pulls results ───── */
+
+function runFaScrapes(products) {
+  faStartScrapes(products).then(async (pairs) => {
+    for (const { productId, externalId } of pairs) {
+      await db.update('products', productId, { external_id: externalId });
+    }
+    const matched = new Set(pairs.map(p => p.productId));
+    for (const p of products.filter(p => !matched.has(p.id))) {
+      await db.update('products', p.id, { scrape_status: 'failed', scrape_error: 'FA не вернул товар по этой ссылке' });
+    }
+  }).catch(async (err) => {
+    logScrapeError(err);
+    for (const p of products) {
+      await db.update('products', p.id, {
+        scrape_status: 'failed',
+        scrape_error: String(err?.message || 'FA не принял скрап').slice(0, 500),
+      }).catch(logScrapeError);
+    }
+  });
+}
+
+async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetId, creativePresetId }) {
+  const engine = currentEngine();
+  const links = inputs.map(s => ({ input: s, link: parseProductLink(s, marketplace) }));
+  const bad = links.filter(l => !l.link).map(l => l.input);
+  if (bad.length) throw badRequest('Не распознаны ссылки (нужны Amazon, Walmart, Target, Best Buy или Etsy): ' + bad.join(', '));
+  if (engine === 'own') {
+    const notAmazon = links.filter(l => l.link.source !== 'amazon').map(l => l.input);
+    if (notAmazon.length) throw badRequest('Свой движок пока скрапит только Amazon: ' + notAmazon.join(', '));
+  }
+
+  const bundles = await loadPresetBundles(ws, presetId);
+  await assertCreativePreset(ws, creativePresetId);
+  const products = [];
+  for (const { link } of links) {
+    products.push(await createPlaceholder({ ws, userId, link, engine, folderId, presetId, bundles, creativePresetId }));
+  }
+
+  if (engine === 'fa') runFaScrapes(products);
+  else products.forEach(p => runOwnScrape(ws, p.id, p.source_id, p.marketplace, bundles));
+
+  return { engine, products };
+}
+
+export async function scrapeRoutes(app) {
+  const auth = { onRequest: [app.authenticate] };
+
+  app.post('/product', auth, async (req) => {
+    const { ws, id: userId } = req.user;
+    const { asin, link, marketplace = 'fr', folder_id, bundle_preset_id, creative_preset_id } = req.body;
+    const { engine, products } = await startScrapes({
+      ws, userId, inputs: [link || asin].filter(Boolean), marketplace, folderId: folder_id,
+      presetId: bundle_preset_id, creativePresetId: creative_preset_id,
+    });
+    return { product_id: products[0].id, status: 'processing', engine };
+  });
+
+  // `links` — product URLs or ASINs; `asins` kept for older clients
+  app.post('/bulk', auth, async (req) => {
+    const { ws, id: userId } = req.user;
+    const { links, asins, marketplace = 'fr', folder_id, bundle_preset_id, creative_preset_id } = req.body;
+    const inputs = (Array.isArray(links) ? links : Array.isArray(asins) ? asins : []).map(s => String(s).trim()).filter(Boolean);
+    if (!inputs.length) throw badRequest('Нужна хотя бы одна ссылка');
+    if (inputs.length > 50) throw badRequest('Не больше 50 ссылок за раз');
+
+    const { engine, products } = await startScrapes({
+      ws, userId, inputs, marketplace, folderId: folder_id, presetId: bundle_preset_id, creativePresetId: creative_preset_id,
+    });
+    return {
+      engine,
+      total: products.length,
+      jobs: products.map(p => ({ product_id: p.id, source: p.source, asin: p.source_id, marketplace: p.marketplace })),
+    };
+  });
+
+  app.get('/engine', auth, async () => ({ engine: currentEngine() }));
+
+  app.get('/status/:productId', auth, async (req, reply) => {
+    const product = await db.findOne('products', { id: req.params.productId, workspace_id: req.user.ws });
+    if (!product) return reply.status(404).send({ error: 'Not found' });
+    return { id: product.id, scrape_status: product.scrape_status, scrape_error: product.scrape_error, title: product.title };
+  });
+
+  // Retry: re-runs the scrape with the engine that is active now.
+  app.post('/retry/:id', auth, async (req, reply) => {
+    await assertProductAccess(req, req.params.id);
+    const product = await db.findOne('products', { id: req.params.id, workspace_id: req.user.ws });
+    if (!product) return reply.status(404).send({ error: 'Not found' });
+    const link = parseProductLink(product.source_url || product.source_id, product.marketplace || 'fr');
+    if (!link) return reply.status(400).send({ error: 'У товара нет корректной ссылки — удали его и соскрапь заново' });
+
+    const engine = currentEngine();
+    if (engine === 'own' && link.source !== 'amazon') {
+      return reply.status(400).send({ error: 'Свой движок пока скрапит только Amazon' });
+    }
+    const updated = await db.update('products', product.id, {
+      engine,
+      external_id: null,
+      source: link.source,
+      source_id: link.asin || null,
+      marketplace: link.marketplace || null,
+      source_url: link.url,
+      scrape_status: 'processing',
+      scrape_error: null,
+      scrape_started_at: new Date(),
+    });
+    if (engine === 'fa') runFaScrapes([updated]);
+    else runOwnScrape(req.user.ws, product.id, link.asin, link.marketplace, parseBundles(product.bundle_config));
+
+    return { ok: true, status: 'processing', engine };
+  });
+
+  // FA's similar-products search is paid and needs geo, period and price range — not wired to the UI yet.
+  app.get('/similar/:id', auth, async () => []);
+}
