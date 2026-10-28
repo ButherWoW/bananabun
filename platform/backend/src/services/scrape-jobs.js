@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
 import { enqueueAgentJob } from '../api/routes/agent.js';
-import { amazonUrl, withRealOldPrice } from './engine.js';
+import { amazonUrl, withRealOldPrice, MARKET_CURRENCY } from './engine.js';
 import { AMAZON_MARKETS, productFromAgentData } from './scraper.js';
 
 // Own Amazon scrape that survives a backend restart: the product↔job link is stored
@@ -17,9 +17,17 @@ function parseBundles(raw) {
   } catch { return []; }
 }
 
-export async function enqueueOwnScrape(ws, productId, asin, marketplace) {
-  if (!AMAZON_MARKETS.includes(marketplace)) throw new Error(`Неизвестный маркетплейс Amazon: ${marketplace}`);
-  const jobId = await enqueueAgentJob(ws, 'scrape_amazon', { url: amazonUrl(asin, marketplace), product_id: productId, asin });
+// Own engine: Amazon (any of our marketplaces) and Walmart (walmart.com item id).
+export async function enqueueOwnScrape(ws, productId, asin, marketplace, source = 'amazon') {
+  let type, url;
+  if (source === 'walmart') {
+    if (!/^\d{5,15}$/.test(String(asin || ''))) throw new Error('Нужна ссылка на товар Walmart вида walmart.com/ip/…/<номер>');
+    type = 'scrape_walmart'; url = `https://www.walmart.com/ip/${asin}`;
+  } else {
+    if (!AMAZON_MARKETS.includes(marketplace)) throw new Error(`Неизвестный маркетплейс Amazon: ${marketplace}`);
+    type = 'scrape_amazon'; url = amazonUrl(asin, marketplace);
+  }
+  const jobId = await enqueueAgentJob(ws, type, { url, product_id: productId, asin });
   await db.query(`UPDATE products SET scrape_job_id = $1, scrape_status = 'processing', scrape_error = NULL,
                    scrape_started_at = NOW() WHERE id = $2 AND workspace_id = $3`, [jobId, productId, ws]);
   return jobId;
@@ -35,7 +43,7 @@ async function fail(ws, productId, jobId, message) {
 // (a newer «Ещё раз» replaced it otherwise). Safe to call twice.
 export async function applyScrapeResult(ws, jobId, ok, data, error) {
   const { rows: [p] } = await db.query(
-    `SELECT id, source_id, bundle_config FROM products WHERE workspace_id = $1 AND scrape_job_id = $2 AND scrape_status = 'processing'`,
+    `SELECT id, source_id, marketplace, bundle_config FROM products WHERE workspace_id = $1 AND scrape_job_id = $2 AND scrape_status = 'processing'`,
     [ws, jobId]);
   if (!p) return;
   if (!ok) return fail(ws, p.id, jobId, error || 'Агент не смог открыть страницу Amazon');
@@ -53,7 +61,7 @@ export async function applyScrapeResult(ws, jobId, ok, data, error) {
     [d.title, d.description, d.price, JSON.stringify(d.images), d.rating, d.reviews_count,
      // null = unknown: Amazon shows the photo-review count only to signed-in visitors.
      d.photo_reviews_count ?? null, !!d.has_photo_reviews,
-     bundles.length ? JSON.stringify(withRealOldPrice(bundles, d.price)) : null, p.id, ws, jobId]);
+     bundles.length ? JSON.stringify(withRealOldPrice(bundles, d.price, d.currency || MARKET_CURRENCY[p.marketplace])) : null, p.id, ws, jobId]);
   if (rowCount) await runPresetCreatives(ws, p.id);
 }
 

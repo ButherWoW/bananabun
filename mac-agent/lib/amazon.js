@@ -11,7 +11,7 @@ const PROFILE_FILE = path.join(ROOT, '.scrape_profile'); // serial number of the
 const AMAZON = /^https:\/\/www\.amazon\.(fr|es|de|it|co\.uk|com|nl|pl|com\.be|se)\/(dp|product-reviews)\/[A-Z0-9]{10}(\/|\?|$)/;
 
 // Only the profile named in ~/scripts/.scrape_profile — never someone else's open profile.
-async function scrapeProfilePort() {
+export async function scrapeProfilePort() {
   if (!fs.existsSync(PROFILE_FILE)) {
     throw new Error('Не выбран профиль AdsPower для скрапа: запишите его номер в ~/scripts/.scrape_profile');
   }

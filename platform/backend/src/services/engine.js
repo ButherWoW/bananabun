@@ -33,7 +33,12 @@ export function parseProductLink(input, fallbackMarketplace = 'fr') {
     return { source: 'amazon', asin, marketplace, url: amazonUrl(asin, marketplace) };
   }
   const clean = `${u.origin}${u.pathname}`;
-  if (/(^|\.)walmart\.com$/.test(host)) return { source: 'walmart', url: clean };
+  if (/(^|\.)walmart\.com$/.test(host)) {
+    // walmart.com/ip/<slug>/<item id> or /ip/<item id>; the item id is the product's source id.
+    const item = u.pathname.match(/^\/ip\/(?:[^/]+\/)?(\d{5,15})\/?$/)?.[1];
+    if (!item) return { source: 'walmart', url: clean };
+    return { source: 'walmart', asin: item, marketplace: 'us', url: `https://www.walmart.com/ip/${item}` };
+  }
   if (/(^|\.)target\.com$/.test(host)) return { source: 'target', url: clean };
   if (/(^|\.)bestbuy\.com$/.test(host)) return { source: 'bestbuy', url: clean };
   if (/(^|\.)etsy\.com$/.test(host)) return { source: 'etsy', url: clean };
@@ -58,14 +63,21 @@ export function sameProduct(a, b) {
  * qty "1" → price, "2+1" → price × 2 (paid units), "3" → price × 3. Always recomputed from the real
  * Amazon price: a value typed into a preset (e.g. 199.99) must never survive onto a product.
  */
-export function withRealOldPrice(bundles, marketPrice) {
+export function withRealOldPrice(bundles, marketPrice, marketCurrency) {
   const price = Number(marketPrice);
   if (!Array.isArray(bundles) || !price) return bundles;
   return bundles.map(b => {
+    // A price in another currency is not this bundle's old price: never convert, leave it empty.
+    if (marketCurrency && b.currency && String(b.currency).toUpperCase() !== String(marketCurrency).toUpperCase()) {
+      return { ...b, old_price: '' };
+    }
     const paid = parseInt(String(b.qty).split('+')[0], 10);
     return paid > 0 ? { ...b, old_price: (price * paid).toFixed(2) } : b;
   });
 }
+
+// The shop's currency, for the old-price rule above.
+export const MARKET_CURRENCY = { fr: 'EUR', es: 'EUR', de: 'EUR', it: 'EUR', nl: 'EUR', be: 'EUR', uk: 'GBP', com: 'USD', pl: 'PLN', se: 'SEK', us: 'USD' };
 
 /* ───── FA engine ───── */
 
