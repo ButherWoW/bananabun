@@ -247,7 +247,7 @@ export async function productRoutes(app) {
     const fetched = await scrapeAmazonReviewsViaScraperApi(product.source_id, product.marketplace || 'fr');
     if (!fetched?.length) return [];
     // Delete old scraped reviews, insert fresh ones
-    await db.query('DELETE FROM product_reviews WHERE product_id =   app.delete('/:id/reviews/:rid' AND scraped = true', [product.id]);
+    await db.query('DELETE FROM product_reviews WHERE product_id = $1 AND scraped = true', [product.id]);
     const saved = [];
     for (const rv of fetched.slice(0, 10)) {
       if (!rv.text) continue;
