@@ -17,19 +17,41 @@ function forbidden() {
   return Object.assign(new Error('Нет доступа'), { statusCode: 403 });
 }
 
-// Buyers may only act on rows they created; owner/lead act on the whole workspace.
-async function assertOwned(req, table, ids) {
-  const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+const PERSONAL_TABLES = new Set(['products', 'creatives', 'bundle_presets', 'creative_presets', 'landing_templates', 'ad_settings', 'ad_presets', 'scrape_jobs']);
+export const ownUser = req => req.user.role === 'buyer' ? req.user.id : null;
+
+// Personal rows always belong to this workspace and, for buyers, this author.
+export async function assertRecordAccess(req, table, ids) {
+  if (!PERSONAL_TABLES.has(table)) throw new Error('Unsupported access table');
+  const list = [...new Set((Array.isArray(ids) ? ids : [ids]).filter(Boolean))];
   if (!list.length) throw Object.assign(new Error('ids required'), { statusCode: 400 });
   const { rows } = await db.query(
-    `SELECT id, created_by FROM ${table} WHERE workspace_id = $1 AND id = ANY($2)`,
+    `SELECT * FROM ${table} WHERE workspace_id = $1 AND id = ANY($2)`,
     [req.user.ws, list]
   );
-  if (req.user.role === 'buyer') {
-    if (rows.length !== list.length || rows.some(r => r.created_by !== req.user.id)) throw forbidden();
-  } else if (table === 'products' && rows.length !== list.length) {
-    throw Object.assign(new Error('Not found'), { statusCode: 404 });
+  if (rows.length !== list.length || (ownUser(req) && rows.some(r => r.created_by !== req.user.id))) {
+    throw Object.assign(new Error('Not found or access denied'), { statusCode: ownUser(req) ? 403 : 404 });
   }
+  return rows;
+}
+
+export async function assertFolderAccess(req, id) {
+  if (!id) return;
+  const folder = await db.findOne('folders', { id, workspace_id: req.user.ws });
+  // Shared folders are team categories; products inside still follow author scope.
+  if (!folder || (ownUser(req) && !folder.shared && folder.created_by !== req.user.id)) throw forbidden();
+  return folder;
+}
+
+export async function assertCreativeAccess(req, ids, { productId, ready = false } = {}) {
+  const rows = await assertRecordAccess(req, 'creatives', ids);
+  if (productId && rows.some(r => r.product_id !== productId)) {
+    throw Object.assign(new Error('Креативы должны принадлежать выбранному товару'), { statusCode: 400 });
+  }
+  if (ready && rows.some(r => r.status !== 'done' || !r.file_url)) {
+    throw Object.assign(new Error('Часть креативов не готова'), { statusCode: 400 });
+  }
+  return rows;
 }
 
 // Campaign actions take Facebook campaign ids. An id is allowed only if this workspace knows it:
@@ -55,4 +77,4 @@ export async function assertCampaignAccess(req, ids) {
     throw Object.assign(new Error('Кампания не найдена в вашей команде — обновите список из FB'), { statusCode: buyer ? 403 : 404 });
   }
 }
-export const assertProductAccess = (req, ids) => assertOwned(req, 'products', ids);
+export const assertProductAccess = (req, ids) => assertRecordAccess(req, 'products', ids);

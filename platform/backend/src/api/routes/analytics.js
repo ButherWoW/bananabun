@@ -3,6 +3,7 @@ import { faAnalyticsQuery, faAvailable } from '../../services/fa-client.js';
 import { landingFunnel, landingBehavior } from '../../services/lp-analytics.js';
 import { keitaroClient } from '../../services/keitaro.js';
 import { buyerScope, inScope } from './keitaro.js';
+import { ownUser } from '../../middleware/access.js';
 
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -72,10 +73,10 @@ export async function analyticsRoutes(app) {
 
     const [{ rows: [{ count: products_count }] }, { rows: [{ count: creatives_count }] }, { rows: campaigns }, campaigns_count] =
       await Promise.all([
-        db.query('SELECT COUNT(*) FROM products WHERE workspace_id = $1', [ws]),
-        db.query('SELECT COUNT(*) FROM creatives WHERE workspace_id = $1', [ws]),
-        db.query('SELECT spend, revenue FROM campaigns WHERE workspace_id = $1', [ws]),
-        db.query('SELECT COUNT(*) FROM campaigns WHERE workspace_id = $1', [ws]),
+        db.query('SELECT COUNT(*) FROM products WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
+        db.query('SELECT COUNT(*) FROM creatives WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
+        db.query('SELECT spend, revenue FROM campaigns WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
+        db.query('SELECT COUNT(*) FROM campaigns WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
       ]);
 
     const total_spend = campaigns.reduce((s, c) => s + Number(c.spend || 0), 0);
@@ -99,9 +100,9 @@ export async function analyticsRoutes(app) {
     // Try to get real data from campaigns
     const { rows } = await db.query(
       `SELECT DATE(created_at) as date, SUM(spend) as spend, SUM(revenue) as revenue, SUM(clicks) as clicks
-       FROM campaigns WHERE workspace_id = $1 AND created_at >= NOW() - INTERVAL '${days} days'
+       FROM campaigns WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2) AND created_at >= NOW() - INTERVAL '${days} days'
        GROUP BY DATE(created_at) ORDER BY date`,
-      [ws]
+      [ws, ownUser(req)]
     );
 
     if (rows.length > 0) {

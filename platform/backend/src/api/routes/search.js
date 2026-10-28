@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
-import { faAvailable, faListProductSearches } from '../../services/fa-client.js';
+import { ownUser } from '../../middleware/access.js';
 import { findSimilar, searchViaAgent } from '../../services/similar.js';
 
 export async function searchRoutes(app) {
@@ -13,6 +13,7 @@ export async function searchRoutes(app) {
     const job = await db.insert('scrape_jobs', {
       id: `srj_${nanoid(20)}`,
       workspace_id: ws,
+      created_by: req.user.id,
       type: 'search',
       status: 'processing',
       params: JSON.stringify({ queries, marketplace, min_price, max_price }),
@@ -57,7 +58,7 @@ export async function searchRoutes(app) {
     if (!/^[A-Z]{2}$/.test(String(geo || ''))) return reply.status(400).send({ error: 'Гео — код из двух букв (FR)' });
     if (!DAY.test(day_from || '') || !DAY.test(day_to || '')) return reply.status(400).send({ error: 'Период — даты YYYY-MM-DD' });
     const job = await db.insert('scrape_jobs', {
-      id: `srj_${nanoid(20)}`, workspace_id: req.user.ws, type: 'similar', status: 'processing',
+      id: `srj_${nanoid(20)}`, workspace_id: req.user.ws, created_by: req.user.id, type: 'similar', status: 'processing',
       params: JSON.stringify({ geo, day_from, day_to, min_price, max_price, marketplace, min_reviews }),
     });
     findSimilar(req.user, { geo, from: day_from, to: day_to, minPrice: min_price, maxPrice: max_price, marketplace, minReviews: min_reviews })
@@ -66,18 +67,18 @@ export async function searchRoutes(app) {
     return { job_id: job.id, status: 'processing' };
   });
 
-  app.get('/history', auth, async () => {
-    if (!faAvailable()) return [];
-    try {
-      return await faListProductSearches();
-    } catch {
-      return [];
-    }
+  app.get('/history', auth, async (req) => {
+    const { rows } = await db.query(
+      `SELECT id, type, status, params, error, created_at, updated_at FROM scrape_jobs
+       WHERE workspace_id=$1 AND ($2::text IS NULL OR created_by=$2) ORDER BY created_at DESC LIMIT 100`,
+      [req.user.ws, ownUser(req)]
+    );
+    return rows;
   });
 
   app.get('/:jobId', auth, async (req, reply) => {
     const job = await db.findOne('scrape_jobs', { id: req.params.jobId, workspace_id: req.user.ws });
-    if (!job) return reply.status(404).send({ error: 'Not found' });
+    if (!job || (ownUser(req) && job.created_by !== req.user.id)) return reply.status(404).send({ error: 'Not found' });
 
     return {
       id: job.id,

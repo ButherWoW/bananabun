@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
+import { assertFolderAccess } from '../../middleware/access.js';
 
 export async function folderRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
@@ -39,6 +40,7 @@ export async function folderRoutes(app) {
     const { name, parent_id, shared } = req.body;
     const { ws, id: userId } = req.user;
 
+    await assertFolderAccess(req, parent_id);
     return db.insert('folders', {
       id: `pf_${nanoid(20)}`,
       workspace_id: ws,

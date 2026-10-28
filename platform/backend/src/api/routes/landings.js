@@ -1,4 +1,4 @@
-import { adminOnly } from '../../middleware/access.js';
+import { adminOnly, ownUser, assertProductAccess, assertRecordAccess } from '../../middleware/access.js';
 import { db } from '../../db/client.js';
 import { nanoid } from 'nanoid';
 import { faAvailable, faListLandingTemplates } from '../../services/fa-client.js';
@@ -8,8 +8,8 @@ export async function landingRoutes(app) {
 
   app.get('/templates', auth, async (req) => {
     const { rows } = await db.query(
-      'SELECT * FROM landing_templates WHERE workspace_id=$1 ORDER BY created_at DESC',
-      [req.user.ws]
+      'SELECT * FROM landing_templates WHERE workspace_id=$1 AND ($2::text IS NULL OR created_by=$2) ORDER BY created_at DESC',
+      [req.user.ws, ownUser(req)]
     );
     return rows;
   });
@@ -121,6 +121,8 @@ export async function landingRoutes(app) {
     const { template_id, product_id, geo = 'FR' } = req.body || {};
     if (!template_id || !product_id) return reply.status(400).send({ error: 'Нужны шаблон и товар' });
     if (!/^[A-Z]{2}$/.test(String(geo).toUpperCase())) return reply.status(400).send({ error: 'Гео — код из двух букв' });
+    await assertProductAccess(req, product_id);
+    await assertRecordAccess(req, 'landing_templates', template_id);
     if (checking) return reply.status(429).send({ error: 'Идёт другая проверка — повторите через полминуты' });
     checking = true;
     try {
