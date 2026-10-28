@@ -33,7 +33,7 @@ test('real backend starts its worker and shuts down cleanly', { skip:!hasTestDat
   await waitFor(async()=>(await db.findOne('creatives',{id:'startup-job'})).status==='failed');
   assert.match((await db.findOne('creatives',{id:'startup-job'})).metadata.error,/фото/);
   if(process.env.RUN_BROWSER_TESTS==='1'){
-    const bcrypt=(await import('bcrypt')).default;
+    const bcrypt=(await import('bcryptjs')).default;
     await db.query('UPDATE users SET password_hash=$1 WHERE id=$2',[await bcrypt.hash('test-only-password',4),'owner']);
     const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j6WQAAAAASUVORK5CYII=','base64');
     await writeFile(join(directory,'photo.png'),png);

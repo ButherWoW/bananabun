@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import pg from 'pg';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

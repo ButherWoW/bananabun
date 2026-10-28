@@ -5,9 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { hasTestDatabase,testDatabase } from './helpers/test-db.js';
 const exec=promisify(execFile);
+
+test('existing native bcrypt password hashes remain usable',async()=>{
+  // Synthetic fixture created with bcrypt 5; no real account credential.
+  const legacy='$2b$04$LeJZIK1UYbV0780ao8gPV.W6eaP5Ii4/BHxd/1AFFwl92xTW9zuy2';
+  assert.equal(await bcrypt.compare('legacy-test-password',legacy),true);
+  assert.equal(await bcrypt.compare('wrong-test-password',legacy),false);
+});
 
 test('private local setup creates unique secrets and refuses to overwrite settings',async()=>{
   const root=await mkdtemp(join(tmpdir(),'bootstrap-config-'));
