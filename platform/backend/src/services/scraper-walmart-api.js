@@ -155,3 +155,33 @@ export async function scrapeAmazonViaScraperApi(asin, marketplace = 'com') {
 
 /** True when ScraperAPI is configured for this process. */
 export const scraperApiEnabled = () => Boolean(process.env.SCRAPER_API_KEY);
+
+// ─── Amazon Reviews ─────────────────────────────────────────────────────────
+
+/**
+ * Fetch up to `limit` customer reviews for an Amazon product via ScraperAPI.
+ * Returns [{author, rating, text}] — only reviews that have text.
+ */
+export async function scrapeAmazonReviewsViaScraperApi(asin, marketplace = 'fr', limit = 10) {
+  const key = process.env.SCRAPER_API_KEY;
+  if (!key) throw new Error('SCRAPER_API_KEY not configured');
+  const country = AMAZON_COUNTRY[marketplace] || 'fr';
+  const apiUrl = `${SCRAPER_API_BASE}/structured/amazon/reviews?api_key=${key}&asin=${encodeURIComponent(asin)}&country=${country}`;
+  let res;
+  try { res = await fetch(apiUrl, { signal: AbortSignal.timeout(TIMEOUT_MS) }); }
+  catch (e) { throw new Error(`ScraperAPI reviews network error: ${e.message}`); }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`ScraperAPI reviews HTTP ${res.status}: ${body.slice(0, 200)}`);
+  }
+  let d;
+  try { d = await res.json(); } catch (e) { throw new Error(`ScraperAPI reviews invalid JSON: ${e.message}`); }
+  return (Array.isArray(d.reviews) ? d.reviews : [])
+    .slice(0, limit)
+    .map(r => ({
+      author: String(r.author || r.name || 'Client Amazon').slice(0, 100),
+      rating: Math.min(5, Math.max(1, Math.round(Number(r.rating) || 5))),
+      text: String(r.text || r.body || r.content || '').trim(),
+    }))
+    .filter(r => r.text.length > 10);
+}
