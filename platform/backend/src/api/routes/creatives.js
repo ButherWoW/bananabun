@@ -3,30 +3,11 @@ import { nanoid } from 'nanoid';
 import path from 'path';
 import fs from 'fs/promises';
 import { db } from '../../db/client.js';
-import { generateCreative } from '../../services/creative-generator.js';
+import { wakeCreativeWorker } from '../../services/creative-jobs.js';
+import { localImageData, rasterType } from '../../services/creative-assets.js';
 import { creativePlan } from '../../services/creative-plan.js';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
-
-async function generateViaPlaywright(record, product, opts) {
-  const { language, landing_price, style, features, format, image } = opts;
-  try {
-    const result = await generateCreative(product, null, format, { language, landing_price, style, features, image });
-    if (result) {
-      await db.update('creatives', record.id, {
-        file_url: result.url,
-        thumbnail_url: result.thumbnail,
-        status: 'done',
-        metadata: { ...record.metadata, source: 'local', style: result.style, language: result.language },
-      });
-    } else {
-      await db.update('creatives', record.id, { status: 'failed', metadata: { ...record.metadata, error: 'Собственный движок не смог создать изображение. Проверьте фото товара и Chromium.' } });
-    }
-  } catch (err) {
-    console.error('[local creative] failed:', err.message);
-    await db.update('creatives', record.id, { status: 'failed', metadata: { ...record.metadata, error: err.message } });
-  }
-}
 
 // Uploads are served from our own origin, so only raster images are accepted (no html/svg).
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -38,9 +19,10 @@ async function saveImageUpload(req, dir, prefix) {
     throw Object.assign(new Error('Нужна картинка JPG, PNG или WEBP'), { statusCode: 400 });
   }
   const buf = await data.toBuffer();
+  const detected = rasterType(buf);
   const target = path.join(UPLOADS_DIR, dir);
   await fs.mkdir(target, { recursive: true });
-  const filename = `${prefix}_${nanoid(16)}${ext}`;
+  const filename = `${prefix}_${nanoid(16)}.${detected === 'jpeg' ? 'jpg' : detected}`;
   await fs.writeFile(path.join(target, filename), buf);
   return `/uploads/${dir}/${filename}`;
 }
@@ -55,43 +37,42 @@ export function presetToGenerateBody(template = {}) {
   const t = typeof template === 'string' ? JSON.parse(template) : template;
   const ratio = String(t.format || t.aspect_ratio || '1x1').replace(':', 'x');
   return {
-    prompt: t.prompt || t.idea || undefined,
+    headline: t.headline || t.idea || t.prompt || undefined,
     language: t.language || 'fr',
     format: ratio,
     count: Math.max(1, Math.min(10, Math.floor(Number(t.count ?? t.n ?? 3) || 3))),
     diversify: t.diversify,
     // FA logo keys live behind FA's Cloudflare; only our own uploads are usable here.
     logo_key: t.logo_key && !String(t.logo_key).startsWith('references/') ? t.logo_key : undefined,
-    landing_template_id: t.landing_template_id || undefined,
+    source: 'local',
   };
 }
 
 export async function startGeneration({ ws, userId, product, body }) {
   const { language = 'fr', landing_price, features } = body;
-  const { format, styles: pickedStyles } = creativePlan(body);
+  const { format, headline, styles: pickedStyles } = creativePlan(body);
+  const logo_key = body.logo_key || null;
+  if (logo_key && !/^\/uploads\/logos\/logo_[A-Za-z0-9_-]{16}\.(jpg|jpeg|png|webp)$/.test(logo_key)) throw Object.assign(new Error('Загрузите свой логотип'), { statusCode: 400 });
+  if (logo_key) await localImageData(logo_key);
   const product_id = product.id;
   const references = cleanReferenceKeys(body.reference_keys);
-  const records = await Promise.all(pickedStyles.map((style, index) =>
-    db.insert('creatives', {
+  const planned = pickedStyles.map((style, index) => ({
       id: `cr_${nanoid(20)}`,
       product_id,
       workspace_id: ws,
       created_by: userId,
       type: 'image',
       format,
-      status: 'processing',
-      metadata: { source: 'local', style, language, options: { language, landing_price, features, format, image: references.length ? references[index % references.length] : undefined } },
-    })
-  ));
-  // Sequential to avoid Playwright crashes
-  (async () => {
-    for (let i = 0; i < records.length; i++) {
-      await generateViaPlaywright(records[i], product, {
-        language, landing_price, style: pickedStyles[i], features, format,
-        image: references.length ? references[i % references.length] : undefined,
-      });
-    }
-  })().catch(console.error);
+      status: 'pending',
+      metadata: { source: 'local', style, language, options: { language, landing_price, features, format, headline, logo_key, image: references.length ? references[index % references.length] : undefined } },
+    }));
+  // One SQL statement: a failure must not leave a partially created batch.
+  const { rows: records } = await db.query(`INSERT INTO creatives
+    (id,product_id,workspace_id,created_by,type,format,status,metadata)
+    SELECT id,product_id,workspace_id,created_by,type,format,status,metadata
+    FROM jsonb_to_recordset($1::jsonb) AS batch(id text,product_id text,workspace_id text,
+      created_by text,type text,format text,status text,metadata jsonb) RETURNING *`, [JSON.stringify(planned)]);
+  wakeCreativeWorker();
   return { creatives: records, total: records.length, source: 'local' };
 }
 
@@ -170,15 +151,13 @@ export async function creativeRoutes(app) {
     const product = await db.findOne('products', { id: creative.product_id, workspace_id: req.user.ws });
     if (!product) return reply.status(404).send({ error: 'Product not found' });
 
-    const language = creative.metadata?.language || 'fr';
-    const format = creative.format || '1:1';
-
     await assertProductAccess(req, product.id);
     const metadata = { ...creative.metadata, source: 'local', error: null, image_pending: false };
-    await db.update('creatives', creative.id, { status: 'processing', metadata });
-    generateViaPlaywright({ ...creative, metadata }, product, {
-      ...creative.metadata?.options, language, format: format.replace(':', 'x'), style: creative.metadata?.style,
-    }).catch(console.error);
+    const { rowCount } = await db.query(`UPDATE creatives SET status='pending',metadata=$1::jsonb,
+      render_attempts=0,render_token=NULL,render_started_at=NULL
+      WHERE id=$2 AND workspace_id=$3 AND status='failed'`, [JSON.stringify(metadata),creative.id,req.user.ws]);
+    if (!rowCount) return reply.status(409).send({ error: 'Повтор уже запущен' });
+    wakeCreativeWorker();
 
     return { ok: true };
   });

@@ -70,28 +70,32 @@ test('source metadata tells the truth and retired imports are explicit', async (
   }
 });
 
-test('historic FA product uses own renderer; eight requests produce eight files and can retry locally', async () => {
-  // Browser transport is replaced here; this checks orchestration without an external service or a database.
-  chromium.launch = async () => ({ isConnected: () => true, newPage: async () => ({
-    setViewportSize: async () => {}, setContent: async s => { html.push(s); },
-    screenshot: async () => Buffer.from('test-jpeg'), close: async () => {},
-  }) });
+test('historic FA product queues eight persistent local requests and can retry locally', async () => {
   db.insert = async (table, row) => { rows.set(row.id, row); return row; };
   db.update = async (table, id, data) => { Object.assign(rows.get(id), data); return rows.get(id); };
   db.findOne = async (table, where) => table === 'products' ? product : rows.get(where.id);
-  db.query = async () => ({ rows: [{ id: product.id, created_by: user.id }] });
+  db.query = async (sql,params) => {
+    if (sql.includes('jsonb_to_recordset')) {
+      const planned=JSON.parse(params[0]);
+      for (const row of planned) rows.set(row.id,row);
+      return { rows:planned };
+    }
+    if (sql.includes("SET status='pending'")) {
+      Object.assign(rows.get(params[1]),{status:'pending',metadata:JSON.parse(params[0]),render_attempts:0});
+      return {rows:[],rowCount:1};
+    }
+    return { rows:[{id:product.id,created_by:user.id}] };
+  };
   const result = await startGeneration({ ws: user.ws, userId: user.id, product, body: { count: 8, format: '3x2', landing_price: 19, features: ['Useful feature'] } });
   assert.equal(result.total, 8);
   assert.equal(result.source, 'local');
-  const waitFor = async predicate => { for (let i = 0; i < 200; i++) { if (predicate()) return; await new Promise(r => setTimeout(r, 10)); } throw new Error('Local rendering did not finish'); };
-  await waitFor(() => [...rows.values()].every(row => row.status === 'done'));
+  assert.ok([...rows.values()].every(row=>row.status==='pending'));
   const row = [...rows.values()][0];
   assert.equal(row.metadata.options.landing_price, 19);
-  assert.ok(row.file_url);
   row.status = 'failed';
   const answer = await routes.get('post /:id/retry')({ params: { id: row.id }, user }, {});
   assert.equal(answer.ok, true);
-  await waitFor(() => row.status === 'done');
+  assert.equal(row.status,'pending');
   assert.equal(row.metadata.source, 'local');
   assert.equal(calls, 0);
 });

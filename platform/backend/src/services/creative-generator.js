@@ -2,32 +2,9 @@ import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs/promises';
 import { nanoid } from 'nanoid';
+import { localImageData } from './creative-assets.js';
 
-const BASE_DIR = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS_DIR, '..') : path.resolve('./');
-
-async function resolveImageAsBase64(imageUrl) {
-  if (!imageUrl) return null;
-  try {
-    // Local file path
-    if (imageUrl.startsWith('/uploads/')) {
-      const filePath = path.join(BASE_DIR, imageUrl);
-      const buf = await fs.readFile(filePath);
-      const ext = path.extname(filePath).slice(1).toLowerCase() || 'jpg';
-      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-      return `data:${mime};base64,${buf.toString('base64')}`;
-    }
-    // Already a data URI
-    if (imageUrl.startsWith('data:')) return imageUrl;
-    // External URL — fetch it
-    const res = await fetch(imageUrl);
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    const ct = res.headers.get('content-type') || 'image/jpeg';
-    return `data:${ct};base64,${buf.toString('base64')}`;
-  } catch {
-    return null;
-  }
-}
+const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 
@@ -40,6 +17,8 @@ const LABELS = {
   en: { cta: 'Order now', sale: 'SALE', off: 'off', shipping: 'Fast shipping' },
   de: { cta: 'Jetzt kaufen', sale: 'ANGEBOT', off: 'Rabatt', shipping: 'Schneller Versand' },
   pt: { cta: 'Compre agora', sale: 'PROMOÇÃO', off: 'de desconto', shipping: 'Entrega rápida' },
+  it: { sale: 'OFFERTA' },
+  nl: { sale: 'AANBIEDING' },
 };
 
 function getLabels(lang) {
@@ -56,7 +35,7 @@ function formatPrice(price, currency = '€') {
   return `${Number(price).toFixed(2).replace('.', ',')} ${currency}`;
 }
 
-function buildHtml(style, { title, imageUrl, oldPrice, newPrice, discount, features, lang, currency }) {
+export function buildCreativeHtml(style, { title, imageUrl, oldPrice, newPrice, discount, features, lang, currency, headline, logoUrl }) {
   const labels = getLabels(lang);
   const oldFmt = formatPrice(oldPrice, currency);
   const newFmt = formatPrice(newPrice, currency);
@@ -64,7 +43,7 @@ function buildHtml(style, { title, imageUrl, oldPrice, newPrice, discount, featu
   const shortTitle = title && title.length > 60 ? title.slice(0, 57) + '…' : (title || '');
 
   const featureList = (features || []).slice(0, 3).map(f =>
-    `<div class="feature"><span class="dot">✓</span>${f}</div>`
+    `<div class="feature"><span class="dot">✓</span>${esc(f)}</div>`
   ).join('');
 
   const discountBadge = discount ? `<div class="badge">-${discount}%</div>` : '';
@@ -152,6 +131,8 @@ body {
   align-items: center;
   padding: 40px 50px 36px;
 }
+.brand-logo { position:absolute;top:24px;left:32px;width:180px;height:72px;object-fit:contain;object-position:left center;z-index:10; }
+.headline { font-size:30px;font-weight:800;line-height:1.2;margin-bottom:12px;overflow-wrap:anywhere; }
 .badge {
   position: absolute;
   top: 32px;
@@ -264,17 +245,17 @@ body {
 <body>
 <div class="wrapper">
   ${discountBadge}
-  <div class="label-sale">${labels.sale}</div>
+  ${logoUrl ? `<img class="brand-logo" src="${esc(logoUrl)}" alt="" />` : discount ? `<div class="label-sale">${esc(labels.sale)}</div>` : ''}
 
   <div class="product-image">
-    ${imageUrl ? `<img src="${imageUrl}" />` : '<div style="width:400px;height:400px;background:rgba(128,128,128,0.1);border-radius:12px"></div>'}
+    <img src="${esc(imageUrl)}" alt="" />
   </div>
 
   <div class="info-card">
-    <div class="product-title">${shortTitle}</div>
+    ${headline ? `<div class="headline">${esc(headline)}</div>` : ''}
+    <div class="product-title">${esc(shortTitle)}</div>
     ${priceBlock}
     <div class="features">${featureList}</div>
-    <div class="shipping-line">🚚 ${labels.shipping}</div>
   </div>
 </div>
 </body>
@@ -282,20 +263,35 @@ body {
 }
 
 let browser = null;
+let launching = null;
 
 async function getBrowser() {
-  if (!browser || !browser.isConnected()) {
-    browser = await chromium.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-  }
-  return browser;
+  if (browser?.isConnected()) return browser;
+  if (!launching) launching = chromium.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] })
+    .then(value => { browser=value; return value; }).finally(() => { launching=null; });
+  return launching;
+}
+
+export async function closeCreativeBrowser() {
+  if (launching) await launching;
+  const current=browser; browser=null;
+  if (current) await current.close();
 }
 
 async function renderHtmlToImage(html, width = 1080, height = 1080) {
   const b = await getBrowser();
-  const page = await b.newPage();
+  const page = await b.newPage({ javaScriptEnabled:false });
   try {
+    await page.route('**/*', route => route.abort());
+    page.setDefaultTimeout(30000);
     await page.setViewportSize({ width, height });
     await page.setContent(html, { waitUntil: 'load' });
+    await page.evaluate(async () => {
+      await Promise.all([...document.images].map(async image => {
+        await image.decode();
+        if (!image.naturalWidth || image.naturalWidth * image.naturalHeight > 40000000) throw new Error('Изображение повреждено или слишком большое');
+      }));
+    });
     const full = await page.screenshot({ type: 'jpeg', quality: 90 });
 
     // Thumbnail at 400px wide
@@ -313,14 +309,16 @@ export async function generateCreative(product, preset, format, opts = {}) {
   try {
     await fs.mkdir(UPLOADS_DIR, { recursive: true });
 
-    const { language = 'fr', landing_price, style, features, image } = opts;
+    const { language = 'fr', landing_price, style, features, image, headline, logo_key } = opts;
 
     const images = Array.isArray(product.images)
       ? product.images
       : (typeof product.images === 'string' ? JSON.parse(product.images || '[]') : []);
 
     const rawImageUrl = image || images[0]?.url || images[0] || null;
-    const imageUrl = await resolveImageAsBase64(rawImageUrl);
+    if (!rawImageUrl) throw new Error('Добавьте фото товара или референс перед созданием креатива');
+    const imageUrl = await localImageData(rawImageUrl);
+    const logoUrl = logo_key ? await localImageData(logo_key) : null;
     const oldPrice = product.source_price;
     const newPrice = landing_price || null;
     const discount = calcDiscount(oldPrice, newPrice);
@@ -347,7 +345,7 @@ export async function generateCreative(product, preset, format, opts = {}) {
 
     const pickedStyle = style || STYLES[Math.floor(Math.random() * STYLES.length)];
 
-    const html = buildHtml(pickedStyle, {
+    const html = buildCreativeHtml(pickedStyle, {
       title: product.title,
       imageUrl,
       oldPrice,
@@ -356,6 +354,8 @@ export async function generateCreative(product, preset, format, opts = {}) {
       features: autoFeatures,
       lang: language,
       currency: '€',
+      headline,
+      logoUrl,
     });
 
     const { full: imgBuf, thumb: thumbBuf } = await renderHtmlToImage(html, w, h);
@@ -375,8 +375,7 @@ export async function generateCreative(product, preset, format, opts = {}) {
       language,
     };
   } catch (err) {
-    console.error('Creative generation failed:', err.message);
-    return null;
+    throw err;
   }
 }
 
