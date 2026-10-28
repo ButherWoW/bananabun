@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { products as productsApi, keitaro as keitaroApi, presets as presetsApi, scrape as scrapeApi } from '../api/client.js';
 import clsx from 'clsx';
+import { Link } from 'react-router-dom';
 
 function RetryButton({ productId, qc }) {
   const mut = useMutation({
@@ -83,6 +84,13 @@ export default function ProductSidePanel({ product, onClose, initialTab }) {
               <div className="flex items-center gap-2 mt-1.5">
                 <span className="text-xs text-red-400">Ошибка скрапинга</span>
                 <RetryButton productId={product.id} qc={qc} />
+              </div>
+            )}
+            {full?.preset_creatives_error && (
+              <div role="alert" className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                <p className="font-medium">Креативы по пресету не созданы</p>
+                <p className="mt-1 break-words">{full.preset_creatives_error}</p>
+                <Link to={`/creatives?product_id=${encodeURIComponent(product.id)}`} className="mt-1 inline-block underline">Открыть креативы</Link>
               </div>
             )}
           </div>
