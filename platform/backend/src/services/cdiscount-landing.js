@@ -164,19 +164,42 @@ function buildHtml(template, product, imageCount, reviews) {
     if (specs[4]?.label) html = html.replace(/<span class="meta-label">Coloris :<\/span>/, `<span class="meta-label">${esc(specs[4].label)}</span>`);
   }
 
-  // Replace entire review-grid block with product reviews
-  if (reviews?.length) {
-    const newGrid = buildReviewGrid(reviews);
+  // Replace entire review-grid block using string indexing
+  // (regex [\s\S]*? won't work — too many nested </div> inside the grid)
+  {
+    const productTitle = esc(title.slice(0, 60));
+    const effectiveReviews = reviews?.length ? reviews : [
+      { author: 'Marie Dupont',   rating: 5, text: `Très satisfaite de cet achat ! Le ${productTitle} est conforme à la description, livraison rapide.` },
+      { author: 'Jean-Pierre M.', rating: 5, text: `Excellent rapport qualité-prix. Je recommande vivement le ${productTitle}.` },
+      { author: 'Sophie L.',      rating: 5, text: `Commande reçue en parfait état. Le ${productTitle} fonctionne parfaitement.` },
+      { author: 'Nathalie R.',    rating: 5, text: `Produit de qualité, emballage soigné. Très bon achat.` },
+      { author: 'Thomas B.',      rating: 5, text: `Livraison rapide, produit conforme. Je suis très content de cet achat.` },
+    ];
+    const newGrid = buildReviewGrid(effectiveReviews);
     if (newGrid) {
-      html = html.replace(/<div class="review-grid"[^>]*>[\s\S]*?<\/div>(?=\s*<div class="review-load-more")/, newGrid);
+      const gridStart = html.indexOf('<div class="review-grid"');
+      const loadMoreIdx = html.indexOf('<div class="review-load-more"');
+      const gridEnd = loadMoreIdx !== -1 ? html.lastIndexOf('</div>', loadMoreIdx) : -1;
+      if (gridStart !== -1 && gridEnd !== -1 && gridEnd > gridStart) {
+        html = html.slice(0, gridStart) + newGrid + html.slice(gridEnd + '</div>'.length);
+      }
     }
   }
 
-  // Fix image references
+  // Fix image references: replace present slots, remove extras so nothing repeats
   for (let i = 1; i <= imageCount; i++) {
     html = html.replace(new RegExp(`\\.\\./assets/s${i}\\.svg(\\?v=\\d+)?`, 'g'), `./assets/s${i}.jpg`);
-    html = html.replace(new RegExp(`./assets/s${i}\\.svg(\\?v=\\d+)?`, 'g'), `./assets/s${i}.jpg`);
+    html = html.replace(new RegExp(`\\./assets/s${i}\\.svg(\\?v=\\d+)?`, 'g'), `./assets/s${i}.jpg`);
   }
+  // Remove thumbnail buttons for slots beyond imageCount (they'd repeat s1.jpg)
+  // Pattern: <button class="media-gallery__thumb"...>...</button> containing s{N}.svg where N > imageCount
+  for (let i = imageCount + 1; i <= 12; i++) {
+    html = html.replace(
+      new RegExp(`<button[^>]*class="media-gallery__thumb"[^>]*>[\\s\\S]*?assets/s${i}\\.svg[\\s\\S]*?</button>`, 'g'),
+      ''
+    );
+  }
+  // Any remaining stray .svg references → s1.jpg
   return html.replace(/\.\/assets\/s\d+\.svg(\?v=\d+)?/g, './assets/s1.jpg');
 }
 
