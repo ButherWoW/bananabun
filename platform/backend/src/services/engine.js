@@ -1,7 +1,4 @@
-/**
- * Scrape engine switch. 'fa' = the original platform does the work (any supported marketplace);
- * 'own' = our Playwright scraper (Amazon only). Set SCRAPE_ENGINE=own to move off FA.
- */
+/** Own engine only. Legacy FA environment variables cannot change the mode. */
 import { faAvailable, faScrapeProducts, faGetProduct, faImagesAvailable, faDownloadImage } from './fa-client.js';
 import { writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
@@ -11,7 +8,7 @@ import { nanoid } from 'nanoid';
 const IMAGES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'uploads', 'images');
 
 export function currentEngine() {
-  return (process.env.SCRAPE_ENGINE || 'fa') === 'fa' && faAvailable() ? 'fa' : 'own';
+  return 'own';
 }
 
 const AMAZON_TLDS = { fr: 'fr', es: 'es', de: 'de', it: 'it', 'co.uk': 'uk', com: 'com', nl: 'nl', pl: 'pl', 'com.be': 'be', se: 'se' };

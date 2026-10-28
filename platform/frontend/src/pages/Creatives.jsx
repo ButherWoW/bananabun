@@ -15,7 +15,7 @@ const LANGUAGES = [
 ];
 
 const FORMATS = ['1:1', '3:2', '2:3'];
-const COUNTS = [1, 2, 4, 8, 12, 20];
+const COUNTS = [1, 2, 4, 8, 10];
 const STATUS_COLOR = { done: 'text-green-400', processing: 'text-yellow-400', failed: 'text-red-400', pending: 'text-gray-400' };
 const STATUS_LABEL = { done: 'Готов', processing: 'Генерация…', failed: 'Ошибка', pending: 'Ожидание' };
 
@@ -171,29 +171,6 @@ export default function CreativesPage() {
     onSuccess: () => qc.invalidateQueries(['creatives']),
   });
 
-  const [showReadyImages, setShowReadyImages] = useState(false);
-  const { data: readyImagesData } = useQuery({
-    queryKey: ['creatives', 'ready-images'],
-    queryFn: creativesApi.readyImages,
-    enabled: showReadyImages,
-    staleTime: 60000,
-  });
-  const readyImages = readyImagesData?.items || [];
-
-  const importReadyMutation = useMutation({
-    mutationFn: ({ genId }) => creativesApi.importReady(genId, productIdFilter || undefined),
-    onSuccess: () => qc.invalidateQueries(['creatives']),
-  });
-
-  const { data: faReadyData } = useQuery({
-    queryKey: ['creatives-fa-ready'],
-    queryFn: creativesApi.faReady,
-    staleTime: 60000,
-    refetchInterval: 30000,
-  });
-  const faReady = faReadyData?.ready || [];
-  const faPending = faReadyData?.pending || [];
-
   async function handleGenerate() {
     if (!productIdFilter) return;
     let logo_key;
@@ -223,6 +200,7 @@ export default function CreativesPage() {
       if (res.ok) reference_keys.push((await res.json()).key);
     }
     generateMutation.mutate({
+      source: 'local',
       product_id: productIdFilter,
       language,
       format: format.replace(':', 'x'),
@@ -311,6 +289,7 @@ export default function CreativesPage() {
           </div>
         )}
 
+        <p className="px-4 pt-3 text-xs text-gray-400">Собственные шаблоны: фото товара, язык, формат и референсы. Идея, логотип и выбранный лендинг пока не влияют на результат.</p>
         {/* Idea textarea */}
         <div className="px-4 pt-3">
           <textarea
@@ -639,20 +618,6 @@ export default function CreativesPage() {
               🎬 Видео
             </button>
 
-            {/* FA Ready images */}
-            <button
-              onClick={() => setShowReadyImages(v => !v)}
-              className={clsx(
-                'text-xs px-2.5 py-1 rounded-lg border transition-colors',
-                showReadyImages
-                  ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
-                  : 'border-[color:var(--c2d3148)] text-gray-500 hover:text-white'
-              )}
-              title="Готовые из FA"
-            >
-              📥 FA Готовые
-            </button>
-
             {/* Select all */}
             {filtered.length > 0 && (
               <button
@@ -681,41 +646,6 @@ export default function CreativesPage() {
             )}
           </div>
         </div>
-
-        {/* FA Ready Images Panel */}
-        {showReadyImages && (
-          <div className="mx-6 mb-4 border border-emerald-500/30 rounded-xl bg-[color:var(--c0d1a14)] p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-emerald-300">📥 Готовые изображения FA</span>
-              <span className="text-xs text-gray-500">{readyImages.length} шт.</span>
-            </div>
-            {!readyImagesData ? (
-              <div className="text-xs text-gray-500 py-4 text-center">Загрузка…</div>
-            ) : readyImages.length === 0 ? (
-              <div className="text-xs text-gray-500 py-4 text-center">Нет готовых изображений</div>
-            ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {readyImages.map(item => (
-                  <div key={item.generation_id} className="flex items-center gap-3 bg-[color:var(--c13162b)] rounded-lg px-3 py-2">
-                    <span className="font-mono text-xs text-gray-400 truncate flex-1" title={item.generation_id}>
-                      {item.generation_id?.slice(0, 20)}…
-                    </span>
-                    {item.prompt && (
-                      <span className="text-xs text-gray-500 truncate max-w-xs" title={item.prompt}>{item.prompt}</span>
-                    )}
-                    <button
-                      onClick={() => importReadyMutation.mutate({ genId: item.generation_id })}
-                      disabled={importReadyMutation.isPending}
-                      className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/40 transition-colors disabled:opacity-50 shrink-0"
-                    >
-                      ↓ Импорт
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Content */}
         <div className="flex-1 p-6">
@@ -755,8 +685,8 @@ export default function CreativesPage() {
                         />
                       ) : creative.metadata?.image_pending ? (
                         <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-3 text-center">
-                          <span className="text-xs font-semibold text-indigo-300">Готово в FA</span>
-                          <span className="text-[10px] text-gray-500 leading-snug">Картинку покажем, когда FA откроет доступ к изображениям</span>
+                          <span className="text-xs font-semibold text-indigo-300">Нет файла изображения</span>
+                          <span className="text-[10px] text-gray-500 leading-snug">Повторите сборку собственным движком из фото товара</span>
                         </div>
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center gap-2">
@@ -833,50 +763,6 @@ export default function CreativesPage() {
           )}
         </div>
       </div>
-
-      {/* FA ready/pending generations panel */}
-      {(faReady.length > 0 || faPending.length > 0) && (
-        <div className="px-6 pb-4 border-t border-[color:var(--c1e2240)] pt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-medium text-gray-400">FA генерации</span>
-            {faPending.length > 0 && (
-              <span className="text-[10px] px-2 py-0.5 bg-yellow-500/15 text-yellow-400 rounded-full animate-pulse">
-                {faPending.length} в процессе
-              </span>
-            )}
-            {faReady.length > 0 && (
-              <span className="text-[10px] px-2 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full">
-                {faReady.length} готово
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-            {faReady.map((item, i) => (
-              <div key={item.id || i} className="relative aspect-square rounded-lg overflow-hidden bg-[color:var(--c141829)] border border-[color:var(--c1e2540)] group">
-                {item.url || item.image_url ? (
-                  <img src={item.url || item.image_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-600 text-xs">Нет превью</div>
-                )}
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="text-[10px] text-white truncate">{item.name || item.title || 'Готово'}</div>
-                </div>
-                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="text-[9px] bg-emerald-500/80 text-white px-1 py-0.5 rounded">FA</span>
-                </div>
-              </div>
-            ))}
-            {faPending.map((item, i) => (
-              <div key={item.id || i} className="relative aspect-square rounded-lg overflow-hidden bg-[color:var(--c141829)] border border-yellow-500/20 flex items-center justify-center">
-                <div className="text-center p-2">
-                  <div className="text-yellow-400/70 text-xs animate-pulse mb-1">⏳</div>
-                  <div className="text-[10px] text-gray-500 truncate">{item.name || item.title || 'Генерация...'}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Lightbox */}
       {preview && (

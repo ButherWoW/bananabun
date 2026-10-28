@@ -135,7 +135,7 @@ export async function analyticsRoutes(app) {
   });
 
   app.post('/fa-query', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(503).send({ error: 'FA не настроен' });
+    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
     if (!req.body?.plan) return reply.status(400).send({ error: 'Нужен план запроса' });
     try {
       return await faAnalyticsQuery(req.body.plan, req.body.compare_range);

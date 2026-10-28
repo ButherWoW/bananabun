@@ -225,14 +225,6 @@ export default function LandingsPage() {
 
   const uploadRef = useRef(null);
 
-  const syncFaMutation = useMutation({
-    mutationFn: landingTemplates.syncFa,
-    onSuccess: (res) => {
-      qc.invalidateQueries(['landing-templates']);
-      alert(`Синхронизировано: ${res.synced ?? 0} шаблонов (${res.created ?? 0} новых, ${res.updated ?? 0} обновлено)`);
-    },
-  });
-
   const uploadHtmlMutation = useMutation({
     mutationFn: (file) => landingTemplates.uploadHtml(file),
     onSuccess: () => qc.invalidateQueries(['landing-templates']),
@@ -330,13 +322,7 @@ export default function LandingsPage() {
           >
             {createFormPageMutation.isPending ? '...' : '📋 Форм'}
           </button>
-          <button
-            onClick={() => syncFaMutation.mutate()}
-            disabled={syncFaMutation.isPending}
-            className="text-xs px-3 py-1.5 rounded-lg bg-[color:var(--c1e2240)] hover:bg-indigo-600/40 text-gray-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
-          >
-            {syncFaMutation.isPending ? '...' : '↕ FA Sync'}
-          </button>
+
         </div>
       </div>
 

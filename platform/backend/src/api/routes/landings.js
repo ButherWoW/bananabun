@@ -266,7 +266,7 @@ function handleSubmit(e) {
   });
 
   app.post('/templates/sync-fa', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(503).send({ error: 'FA not configured' });
+    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
     try {
       const templates = await faListLandingTemplates();
       const list = Array.isArray(templates) ? templates : (templates.templates || templates.items || []);

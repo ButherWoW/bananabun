@@ -380,7 +380,7 @@ export async function campaignRoutes(app) {
   });
 
   app.get('/:id/history', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(503).send({ error: 'FA not configured' });
+    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
     await assertCampaignAccess(req, req.params.id);
     try {
       return await faCampaignHistory(req.params.id);
@@ -391,7 +391,7 @@ export async function campaignRoutes(app) {
 
   // :id here is the FA campaign (Facebook campaign id or fbkc_ row); adset ids come from /:id/ads.
   const fa = (handler) => async (req, reply) => {
-    if (!faAvailable()) return reply.status(503).send({ error: 'FA не настроен' });
+    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
     try {
       return await handler(req, reply);
     } catch (e) {
@@ -454,7 +454,7 @@ export async function campaignRoutes(app) {
   }));
 
   app.get('/:id/ads', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(503).send({ error: 'FA not configured' });
+    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
     await assertCampaignAccess(req, req.params.id);
     try {
       return await faGetCampaignAds(req.params.id);

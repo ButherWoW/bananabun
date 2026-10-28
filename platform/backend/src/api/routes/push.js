@@ -208,16 +208,14 @@ export async function pushRoutes(app) {
     }
   });
 
-  // Get FA push trace (step-by-step log)
+  // Read the log produced by our own push, with the same scope as status.
   app.get('/:id/trace', auth, async (req, reply) => {
-    const { faAvailable, faPushTrace } = await import('../../services/fa-client.js');
-    if (!faAvailable()) return { steps: [], status: 'no_fa' };
-    try {
-      const data = await faPushTrace(req.params.id);
-      return data;
-    } catch (e) {
-      return { steps: [], status: 'error', error: e.message };
-    }
+    const push = await db.findOne('pushes', { id: req.params.id, workspace_id: req.user.ws });
+    if (!push) return reply.status(404).send({ error: 'Not found' });
+    if (req.user.role === 'buyer' && push.created_by !== req.user.id) return reply.status(403).send({ error: 'Access denied' });
+    let steps = push.log;
+    if (typeof steps === 'string') { try { steps = JSON.parse(steps); } catch { steps = []; } }
+    return { steps: Array.isArray(steps) ? steps : [], status: push.status, source: 'own' };
   });
 
   // Get all options for push wizard

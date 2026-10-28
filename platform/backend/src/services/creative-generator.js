@@ -136,8 +136,8 @@ function buildHtml(style, { title, imageUrl, oldPrice, newPrice, discount, featu
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  width: 1080px;
-  height: 1080px;
+  width: 100vw;
+  height: 100vh;
   font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
   background: ${t.bg};
   color: ${t.textColor};
@@ -300,7 +300,7 @@ async function renderHtmlToImage(html, width = 1080, height = 1080) {
 
     // Thumbnail at 400px wide
     await page.setViewportSize({ width: 400, height: Math.round(400 * height / width) });
-    await page.setContent(html, { waitUntil: 'load' });
+    await page.setContent(`<html><body style="margin:0"><img style="display:block;width:100vw;height:100vh" src="data:image/jpeg;base64,${full.toString('base64')}"></body></html>`, { waitUntil: 'load' });
     const thumb = await page.screenshot({ type: 'jpeg', quality: 70 });
 
     return { full, thumb };
@@ -338,6 +338,8 @@ export async function generateCreative(product, preset, format, opts = {}) {
     // Detect format dimensions
     const DIMS = {
       '1x1': [1080, 1080],
+      '3x2': [1200, 800],
+      '2x3': [800, 1200],
       '4x5': [1080, 1350],
       '9x16': [1080, 1920],
     };

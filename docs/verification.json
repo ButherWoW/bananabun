@@ -1,30 +1,45 @@
 {
   "date": "2026-10-28",
-  "backend_tests": {
-    "passed": 26,
-    "failed": 0,
-    "skipped": 0,
-    "postgresql": 16,
-    "browser_generation": true
+  "baseline_commit": "e1b8b21",
+  "mode": "own",
+  "fa_required": false,
+  "fa_network_enabled": false,
+  "scope": "standalone follow-up; historical audit copy is separate",
+  "unit_checks": {
+    "passed": 6,
+    "database": "mocked",
+    "browser_transport": "mocked"
   },
-  "frontend": {
-    "production_build": "passed",
-    "ui_smoke": "passed: desktop/mobile login and nine pages on fixtures"
+  "real_chromium": {
+    "image_and_thumbnail_formats": [
+      "1x1",
+      "3x2",
+      "2x3"
+    ],
+    "passed": true
   },
-  "dependencies": {
-    "backend_known_vulnerabilities": 0,
-    "frontend_known_vulnerabilities": 0
+  "frontend_build": {
+    "passed": true,
+    "vite": "5.4.21",
+    "dependencies": "current lockfile, installed offline",
+    "warning": "large JS bundle"
   },
-  "live_checks": {
-    "adspower_profiles": 11,
-    "open_profiles": 0,
-    "fa_http_status": 401,
-    "cloudflare_service_credentials_present": false
+  "ui": {
+    "pages": [
+      "creatives",
+      "landings"
+    ],
+    "api": "fixtures",
+    "passed": true,
+    "fa_requests": 0
   },
-  "not_performed": [
-    "production deployment",
-    "paid FA scraping or generation",
-    "Facebook image upload or campaign creation",
-    "ad activation"
-  ]
+  "not_verified": [
+    "full backend startup",
+    "fresh database installation",
+    "real Amazon scrape",
+    "real Keitaro integration",
+    "real Facebook push",
+    "production deployment"
+  ],
+  "dependency_audit": "not rerun against the live registry in this follow-up"
 }

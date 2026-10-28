@@ -1,87 +1,12 @@
+import { assertProductAccess } from '../../middleware/access.js';
 import { nanoid } from 'nanoid';
 import path from 'path';
 import fs from 'fs/promises';
 import { db } from '../../db/client.js';
 import { generateCreative } from '../../services/creative-generator.js';
-import { faAvailable, faImagesAvailable, faGetCreative, faStartGeneration, faPollGeneration, faDownloadImage, faCreativeSpend, faCreativeOptions } from '../../services/fa-client.js';
+import { creativePlan } from '../../services/creative-plan.js';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
-
-// Aspect ratio label → FA format string
-const FORMAT_TO_FA = { '1x1': '1:1', '3x2': '3:2', '2x3': '2:3', '1:1': '1:1', '3:2': '3:2', '2:3': '2:3' };
-
-async function saveFaImage(genUrl) {
-  if (!genUrl || !faImagesAvailable()) return null;
-  await fs.mkdir(UPLOADS_DIR, { recursive: true });
-  const filename = `cr_${nanoid(16)}.png`;
-  await fs.writeFile(path.join(UPLOADS_DIR, filename), await faDownloadImage(genUrl));
-  return `/uploads/${filename}`;
-}
-
-// FA returns one generation id per image; each image becomes its own creative row.
-async function generateViaFA(record, product, opts) {
-  const { language, count, format, prompt, logo_key, landing_template_id, diversify, ws, userId } = opts;
-  try {
-    const genIds = await faStartGeneration({
-      product_id: product.external_id,
-      language,
-      n: count,
-      aspect_ratio: FORMAT_TO_FA[format] || '1:1',
-      prompt,
-      logo_key,
-      landing_template_id,
-      diversify,
-    });
-
-    const records = [record];
-    for (const genId of genIds.slice(1)) {
-      records.push(await db.insert('creatives', {
-        id: `cr_${nanoid(20)}`,
-        product_id: record.product_id,
-        workspace_id: ws,
-        created_by: userId,
-        type: 'image',
-        format,
-        status: 'processing',
-        metadata: JSON.stringify({ source: 'fa', language, generation_id: genId }),
-      }));
-    }
-
-    await Promise.all(genIds.map(async (genId, i) => {
-      const rec = records[i];
-      try {
-        const gen = await faPollGeneration(genId);
-        const remoteUrl = gen.url || gen.images?.[0]?.url || null;
-        const fileUrl = await saveFaImage(remoteUrl);
-        await db.update('creatives', rec.id, {
-          file_url: fileUrl,
-          thumbnail_url: fileUrl,
-          status: 'done',
-          metadata: JSON.stringify({
-            source: 'fa',
-            language,
-            generation_id: genId,
-            fa_url: remoteUrl,
-            image_pending: !fileUrl,
-            ...(gen.name ? { name: gen.name } : {}),
-            ...(gen.cost_usd != null ? { cost_usd: gen.cost_usd } : {}),
-          }),
-        });
-      } catch (err) {
-        await db.update('creatives', rec.id, {
-          status: 'failed',
-          metadata: JSON.stringify({ source: 'fa', language, generation_id: genId, error: err.message }),
-        });
-      }
-    }));
-  } catch (err) {
-    console.error('[FA creative] failed:', err.message);
-    await db.update('creatives', record.id, {
-      status: 'failed',
-      metadata: JSON.stringify({ source: 'fa', language, error: err.message }),
-    });
-  }
-}
 
 async function generateViaPlaywright(record, product, opts) {
   const { language, landing_price, style, features, format, image } = opts;
@@ -92,14 +17,14 @@ async function generateViaPlaywright(record, product, opts) {
         file_url: result.url,
         thumbnail_url: result.thumbnail,
         status: 'done',
-        metadata: { source: 'local', style: result.style, language: result.language },
+        metadata: { ...record.metadata, source: 'local', style: result.style, language: result.language },
       });
     } else {
-      await db.update('creatives', record.id, { status: 'failed' });
+      await db.update('creatives', record.id, { status: 'failed', metadata: { ...record.metadata, error: 'Собственный движок не смог создать изображение. Проверьте фото товара и Chromium.' } });
     }
   } catch (err) {
     console.error('[local creative] failed:', err.message);
-    await db.update('creatives', record.id, { status: 'failed' });
+    await db.update('creatives', record.id, { status: 'failed', metadata: { ...record.metadata, error: err.message } });
   }
 }
 
@@ -133,7 +58,7 @@ export function presetToGenerateBody(template = {}) {
     prompt: t.prompt || t.idea || undefined,
     language: t.language || 'fr',
     format: ratio,
-    count: Math.max(1, Math.min(10, Number(t.count ?? t.n ?? 3) || 3)),
+    count: Math.max(1, Math.min(10, Math.floor(Number(t.count ?? t.n ?? 3) || 3))),
     diversify: t.diversify,
     // FA logo keys live behind FA's Cloudflare; only our own uploads are usable here.
     logo_key: t.logo_key && !String(t.logo_key).startsWith('references/') ? t.logo_key : undefined,
@@ -142,53 +67,11 @@ export function presetToGenerateBody(template = {}) {
 }
 
 export async function startGeneration({ ws, userId, product, body }) {
-  const {
-    language = 'fr',
-    landing_price,
-    styles,         // for local mode: ['clean','dark',...]
-    count = 3,
-    features,
-    format = '1x1',
-    prompt: promptField,
-    idea,
-    logo_key,
-    landing_template_id,
-    source,         // 'fa' | 'local' | auto-detect
-  } = body;
-  const prompt = promptField || idea;
+  const { language = 'fr', landing_price, features } = body;
+  const { format, styles: pickedStyles } = creativePlan(body);
   const product_id = product.id;
   const references = cleanReferenceKeys(body.reference_keys);
-
-  const isFaProduct = product.engine === 'fa' && !!product.external_id;
-  if (source === 'fa' && !isFaProduct) {
-    throw Object.assign(new Error('Товар не связан с FA — пересоскрапь его, чтобы генерировать креативы в FA'), { statusCode: 400 });
-  }
-  const useFa = source !== 'local' && isFaProduct && faAvailable();
-
-  if (useFa) {
-    // FA: one record per generation (FA generates `count` images in one request)
-    const record = await db.insert('creatives', {
-      id: `cr_${nanoid(20)}`,
-      product_id,
-      workspace_id: ws,
-      created_by: userId,
-      type: 'image',
-      format,
-      status: 'processing',
-      metadata: { source: 'fa', language },
-    });
-    // FA knows only its own template ids (mtpl_…) and its own logo keys; ours would break the request.
-    const faTemplate = String(landing_template_id || '').startsWith('mtpl_') ? landing_template_id : undefined;
-    const faLogo = logo_key && !String(logo_key).startsWith('/uploads/') ? logo_key : undefined;
-    generateViaFA(record, product, { language, count, format, prompt, logo_key: faLogo, landing_template_id: faTemplate, diversify: body.diversify, ws, userId })
-      .catch(console.error);
-    return { creatives: [record], total: 1, source: 'fa' };
-  }
-
-  // Local Playwright: one record per style, sequential
-  const STYLES_ALL = ['clean', 'dark', 'gradient', 'bold', 'minimal'];
-  const pickedStyles = styles || STYLES_ALL.slice(0, Math.min(count, 5));
-  const records = await Promise.all(pickedStyles.map(style =>
+  const records = await Promise.all(pickedStyles.map((style, index) =>
     db.insert('creatives', {
       id: `cr_${nanoid(20)}`,
       product_id,
@@ -197,7 +80,7 @@ export async function startGeneration({ ws, userId, product, body }) {
       type: 'image',
       format,
       status: 'processing',
-      metadata: { source: 'local', style, language },
+      metadata: { source: 'local', style, language, options: { language, landing_price, features, format, image: references.length ? references[index % references.length] : undefined } },
     })
   ));
   // Sequential to avoid Playwright crashes
@@ -245,18 +128,23 @@ export async function creativeRoutes(app) {
     return rows;
   });
 
-  // Generate creatives — FA if configured, else local Playwright
+  // Own templates for every product, including records imported in the past.
   app.post('/generate', auth, async (req) => {
     const { ws, id: userId } = req.user;
     const product = await db.findOne('products', { id: req.body.product_id, workspace_id: ws });
     if (!product) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
+    await assertProductAccess(req, product.id);
     return startGeneration({ ws, userId, product, body: req.body });
   });
 
   // Info endpoint — which source is active
   app.get('/source', auth, async () => ({
-    fa_available: faAvailable(),
-    active: faAvailable() ? 'fa' : 'local',
+    fa_available: false,
+    active: 'local',
+    engine: 'own',
+    renderer: 'html-templates',
+    generative_ai: false,
+    supported_scrapers: ['amazon'],
   }));
 
   // Upload logo for creative generation
@@ -270,10 +158,11 @@ export async function creativeRoutes(app) {
     return { key, url: key };
   });
 
-  // Retry failed FA generation
+  // Retry through our own renderer; no external product ID is required.
   app.post('/:id/retry', auth, async (req, reply) => {
     const creative = await db.findOne('creatives', { id: req.params.id, workspace_id: req.user.ws });
     if (!creative) return reply.status(404).send({ error: 'Not found' });
+    if (req.user.role === 'buyer' && creative.created_by !== req.user.id) return reply.status(403).send({ error: 'Это не ваш креатив' });
     if (creative.status !== 'failed') return reply.status(400).send({ error: 'Only failed creatives can be retried' });
 
     const product = await db.findOne('products', { id: creative.product_id, workspace_id: req.user.ws });
@@ -282,11 +171,12 @@ export async function creativeRoutes(app) {
     const language = creative.metadata?.language || 'fr';
     const format = creative.format || '1:1';
 
-    if (product.engine !== 'fa' || !product.external_id) {
-      return reply.status(400).send({ error: 'Товар не связан с FA — пересоскрапь его' });
-    }
-    await db.update('creatives', creative.id, { status: 'processing', metadata: { ...creative.metadata, error: undefined } });
-    generateViaFA(creative, product, { language, count: 1, format, ws: req.user.ws, userId: req.user.id }).catch(console.error);
+    await assertProductAccess(req, product.id);
+    const metadata = { ...creative.metadata, source: 'local', error: null, image_pending: false };
+    await db.update('creatives', creative.id, { status: 'processing', metadata });
+    generateViaPlaywright({ ...creative, metadata }, product, {
+      ...creative.metadata?.options, language, format: format.replace(':', 'x'), style: creative.metadata?.style,
+    }).catch(console.error);
 
     return { ok: true };
   });
@@ -301,78 +191,13 @@ export async function creativeRoutes(app) {
     return { favorite: rows[0].favorite };
   });
 
-  // Creative spend counter
-  app.get('/spend', auth, async () => {
-    if (!faAvailable()) return { total_usd: null, count: 0 };
-    try {
-      return await faCreativeSpend();
-    } catch {
-      return { total_usd: null, count: 0 };
-    }
-  });
-
-  // FA ready images (pending/completed generations)
-  app.get('/ready-images', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(503).send({ error: 'FA not configured' });
-    try {
-      const data = await faCreativeOptions();
-      return { items: data.ready_images?.items || [] };
-    } catch (e) {
-      return reply.status(502).send({ error: e.message });
-    }
-  });
-
-  // Import a ready image from FA by generation_id
-  app.post('/import-ready/:genId', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(503).send({ error: 'FA not configured' });
-    const { genId } = req.params;
-    const { product_id } = req.body;
-    const { ws, id: userId } = req.user;
-    try {
-      const gen = await faGetCreative(genId);
-      if (gen.status !== 'ready' && gen.status !== 'done') throw new Error('Генерация в FA ещё не готова');
-      const imageUrl = gen.url || gen.images?.[0]?.url;
-      if (!imageUrl) throw new Error('No image URL in generation');
-
-      await fs.mkdir(UPLOADS_DIR, { recursive: true });
-      const buf = await faDownloadImage(imageUrl);
-      const filename = `cr_${nanoid(16)}.jpg`;
-      await fs.writeFile(path.join(UPLOADS_DIR, filename), buf);
-      const thumbBuf = await faDownloadImage(gen.thumbnail_url || imageUrl);
-      const thumbname = `thumb_${filename}`;
-      await fs.writeFile(path.join(UPLOADS_DIR, thumbname), thumbBuf);
-
-      const record = await db.insert('creatives', {
-        id: `cr_${nanoid(20)}`,
-        product_id: product_id || null,
-        workspace_id: ws,
-        created_by: userId,
-        type: 'image',
-        format: gen.aspect_ratio || '1:1',
-        status: 'done',
-        file_url: `/uploads/${filename}`,
-        thumbnail_url: `/uploads/${thumbname}`,
-        metadata: { source: 'fa_ready', generation_id: genId, ...(gen.name ? { name: gen.name } : {}) },
-      });
-      return record;
-    } catch (e) {
-      return reply.status(502).send({ error: e.message });
-    }
-  });
-
-  // FA ready/pending creatives (both ready_images and pending_images)
-  app.get('/fa-ready', auth, async () => {
-    if (!faAvailable()) return { ready: [], pending: [] };
-    try {
-      const data = await faCreativeOptions();
-      return {
-        ready: data.ready_images?.items || data.ready_images || [],
-        pending: data.pending_images?.items || data.pending_images || [],
-      };
-    } catch {
-      return { ready: [], pending: [] };
-    }
-  });
+  // Template rendering has no FA usage bill. Null means not measured, not zero cost.
+  app.get('/spend', auth, async () => ({ total_usd: null, count: 0, source: 'local' }));
+  // Legacy URLs are explicit retired features; never contact an external service.
+  const retired = async (req, reply) => reply.status(410).send({ error: 'FA отключён. Используйте собственные креативы.', code: 'FA_DISABLED' });
+  app.get('/ready-images', auth, retired);
+  app.post('/import-ready/:genId', auth, retired);
+  app.get('/fa-ready', auth, async () => ({ ready: [], pending: [], disabled: true }));
 
   // Delete creatives (bulk)
   // Buyers delete only their own creatives.
