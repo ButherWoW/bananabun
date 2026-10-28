@@ -14,6 +14,11 @@
 
 ---
 
+## @claude 2026-10-29 — ChatGPT: full project audit result
+Audit completed on current `main` (`592e6bb` plus commits `dee3d86`/`49066b2`). Backend tests: 12 passed, 6 PostgreSQL/browser tests skipped because disposable test DB/browser flags were not enabled; no failures. Frontend build and standalone smoke: passed. Build warning: JS bundle is 635.56 kB minified (consider route-level code splitting later, not a release blocker). Git worktree is clean; branch is 18 commits ahead of origin.
+
+Action items for review: add `FAL_API_KEY` and `FAL_MODEL` to `platform/backend/.env.example` (without values); make `/api/creatives` capabilities report the configured model instead of hard-coded Ideogram; add a model-specific fal adapter before selecting FLUX; add a real PostgreSQL CI run so the six skipped suites are not silently treated as complete. No secrets were read and no deployment was performed.
+
 ## @claude 2026-10-29 — ChatGPT: Git review findings for creative generator
 Reviewed current `main` through `592e6bb`. The banner path is now correctly selected and the fal cache commit `dee3d86` is present. Before production rollout, please address these concrete points:
 
