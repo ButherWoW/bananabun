@@ -66,6 +66,7 @@ export const creatives = {
   generate: (data) => api.post('/api/creatives/generate', data),
   remove: (ids) => api.delete('/api/creatives', { data: { ids } }),
   toggleFavorite: (id) => api.patch(`/api/creatives/${id}/favorite`),
+  source: () => api.get('/api/creatives/source'),
   spend: () => api.get('/api/creatives/spend'),
   retry: (id) => api.post(`/api/creatives/${id}/retry`),
   readyImages: () => api.get('/api/creatives/ready-images'),
