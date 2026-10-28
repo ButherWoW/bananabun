@@ -4,7 +4,7 @@
   "mode": "own",
   "fa_required": false,
   "fa_network_enabled": false,
-  "scope": "standalone follow-up; historical audit copy is separate",
+  "scope": "own creatives plus current main, local integration validation",
   "unit_checks": {
     "passed": 6,
     "database": "mocked",
@@ -41,5 +41,20 @@
     "real Facebook push",
     "production deployment"
   ],
-  "dependency_audit": "not rerun against the live registry in this follow-up"
+  "dependency_audit": "not rerun against the live registry in this follow-up",
+  "combined_tests": {
+    "passed": 35,
+    "failed": 0,
+    "skipped": 0,
+    "real_postgresql": true,
+    "real_backend_startup_and_render": true
+  },
+  "creative_features": [
+    "literal caption",
+    "uploaded logo",
+    "durable queued rendering",
+    "served JPEG URL",
+    "visible upload errors"
+  ],
+  "deployment": "handed to Claude; own creative changes not deployed by ChatGPT"
 }
