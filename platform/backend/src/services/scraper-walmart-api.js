@@ -178,10 +178,6 @@ export async function scrapeAmazonReviewsViaScraperApi(asin, marketplace = 'fr',
   try { d = await res.json(); } catch (e) { throw new Error(`ScraperAPI reviews invalid JSON: ${e.message}`); }
   return (Array.isArray(d.reviews) ? d.reviews : [])
     .slice(0, limit)
-    .map(r => ({
-      author: String(r.author || r.name || 'Client Amazon').slice(0, 100),
-      rating: Math.min(5, Math.max(1, Math.round(Number(r.rating) || 5))),
-      text: String(r.text || r.body || r.content || '').trim(),
-    }))
+    .map(r => ({ author: String(r.author || r.name || 'Client Amazon').slice(0, 100), rating: Math.min(5, Math.max(1, Math.round(Number(r.rating) || 5))), text: String(r.text || r.body || r.content || '').trim(), images: Array.isArray(r.images) ? r.images.filter(u => typeof u === 'string' && u.startsWith('https://')) : [], }))
     .filter(r => r.text.length > 10);
 }
