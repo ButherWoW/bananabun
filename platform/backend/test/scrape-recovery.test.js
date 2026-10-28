@@ -23,7 +23,7 @@ test('own scrape survives restarts', { skip: !testUrl }, async t => {
   const outside = [];
   globalThis.fetch = async (input) => {
     const u = new URL(String(input));
-    if (u.hostname.endsWith('media-amazon.com')) {
+    if (u.hostname.endsWith('media-amazon.com') || u.hostname.endsWith('walmartimages.com')) {
       return new Response(Buffer.alloc(4096, 7), { status: 200, headers: { 'content-type': 'image/jpeg' } });
     }
     outside.push(u.href);
@@ -192,7 +192,31 @@ test('own scrape survives restarts', { skip: !testUrl }, async t => {
     assert.equal(await batches('p10'), 0);
   });
 
-  await t.test('no request left the test except the Amazon image CDN', () => {
-    assert.deepEqual(outside, [], 'the non-Amazon image URL must be refused before any request');
+  await t.test('Walmart: own job type, Walmart CDN photos, no cross-currency old price', async () => {
+    const { parseProductLink } = await import('../src/services/engine.js');
+    const link = parseProductLink('https://www.walmart.com/ip/Ninja-CREAMi-Deluxe-NC501/1736263368?sid=x');
+    assert.deepEqual(link, { source: 'walmart', asin: '1736263368', marketplace: 'us', url: 'https://www.walmart.com/ip/1736263368' });
+    assert.equal(parseProductLink('https://www.walmart.com/browse/kitchen').asin, undefined, 'a category is not a product');
+    await pool.query(`INSERT INTO products(id,workspace_id,created_by,source,source_id,marketplace,scrape_status,bundle_config)
+      VALUES ('pw','w1','a','walmart','1736263368','us','processing',$1::jsonb)`,
+      [JSON.stringify([{ qty: '2', price: '199.00', currency: 'EUR', offer_id: 313 }])]);
+    const jobId = await enqueueOwnScrape('w1', 'pw', '1736263368', 'us', 'walmart');
+    const j = (await db.query('SELECT type, payload FROM agent_jobs WHERE id = $1', [jobId])).rows[0];
+    assert.equal(j.type, 'scrape_walmart');
+    assert.equal(j.payload.url, 'https://www.walmart.com/ip/1736263368');
+    await applyScrapeResult('w1', jobId, true, {
+      title: 'Ninja CREAMi Deluxe', price: 249.99, currency: 'USD', rating: 4.3, reviews_count: 941,
+      images: ['https://i5.walmartimages.com/seo/a.jpeg', 'https://evil.example/b.jpeg'], description: 'Real text',
+    });
+    const p = await row('pw'); remember(p);
+    assert.equal(p.scrape_status, 'done');
+    assert.equal(Number(p.source_price), 249.99);
+    assert.equal(p.images.length, 1, 'only the Walmart CDN photo');
+    assert.equal(p.bundle_config[0].old_price, '', 'a USD price is never an old price for a EUR bundle');
+    await assert.rejects(enqueueOwnScrape('w1', 'pw', 'not-an-id', 'us', 'walmart'), /walmart\.com\/ip/);
+  });
+
+  await t.test('no request left the test except the shops’ image CDNs', () => {
+    assert.deepEqual(outside, [], 'image URLs outside the shops’ CDNs must be refused before any request');
   });
 });

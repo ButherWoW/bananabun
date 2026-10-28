@@ -65,8 +65,12 @@ async function createPlaceholder({ ws, userId, link, engine, folderId, presetId,
 
 // The job is stored on the product; its result is applied in routes/agent.js when the agent reports,
 // and services/scrape-jobs.js recovers results after a restart.
-function runOwnScrape(ws, productId, asin, marketplace) {
-  enqueueOwnScrape(ws, productId, asin, marketplace).catch(async (err) => {
+// Shops the own engine scrapes; a Walmart link must point at a product (/ip/…/<item id>).
+const OWN_SOURCES = new Set(['amazon', 'walmart']);
+const ownScrapable = (link) => OWN_SOURCES.has(link.source) && !!link.asin;
+
+function runOwnScrape(ws, productId, asin, marketplace, source = 'amazon') {
+  enqueueOwnScrape(ws, productId, asin, marketplace, source).catch(async (err) => {
     logScrapeError(err);
     await db.update('products', productId, {
       scrape_status: 'failed',
@@ -103,8 +107,8 @@ async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetI
   const bad = links.filter(l => !l.link).map(l => l.input);
   if (bad.length) throw badRequest('Не распознаны ссылки (нужны Amazon, Walmart, Target, Best Buy или Etsy): ' + bad.join(', '));
   if (engine === 'own') {
-    const notAmazon = links.filter(l => l.link.source !== 'amazon').map(l => l.input);
-    if (notAmazon.length) throw badRequest('Свой движок пока скрапит только Amazon: ' + notAmazon.join(', '));
+    const unsupported = links.filter(l => !ownScrapable(l.link)).map(l => l.input);
+    if (unsupported.length) throw badRequest('Свой движок скрапит Amazon и товары Walmart (walmart.com/ip/…); Target, Best Buy и Etsy пока нет: ' + unsupported.join(', '));
   }
 
   const bundles = await loadPresetBundles(ws, presetId);
@@ -115,7 +119,7 @@ async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetI
   }
 
   if (engine === 'fa') runFaScrapes(products);
-  else products.forEach(p => runOwnScrape(ws, p.id, p.source_id, p.marketplace));
+  else products.forEach(p => runOwnScrape(ws, p.id, p.source_id, p.marketplace, p.source));
 
   return { engine, products };
 }
@@ -171,8 +175,8 @@ export async function scrapeRoutes(app) {
     if (!link) return reply.status(400).send({ error: 'У товара нет корректной ссылки — удали его и соскрапь заново' });
 
     const engine = currentEngine();
-    if (engine === 'own' && link.source !== 'amazon') {
-      return reply.status(400).send({ error: 'Свой движок пока скрапит только Amazon' });
+    if (engine === 'own' && !ownScrapable(link)) {
+      return reply.status(400).send({ error: 'Свой движок скрапит Amazon и товары Walmart; Target, Best Buy и Etsy пока нет' });
     }
     const updated = await db.update('products', product.id, {
       engine,
@@ -186,7 +190,7 @@ export async function scrapeRoutes(app) {
       scrape_started_at: new Date(),
     });
     if (engine === 'fa') runFaScrapes([updated]);
-    else runOwnScrape(req.user.ws, product.id, link.asin, link.marketplace);
+    else runOwnScrape(req.user.ws, product.id, link.asin, link.marketplace, link.source);
 
     return { ok: true, status: 'processing', engine };
   });

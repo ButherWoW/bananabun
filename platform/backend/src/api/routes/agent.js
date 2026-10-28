@@ -149,7 +149,7 @@ export async function agentRoutes(app) {
     }
     if (type === 'push' && payload?.push_id) await applyPushResult(req.agentWs, payload.push_id, ok, result.error, result.data, req.params.id);
     // Product scrape: applied after the answer (photo downloads take a while); recoverScrapes() covers a crash in between.
-    if (type === 'scrape_amazon' && payload?.product_id) {
+    if ((type === 'scrape_amazon' || type === 'scrape_walmart') && payload?.product_id) {
       applyScrapeResult(req.agentWs, req.params.id, ok, result.data, result.error).catch(e => req.log.error({ err: e.message }, 'scrape result'));
     }
     return { ok: true };
