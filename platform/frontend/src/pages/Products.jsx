@@ -8,11 +8,11 @@ import GenerateLandingModal from '../components/GenerateLandingModal.jsx';
 import clsx from 'clsx';
 
 const PLATFORMS = [
-  { name: 'Amazon', ready: true },
-  { name: 'Walmart', ready: true },
-  { name: 'Target' },
-  { name: 'Best Buy' },
-  { name: 'Etsy' },
+  { name: 'Amazon', source: 'amazon' },
+  { name: 'Walmart', source: 'walmart' },
+  { name: 'Target', source: 'target' },
+  { name: 'Best Buy', source: 'bestbuy' },
+  { name: 'Etsy', source: 'etsy' },
 ];
 
 const inputCls = 'w-full bg-[color:var(--c141829)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500';
@@ -129,7 +129,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
   const { data: bundlePresets = [] } = useQuery({ queryKey: ['presets', 'bundles'], queryFn: presetsApi.bundles, retry: false });
   const { data: creativePresets = [] } = useQuery({ queryKey: ['presets', 'creatives'], queryFn: presetsApi.creativePresets, retry: false });
   const { data: engineInfo } = useQuery({ queryKey: ['scrape-engine'], queryFn: scrapeApi.engine, retry: false, staleTime: 60000 });
-  const allPlatforms = engineInfo?.engine === 'fa';
+  const supportedSources = engineInfo?.supported_sources || ['amazon'];
 
   const addUrl = () => setUrls(u => [...u, '']);
   const removeUrl = (i) => setUrls(u => u.length === 1 ? [''] : u.filter((_, idx) => idx !== i));
@@ -155,7 +155,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
             <div className="text-xs text-gray-400 mb-2">Разбор работает с площадками:</div>
             <div className="flex flex-wrap gap-2">
               {PLATFORMS.map(p => {
-                const ready = p.ready || allPlatforms;
+                const ready = supportedSources.includes(p.source);
                 return (
                   <span
                     key={p.name}

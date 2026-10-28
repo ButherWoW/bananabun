@@ -23,7 +23,7 @@ test('own scrape survives restarts', { skip: !testUrl }, async t => {
   const outside = [];
   globalThis.fetch = async (input) => {
     const u = new URL(String(input));
-    if (u.hostname.endsWith('media-amazon.com') || u.hostname.endsWith('walmartimages.com')) {
+    if (['media-amazon.com','walmartimages.com','target.scene7.com','bbystatic.com','etsystatic.com'].some(host=>u.hostname===host || u.hostname.endsWith('.'+host))) {
       return new Response(Buffer.alloc(4096, 7), { status: 200, headers: { 'content-type': 'image/jpeg' } });
     }
     outside.push(u.href);
@@ -214,6 +214,32 @@ test('own scrape survives restarts', { skip: !testUrl }, async t => {
     assert.equal(p.images.length, 1, 'only the Walmart CDN photo');
     assert.equal(p.bundle_config[0].old_price, '', 'a USD price is never an old price for a EUR bundle');
     await assert.rejects(enqueueOwnScrape('w1', 'pw', 'not-an-id', 'us', 'walmart'), /walmart\.com\/ip/);
+  });
+
+  for (const shop of [
+    {source:'target',id:'91863920',url:'https://www.target.com/p/fixture/-/A-91863920',image:'https://target.scene7.com/is/image/Target/fixture'},
+    {source:'bestbuy',id:'J3GW7QQSXX',url:'https://www.bestbuy.com/product/fixture/J3GW7QQSXX',image:'https://pisces.bbystatic.com/fixture.jpg'},
+    {source:'etsy',id:'1234567890',url:'https://www.etsy.com/listing/1234567890/fixture',image:'https://i.etsystatic.com/fixture.jpg'},
+  ]) await t.test(shop.source+': durable job, local photos, replay and failure reason', async()=>{
+    const id='new_'+shop.source;
+    await pool.query(`INSERT INTO products(id,workspace_id,created_by,source,source_id,source_url,scrape_status)
+      VALUES ($1,'w1','a',$2,$3,$4,'processing')`,[id,shop.source,shop.id,shop.url]);
+    const jobId=await enqueueOwnScrape('w1',id,shop.id,'us',shop.source,shop.url);
+    const queued=(await db.query('SELECT type,payload FROM agent_jobs WHERE id=$1',[jobId])).rows[0];
+    assert.equal(queued.type,'scrape_'+shop.source);assert.equal(queued.payload.url,shop.url);
+    const data={title:'Synthetic '+shop.source,price:42.5,currency:'USD',rating:null,reviews_count:null,images:[shop.image,'https://evil.example/fixture.jpg','https://target.scene7.com.evil.example/fixture.jpg']};
+    await db.query(`UPDATE agent_jobs SET status='done',result=$2 WHERE id=$1`,[jobId,JSON.stringify({ok:true,data})]);
+    await Promise.all([recoverScrapes(),recoverScrapes()]);
+    const p=await row(id);remember(p);
+    assert.equal(p.scrape_status,'done');assert.equal(p.title,data.title);assert.equal(p.images.length,1);
+    assert.equal(p.source_currency,'USD');
+    assert.equal(p.reviews_count,null,'unknown review count is not invented');
+    await recoverScrapes();assert.deepEqual((await row(id)).images,p.images,'no duplicate photos after replay');
+    await db.query("UPDATE products SET scrape_status='processing' WHERE id=$1",[id]);
+    const retry=await enqueueOwnScrape('w1',id,shop.id,'us',shop.source,shop.url);
+    await applyScrapeResult('w1',retry,false,null,'Robot check: manual action required');
+    assert.equal((await row(id)).scrape_error,'Robot check: manual action required');
+    await assert.rejects(enqueueOwnScrape('w1',id,'WRONG','us',shop.source,shop.url),/Invalid product URL/);
   });
 
   await t.test('no request left the test except the shops’ image CDNs', () => {

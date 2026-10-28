@@ -133,9 +133,9 @@ export async function creativeRoutes(app) {
     fa_available: false,
     active: fluxEnabled() ? 'flux' : 'local',
     engine: fluxEnabled() ? 'flux-ai' : 'own',
-    renderer: fluxEnabled() ? 'fal-ai/ideogram/v2' : 'html-templates',
+    renderer: fluxEnabled() ? FAL_MODEL : 'html-templates',
     generative_ai: fluxEnabled(),
-    supported_scrapers: ['amazon', 'walmart'],
+    supported_scrapers: ['amazon', 'walmart', 'target', 'bestbuy', 'etsy'],
   }));
 
   // Upload logo for creative generation

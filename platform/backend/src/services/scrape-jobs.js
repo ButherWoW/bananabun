@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
 import { enqueueAgentJob } from '../api/routes/agent.js';
-import { amazonUrl, withRealOldPrice, MARKET_CURRENCY } from './engine.js';
+import { amazonUrl, withRealOldPrice, MARKET_CURRENCY, parseProductLink } from './engine.js';
 import { AMAZON_MARKETS, productFromAgentData } from './scraper.js';
 import { scrapeWalmartViaScraperApi, scrapeAmazonViaScraperApi, scraperApiEnabled } from './scraper-walmart-api.js';
 
@@ -19,17 +19,14 @@ function parseBundles(raw) {
 }
 
 // Own engine: Amazon (any of our marketplaces) and Walmart (walmart.com item id).
-export async function enqueueOwnScrape(ws, productId, asin, marketplace, source = 'amazon') {
+export async function enqueueOwnScrape(ws, productId, asin, marketplace, source = 'amazon', sourceUrl) {
   let type, url;
   if (source === 'walmart') {
     if (!/^\d{5,15}$/.test(String(asin || ''))) throw new Error('Нужна ссылка на товар Walmart вида walmart.com/ip/…/<номер>');
     type = 'scrape_walmart'; url = `https://www.walmart.com/ip/${asin}`;
 
     // Fast path: ScraperAPI handles Walmart server-side (~3-5 sec), no Mac agent needed.
-    // Job is created with status='taken' so the Mac agent never picks it up.
-    // Falls back to status='pending' (agent picks up) only when ScraperAPI fails.
     if (scraperApiEnabled()) {
-      // Insert directly with taken status so the agent skips it.
       const { rows: [job] } = await db.query(
         `INSERT INTO agent_jobs (workspace_id, type, payload, status, taken_at)
          VALUES ($1, $2, $3::jsonb, 'taken', NOW()) RETURNING id`,
@@ -37,24 +34,24 @@ export async function enqueueOwnScrape(ws, productId, asin, marketplace, source 
       const jobId = job.id;
       await db.query(`UPDATE products SET scrape_job_id = $1, scrape_status = 'processing', scrape_error = NULL,
                        scrape_started_at = NOW() WHERE id = $2 AND workspace_id = $3`, [jobId, productId, ws]);
-
       scrapeWalmartViaScraperApi(asin)
         .then(async (data) => {
-          await db.query(
-            `UPDATE agent_jobs SET status = 'done', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
+          await db.query(`UPDATE agent_jobs SET status = 'done', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
             [JSON.stringify({ ok: true, data }), jobId]);
           await applyScrapeResult(ws, jobId, true, data, null);
         })
         .catch(async (e) => {
-          console.warn(`[scraperapi] walmart/${asin} failed:`, e.message);
-          await db.query(
-            `UPDATE agent_jobs SET status = 'failed', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
-            [JSON.stringify({ ok: false, error: e.message }), jobId]);
-          await applyScrapeResult(ws, jobId, false, null, e.message);
+          console.warn(`[scraperapi] walmart/${asin} failed, falling back to Mac agent:`, e.message);
+          await db.query(`UPDATE agent_jobs SET status = 'pending', taken_at = NULL, result = NULL WHERE id = $1`, [jobId]);
         });
       return jobId;
     }
+  } else if (['target', 'bestbuy', 'etsy'].includes(source)) {
+    const link = parseProductLink(sourceUrl);
+    if (!link || link.source !== source || link.asin !== String(asin)) throw new Error('Invalid product URL for ' + source);
+    type = 'scrape_' + source; url = link.url;
   } else {
+    if (source !== 'amazon') throw new Error('Unsupported marketplace');
     if (!AMAZON_MARKETS.includes(marketplace)) throw new Error(`Неизвестный маркетплейс Amazon: ${marketplace}`);
     type = 'scrape_amazon'; url = amazonUrl(asin, marketplace);
 
@@ -128,14 +125,14 @@ export async function applyScrapeResult(ws, jobId, ok, data, error) {
   const { rowCount } = await db.query(`
     UPDATE products SET title = $1, description = $2, source_price = $3, images = $4::jsonb, rating = $5, reviews_count = $6,
            photo_reviews_count = $7, has_photo_reviews = $8, bundle_config = COALESCE($9::jsonb, bundle_config),
-           scrape_status = 'done', scrape_error = NULL, updated_at = NOW(),
+           scrape_status = 'done', scrape_error = NULL, updated_at = NOW(), source_currency = $13,
            preset_creatives_due_at = CASE WHEN creative_preset_id IS NOT NULL THEN NOW() ELSE NULL END,
            preset_creatives_lease_at = NULL, preset_creatives_attempts = 0, preset_creatives_error = NULL
      WHERE id = $10 AND workspace_id = $11 AND scrape_job_id = $12 AND scrape_status = 'processing'`,
     [d.title, d.description, d.price, JSON.stringify(d.images), d.rating, d.reviews_count,
      // null = unknown: Amazon shows the photo-review count only to signed-in visitors.
      d.photo_reviews_count ?? null, !!d.has_photo_reviews,
-     bundles.length ? JSON.stringify(withRealOldPrice(bundles, d.price, d.currency || MARKET_CURRENCY[p.marketplace])) : null, p.id, ws, jobId]);
+     bundles.length ? JSON.stringify(withRealOldPrice(bundles, d.price, d.currency || MARKET_CURRENCY[p.marketplace])) : null, p.id, ws, jobId, d.currency || MARKET_CURRENCY[p.marketplace] || null]);
   if (rowCount) { await runPresetCreatives(ws, p.id); saveReviews(p.id, data?.reviews).catch(() => {}); }
 }
 

@@ -39,9 +39,17 @@ export function parseProductLink(input, fallbackMarketplace = 'fr') {
     if (!item) return { source: 'walmart', url: clean };
     return { source: 'walmart', asin: item, marketplace: 'us', url: `https://www.walmart.com/ip/${item}` };
   }
-  if (/(^|\.)target\.com$/.test(host)) return { source: 'target', url: clean };
-  if (/(^|\.)bestbuy\.com$/.test(host)) return { source: 'bestbuy', url: clean };
-  if (/(^|\.)etsy\.com$/.test(host)) return { source: 'etsy', url: clean };
+  const rules = {
+    target: [/^(www\.)?target\.com$/, /^\/p\/.*\/A-(\d{5,15})\/?$/],
+    bestbuy: [/^(www\.)?bestbuy\.com$/, /^\/(?:site\/(?:[^/]+\/)?|product\/[^/]+\/)([A-Za-z0-9]{5,20})(?:\.p)?\/?$/],
+    etsy: [/^(www\.)?etsy\.com$/, /^\/(?:[a-z]{2}\/)?listing\/(\d{5,20})(?:\/[^/]+)?\/?$/],
+  };
+  for (const [source, [domain, path]] of Object.entries(rules)) {
+    if (!domain.test(host)) continue;
+    const id = u.pathname.match(path)?.[1];
+    if (!id || u.username || u.password || u.port) return {source, url: clean};
+    return {source, asin: id, marketplace: source === 'etsy' ? null : 'us', url: 'https://www.' + host + u.pathname};
+  }
   return null;
 }
 
@@ -54,7 +62,7 @@ export function amazonUrl(asin, marketplace) {
 export function sameProduct(a, b) {
   const pa = parseProductLink(a), pb = parseProductLink(b);
   if (!pa || !pb) return false;
-  if (pa.asin || pb.asin) return pa.asin === pb.asin;
+  if (pa.asin || pb.asin) return pa.source === pb.source && pa.asin === pb.asin;
   return pa.url.replace(/\/$/, '') === pb.url.replace(/\/$/, '');
 }
 

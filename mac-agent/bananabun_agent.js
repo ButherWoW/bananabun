@@ -8,6 +8,7 @@ import { api } from './lib/adspower.js';
 import { editFbObjects, openFbSession, readFbAssets, readFbCampaigns } from './lib/fbprofile.js';
 import { emptyState, runFbPush } from './lib/fbpush.js';
 import { scrapeAmazon, searchAmazonPage } from './lib/amazon.js';
+import { scrapeMarketplace } from './lib/marketplaces.js';
 import { scrapeWalmart } from './lib/walmart.js';
 import { findKey, totp } from './lib/totp.js';
 import { ROOT, readSecret, sleep, redact, readJson, writeJson } from './lib/common.js';
@@ -109,6 +110,7 @@ async function runJob(job) {
   if (job.type === 'scrape_amazon') return amazonJob(() => scrapeAmazon(String(job.payload?.url || '')));
   // Same scrape profile: Walmart pages queue behind Amazon ones.
   if (job.type === 'scrape_walmart') return amazonJob(() => scrapeWalmart(String(job.payload?.url || '')));
+  if (['scrape_target', 'scrape_bestbuy', 'scrape_etsy'].includes(job.type)) return amazonJob(() => scrapeMarketplace(job.type.slice(7), String(job.payload?.url || '')));
   if (job.type === 'search_amazon') return amazonJob(() => searchAmazonPage(String(job.payload?.url || '')));
   if (job.type === 'sync') return syncProfiles();
   if (job.type === 'open') {

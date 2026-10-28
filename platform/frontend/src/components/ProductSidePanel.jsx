@@ -280,9 +280,8 @@ function CardTab({ product, qc }) {
       {/* Source price */}
       {product?.source_price && (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-500">Цена Amazon:</span>
-          <span className="text-white font-medium">{product.source_price} €</span>
-          <span className="text-xs text-gray-600">(зачёркнутая)</span>
+          <span className="text-gray-500">Цена магазина:</span>
+          <span className="text-white font-medium">{product.source_price} {product.source_currency || ''}</span>
         </div>
       )}
 
@@ -460,9 +459,9 @@ function BundlesTab({ product, qc }) {
   function addBundle() {
     setBundles(b => [...b, {
       qty: String(b.length + 1),
-      old_price: product?.source_price || '',
+      old_price: product?.source_currency ? product.source_price || '' : '',
       price: '',
-      currency: 'EUR',
+      currency: product?.source_currency || 'EUR',
       offer_id: '',
     }]);
   }

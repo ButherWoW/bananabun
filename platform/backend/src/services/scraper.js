@@ -11,8 +11,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const IMAGES_DIR = process.env.UPLOADS_DIR ? join(resolve(process.env.UPLOADS_DIR), 'images') : join(__dirname, '..', '..', 'uploads', 'images');
 
 // Only the shops' image CDNs over https: the URL comes from a scraped page, so nothing else is fetched.
-const IMAGE_HOST = /(^|\.)(media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com|walmartimages\.com)$/i;
-const refererOf = (host) => (/walmartimages\.com$/i.test(host) ? 'https://www.walmart.com/' : 'https://www.amazon.fr/');
+const IMAGE_HOST = /(^|\.)(media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com|walmartimages\.com|target\.scene7\.com|bbystatic\.com|etsystatic\.com)$/i;
+const refererOf = host => {
+  if (/(^|\.)walmartimages\.com$/i.test(host)) return 'https://www.walmart.com/';
+  if (/(^|\.)target\.scene7\.com$/i.test(host)) return 'https://www.target.com/';
+  if (/(^|\.)bbystatic\.com$/i.test(host)) return 'https://www.bestbuy.com/';
+  if (/(^|\.)etsystatic\.com$/i.test(host)) return 'https://www.etsy.com/';
+  return 'https://www.amazon.fr/';
+};
 const RASTER = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 const MAX_IMAGE = 15 * 1024 * 1024;
 
@@ -62,7 +68,7 @@ export async function productFromAgentData(data, asin) {
   if (!data?.title) throw new Error('На странице Amazon не найден товар — проверьте ссылку');
   const localImages = await Promise.all((data.images || []).slice(0, 8).map((url, i) => downloadImage(url, asin, i)));
   return {
-    title: data.title, price: data.price, rating: data.rating, reviews_count: data.reviews_count || 0,
+    title: data.title, price: data.price, rating: data.rating, reviews_count: data.reviews_count ?? null,
     description: data.description, photo_reviews_count: data.photo_reviews_count ?? null, has_photo_reviews: !!data.has_photo_reviews,
     images: localImages.filter(Boolean),
     currency: typeof data.currency === 'string' && /^[A-Z]{3}$/.test(data.currency) ? data.currency : null,
