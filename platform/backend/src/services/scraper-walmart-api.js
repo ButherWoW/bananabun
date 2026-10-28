@@ -7,8 +7,8 @@
 //   description, features, product_information.
 
 const SCRAPER_API_BASE = 'https://api.scraperapi.com';
-// Each Walmart JS-rendered page costs ~10 credits with autoparse.
-const TIMEOUT_MS = 30_000;
+// Amazon/Walmart pages with JS rendering can take 30-60s on ScraperAPI.
+const TIMEOUT_MS = 60_000;
 
 /**
  * Fetch Walmart product data for a given item ID via ScraperAPI.
@@ -71,20 +71,36 @@ export async function scrapeWalmartViaScraperApi(itemId) {
   const currency = (typeof d.price_currency === 'string' && /^[A-Z]{3}$/.test(d.price_currency))
     ? d.price_currency : 'USD';
 
-  return { title: name, price, rating, reviews_count, description, images, currency };
+  // Reviews from the same page (up to 5 from Walmart autoparse)
+  const reviews = Array.isArray(d.reviews)
+    ? d.reviews.slice(0, 10).map(r => ({
+        author: String(r.author || r.reviewer_name || 'Client').slice(0, 100),
+        rating: Math.min(5, Math.max(1, Math.round(Number(r.rating) || 5))),
+        text: String(r.text || r.body || '').trim(),
+        images: [],
+      })).filter(r => r.text.length > 5)
+    : [];
+
+  return { title: name, price, rating, reviews_count, description, images, currency, reviews };
 }
 
 // ─── Amazon ────────────────────────────────────────────────────────────────
 
-// Map our marketplace codes → ScraperAPI country codes for the structured endpoint.
+// Amazon domain by marketplace code.
+const AMAZON_DOMAIN = {
+  fr: 'amazon.fr', es: 'amazon.es', de: 'amazon.de', it: 'amazon.it',
+  uk: 'amazon.co.uk', com: 'amazon.com', nl: 'amazon.nl',
+  pl: 'amazon.pl', be: 'amazon.com.be', se: 'amazon.se',
+};
+
+// Map our marketplace codes → ScraperAPI country codes for the reviews endpoint.
 const AMAZON_COUNTRY = {
   fr: 'fr', es: 'es', de: 'de', it: 'it',
-  uk: 'gb',   // ScraperAPI uses 'gb' for amazon.co.uk
-  com: 'us', nl: 'nl', pl: 'pl', be: 'be', se: 'se',
+  uk: 'gb', com: 'us', nl: 'nl', pl: 'pl', be: 'be', se: 'se',
 };
 
 /**
- * Fetch Amazon product data via ScraperAPI's structured Amazon endpoint.
+ * Fetch Amazon product data via ScraperAPI autoparse (same plan as Walmart).
  * Returns data in the Mac-agent format expected by productFromAgentData / applyScrapeResult.
  *
  * @param {string} asin        Amazon ASIN
@@ -95,10 +111,11 @@ export async function scrapeAmazonViaScraperApi(asin, marketplace = 'com') {
   const key = process.env.SCRAPER_API_KEY;
   if (!key) throw new Error('SCRAPER_API_KEY not configured');
 
-  const country = AMAZON_COUNTRY[marketplace];
-  if (!country) throw new Error(`ScraperAPI: unknown marketplace ${marketplace}`);
+  const domain = AMAZON_DOMAIN[marketplace];
+  if (!domain) throw new Error(`ScraperAPI: неизвестный маркетплейс ${marketplace}`);
 
-  const apiUrl = `${SCRAPER_API_BASE}/structured/amazon/product?api_key=${key}&asin=${encodeURIComponent(asin)}&country=${country}`;
+  const amazonUrl = `https://www.${domain}/dp/${asin}`;
+  const apiUrl = `${SCRAPER_API_BASE}/?api_key=${key}&url=${encodeURIComponent(amazonUrl)}&autoparse=true`;
 
   let res;
   try {
@@ -118,39 +135,55 @@ export async function scrapeAmazonViaScraperApi(asin, marketplace = 'com') {
   }
 
   const name = d.name;
-  if (!name) throw new Error(`ScraperAPI: Amazon товар не найден (ASIN=${asin})`);
+  if (!name) throw new Error(`ScraperAPI: Amazon товар не найден (ASIN=${asin}, ${domain})`);
 
-  // Price: ScraperAPI returns pricing as string like "$29.99" or object
+  // pricing is localized string like "59,99€" or "29.99"
   let price = null;
-  if (typeof d.pricing === 'number') {
-    price = d.pricing;
-  } else if (typeof d.pricing === 'string') {
-    const m = d.pricing.match(/[\d.,]+/);
-    if (m) price = parseFloat(m[0].replace(',', '.'));
-  } else if (d.price) {
-    price = typeof d.price === 'number' ? d.price : parseFloat(String(d.price).replace(/[^0-9.]/g, ''));
+  const priceSrc = d.pricing || d.price || '';
+  if (typeof priceSrc === 'number') {
+    price = priceSrc;
+  } else if (typeof priceSrc === 'string' && priceSrc) {
+    // Strip currency symbols, keep digits, dot, comma; last comma/dot = decimal
+    const digits = priceSrc.replace(/[^0-9.,]/g, '');
+    const last = digits.replace(/^.*[,.]/, '');
+    if (last.length <= 2) {
+      // last separator is decimal
+      price = parseFloat(digits.replace(/[.,](?=\d{1,2}$)/, '__').replace(/[.,]/g, '').replace('__', '.'));
+    } else {
+      price = parseFloat(digits.replace(/[.,]/g, ''));
+    }
+    if (isNaN(price)) price = null;
   }
 
-  const rating = typeof d.rating === 'number' ? d.rating
-    : typeof d.rating === 'string' ? parseFloat(d.rating) : null;
+  const rating = typeof d.average_rating === 'number' ? Math.round(d.average_rating * 10) / 10
+    : typeof d.average_rating === 'string' ? parseFloat(d.average_rating) : null;
 
-  const reviews_count = typeof d.reviews_count === 'number' ? d.reviews_count
-    : typeof d.reviews_count === 'string' ? parseInt(d.reviews_count.replace(/\D/g, '')) || 0 : 0;
+  const reviews_count = typeof d.total_reviews === 'number' ? d.total_reviews
+    : typeof d.total_reviews === 'string' ? parseInt(String(d.total_reviews).replace(/\D/g, '')) || 0 : 0;
 
-  // Description: features list or description text
-  const features = Array.isArray(d.features) ? d.features.slice(0, 6).join('\n') : '';
-  const description = d.description || features || '';
+  // Description: full_description or feature bullets
+  const bullets = Array.isArray(d.feature_bullets) ? d.feature_bullets.slice(0, 6).join('\n') : '';
+  const description = d.full_description || bullets || '';
 
-  // Images: array of URLs (Amazon CDN)
-  const images = Array.isArray(d.images)
-    ? d.images.filter(u => typeof u === 'string' && u.startsWith('https://'))
-    : [];
+  // Images: prefer highRes
+  const imgSrc = Array.isArray(d.highResImages) && d.highResImages.length ? d.highResImages : (d.images || []);
+  const images = (Array.isArray(imgSrc) ? imgSrc : [])
+    .filter(u => typeof u === 'string' && u.startsWith('https://'));
 
-  // Currency by marketplace
   const CURRENCY = { fr: 'EUR', es: 'EUR', de: 'EUR', it: 'EUR', nl: 'EUR', be: 'EUR', uk: 'GBP', com: 'USD', pl: 'PLN', se: 'SEK' };
   const currency = CURRENCY[marketplace] || 'USD';
 
-  return { title: name, price, rating, reviews_count, description, images, currency };
+  // Reviews from the same page (autoparse includes up to ~13 reviews)
+  const reviews = Array.isArray(d.reviews)
+    ? d.reviews.slice(0, 10).map(r => ({
+        author: String(r.username || r.author || 'Client Amazon').slice(0, 100),
+        rating: Math.min(5, Math.max(1, Math.round(Number(r.stars || r.rating) || 5))),
+        text: String(r.review || r.text || r.body || '').trim(),
+        images: Array.isArray(r.images) ? r.images.filter(u => typeof u === 'string' && u.startsWith('https://')) : [],
+      })).filter(r => r.text.length > 5)
+    : [];
+
+  return { title: name, price, rating, reviews_count, description, images, currency, reviews };
 }
 
 /** True when ScraperAPI is configured for this process. */

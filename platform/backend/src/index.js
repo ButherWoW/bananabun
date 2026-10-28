@@ -37,7 +37,10 @@ import { startCreativeWorker } from './services/creative-jobs.js';
 
 const app = Fastify({ logger: true });
 
-await app.register(cors, { origin: true });
+await app.register(cors, {
+  origin: true,
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+});
 // Without a real secret anyone could forge an owner token.
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) throw new Error('JWT_SECRET is not set');
 await app.register(jwt, { secret: process.env.JWT_SECRET, sign: { expiresIn: '7d' } });
