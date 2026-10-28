@@ -8,7 +8,7 @@ import clsx from 'clsx';
 
 const PLATFORMS = [
   { name: 'Amazon', ready: true },
-  { name: 'Walmart' },
+  { name: 'Walmart', ready: true },
   { name: 'Target' },
   { name: 'Best Buy' },
   { name: 'Etsy' },
