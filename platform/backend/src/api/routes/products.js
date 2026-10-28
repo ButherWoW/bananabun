@@ -235,6 +235,35 @@ export async function productRoutes(app) {
     return review;
   });
 
+
+  // Scrape reviews on demand from Amazon via ScraperAPI
+  app.post('/:id/reviews/scrape', auth, async (req, reply) => {
+    await assertProductAccess(req, req.params.id);
+    const product = await db.findOne('products', { id: req.params.id, workspace_id: req.user.ws });
+    if (!product) return reply.status(404).send({ error: 'Товар не найден' });
+    if (!product.source_id) return reply.status(400).send({ error: 'У товара нет ASIN' });
+    const { scrapeAmazonReviewsViaScraperApi, scraperApiEnabled } = await import('../../services/scraper-walmart-api.js');
+    if (!scraperApiEnabled()) return reply.status(400).send({ error: 'SCRAPER_API_KEY не настроен' });
+    const fetched = await scrapeAmazonReviewsViaScraperApi(product.source_id, product.marketplace || 'fr');
+    if (!fetched?.length) return [];
+    // Delete old scraped reviews, insert fresh ones
+    await db.query('DELETE FROM product_reviews WHERE product_id =   app.delete('/:id/reviews/:rid' AND scraped = true', [product.id]);
+    const saved = [];
+    for (const rv of fetched.slice(0, 10)) {
+      if (!rv.text) continue;
+      const review = await db.insert('product_reviews', {
+        id: `rev_${nanoid(20)}`,
+        product_id: product.id,
+        author: rv.author,
+        rating: rv.rating,
+        text: rv.text,
+        images: JSON.stringify(rv.images || []),
+        scraped: true,
+      });
+      saved.push(review);
+    }
+    return saved;
+  });
   app.delete('/:id/reviews/:rid', auth, async (req) => {
     await assertProductAccess(req, req.params.id);
     await db.query(
