@@ -146,7 +146,14 @@ export async function keitaroRoutes(app) {
   // GET/PUT workspace Keitaro settings
   app.get('/settings', auth, async (req) => {
     const ws = await db.findOne('workspaces', { id: req.user.ws });
-    return { keitaro_url: ws.keitaro_url || '', keitaro_api_key: ws.keitaro_api_key ? '***' : '' };
+    return {
+      keitaro_url: ws.keitaro_url || '',
+      keitaro_api_key: ws.keitaro_api_key ? '***' : '',
+      keitaro_group_id: ws.keitaro_group_id || null,
+      keitaro_domain_id: ws.keitaro_domain_id || null,
+      keitaro_offer_ids: Array.isArray(ws.keitaro_offer_ids) ? ws.keitaro_offer_ids : [],
+      keitaro_white_id: ws.keitaro_white_id || null,
+    };
   });
 
   // An empty or masked key keeps the saved one; an empty URL is refused (it would cut Keitaro off).
@@ -154,7 +161,33 @@ export async function keitaroRoutes(app) {
     const url = String(req.body?.keitaro_url || '').trim();
     if (!/^https:\/\/[^/\s]+/.test(url)) return reply.status(400).send({ error: 'Укажите https-адрес Keitaro' });
     const key = String(req.body?.keitaro_api_key || '').trim();
-    await db.update('workspaces', req.user.ws, { keitaro_url: url, ...(key && key !== '***' ? { keitaro_api_key: key } : {}) });
+
+    const updates = {
+      keitaro_url: url,
+      ...(key && key !== '***' ? { keitaro_api_key: key } : {}),
+    };
+    if (req.body?.keitaro_group_id !== undefined) updates.keitaro_group_id = Number(req.body.keitaro_group_id) || null;
+    if (req.body?.keitaro_domain_id !== undefined) updates.keitaro_domain_id = Number(req.body.keitaro_domain_id) || null;
+    if (req.body?.keitaro_offer_ids !== undefined) {
+      const ids = Array.isArray(req.body.keitaro_offer_ids) ? req.body.keitaro_offer_ids : [];
+      updates.keitaro_offer_ids = JSON.stringify(ids.map(Number).filter(Boolean));
+    }
+    if (req.body?.keitaro_white_id !== undefined) updates.keitaro_white_id = Number(req.body.keitaro_white_id) || null;
+
+    await db.query(
+      `UPDATE workspaces SET keitaro_url=$1, keitaro_api_key=COALESCE($2, keitaro_api_key),
+        keitaro_group_id=$3, keitaro_domain_id=$4, keitaro_offer_ids=$5::jsonb, keitaro_white_id=$6
+       WHERE id=$7`,
+      [
+        updates.keitaro_url,
+        updates.keitaro_api_key || null,
+        updates.keitaro_group_id ?? null,
+        updates.keitaro_domain_id ?? null,
+        updates.keitaro_offer_ids ?? '[]',
+        updates.keitaro_white_id ?? null,
+        req.user.ws,
+      ]
+    );
     return { ok: true };
   });
 
