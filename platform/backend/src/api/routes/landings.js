@@ -309,4 +309,32 @@ function handleSubmit(e) {
       return reply.status(502).send({ error: e.message });
     }
   });
+  app.post('/generate', auth, async (req, reply) => {
+    const { product_id, group_id, name } = req.body || {};
+    if (!product_id) return reply.status(400).send({ error: 'Нужен product_id' });
+    await assertProductAccess(req, product_id);
+
+    const product = await db.findOne('products', { id: product_id, workspace_id: req.user.ws });
+    if (!product) return reply.status(404).send({ error: 'Товар не найден' });
+
+    const ws = await db.findOne('workspaces', { id: req.user.ws });
+    if (!ws?.keitaro_url || !ws?.keitaro_api_key) {
+      return reply.status(400).send({ error: 'Keitaro не настроен в настройках воркспейса' });
+    }
+
+    try {
+      const { buildCdiscountZip } = await import('../../services/cdiscount-landing.js');
+      const { keitaroClient } = await import('../../services/keitaro.js');
+
+      const zipBuffer = await buildCdiscountZip({ product });
+      const client = keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
+      const landingName = name || `[BB] ${(product.title || '').slice(0, 60)} [FR]`;
+      const gId = group_id || ws.keitaro_group_id || 103;
+
+      const result = await client.uploadLandingZip(landingName, gId, zipBuffer);
+      return { ok: true, landing_id: result.id, landing_name: result.name, local_path: result.local_path };
+    } catch (e) {
+      return reply.status(500).send({ error: e.message });
+    }
+  });
 }
