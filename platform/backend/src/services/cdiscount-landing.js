@@ -54,32 +54,67 @@ function buildSpecsHtml(specs) {
   }).join('\n');
 }
 
-// Build review cards HTML to replace Klein reviews
-function buildReviewsHtml(reviews) {
+const AVATARS = ['./assets/av1.svg', './assets/comments_1_av2.svg', './assets/av3.svg',
+  './assets/comments_1_av4.svg', './assets/comments_1_av5.svg', './assets/comments_1_av6.svg'];
+
+// Build a complete review-grid div replacing ALL Klein articles
+function buildReviewGrid(reviews) {
   if (!reviews?.length) return null;
-  // Generic positive replies
-  const replies = [
+  const storeReplies = [
     'Merci pour votre confiance et votre avis ! Nous sommes ravis que vous soyez satisfait.',
-    'Nous sommes heureux que le produit vous convienne. Merci d\'avoir pris le temps de partager votre expérience.',
-    'Votre retour compte beaucoup pour nous. Merci et à bientôt !',
+    'Merci d\'avoir pris le temps de partager votre expérience. Votre retour compte beaucoup pour nous.',
+    'Votre avis nous aide à améliorer nos offres. Merci et à bientôt !',
   ];
-  return reviews.slice(0, 5).map((rv, i) => {
+  const articles = reviews.slice(0, 6).map((rv, i) => {
     const rating = Number(rv.rating) || 5;
     const stars = '★'.repeat(Math.min(5, Math.max(1, Math.round(rating))));
     const author = esc(rv.author || `Client${i + 1}`);
     const text = esc(rv.text || '');
-    const reply = replies[i % replies.length];
-    return `<div class="review-card">
-              <div class="review-card__header">
-                <span class="review-card__stars">${stars}</span>
-                <span class="review-card__author">${author}</span>
+    const avatar = AVATARS[i % AVATARS.length];
+    const daysAgo = i;
+    const formId = `review-reply-form-${i + 1}`;
+    const storeReply = i === 0 ? `
+              <div class="review-card__reply review-card__reply--store">
+                <div class="review-card__identity review-card__identity--reply">
+                  <img class="review-card__avatar review-card__avatar--brand" src="./assets/favicon.svg" alt="Cdiscount" />
+                  <div class="review-card__identity-main">
+                    <div class="review-card__author">Support Cdiscount</div>
+                    <div class="review-card__badge review-card__badge--store">Réponse officielle</div>
+                    <time class="review-card__date review-card__date--reply"></time>
+                  </div>
+                </div>
+                <p class="review-card__text review-card__reply-text">${esc(storeReplies[i % storeReplies.length])}</p>
+              </div>` : '';
+    return `
+            <article class="review-card" data-review-days-ago="${daysAgo}">
+              <div class="review-card__identity">
+                <img class="review-card__avatar" src="${avatar}" alt="" />
+                <div class="review-card__identity-main">
+                  <div class="review-card__stars">${stars}</div>
+                  <div class="review-card__author">${author}</div>
+                  <div class="review-card__badge">Achat vérifié</div>
+                  <time class="review-card__date"></time>
+                </div>
               </div>
               <p class="review-card__text">${text}</p>
-              <div class="review-card__reply">
-                <p class="review-card__text review-card__reply-text">${esc(reply)}</p>
-              </div>
-            </div>`;
+              <button type="button" class="review-card__reply-toggle" aria-expanded="false" aria-controls="${formId}">Répondre</button>
+              <form class="review-card__reply-form" id="${formId}" hidden>
+                <label class="review-card__reply-field">
+                  <span class="review-card__reply-field-label">Votre nom (facultatif)</span>
+                  <input type="text" class="review-card__reply-input" name="reply-name" autocomplete="name" />
+                </label>
+                <label class="review-card__reply-field">
+                  <span class="review-card__reply-field-label">Votre réponse</span>
+                  <textarea class="review-card__reply-textarea" name="reply-comment" rows="3" required></textarea>
+                </label>
+                <div class="review-card__reply-actions">
+                  <button type="submit" class="review-card__reply-post">Publier la réponse</button>
+                  <button type="button" class="review-card__reply-cancel">Annuler</button>
+                </div>
+              </form>${storeReply}
+            </article>`;
   }).join('\n');
+  return `<div class="review-grid" aria-label="Avis clients">${articles}\n          </div>`;
 }
 
 function buildHtml(template, product, imageCount, reviews) {
@@ -129,18 +164,12 @@ function buildHtml(template, product, imageCount, reviews) {
     if (specs[4]?.label) html = html.replace(/<span class="meta-label">Coloris :<\/span>/, `<span class="meta-label">${esc(specs[4].label)}</span>`);
   }
 
-  // Replace Klein-specific review texts with product reviews (if available)
+  // Replace entire review-grid block with product reviews
   if (reviews?.length) {
-    // Replace the two Klein-specific review texts
-    html = html
-      .replace(
-        /Les douilles colorées se repèrent tout de suite dans la mallette\./,
-        esc(reviews[0]?.text || '')
-      )
-      .replace(
-        /Excellente qualité, livraison rapide et conforme à la description\. L'un des meilleurs achats en ligne que j'aie faits ces derniers temps\./,
-        esc(reviews[1]?.text || reviews[0]?.text || '')
-      );
+    const newGrid = buildReviewGrid(reviews);
+    if (newGrid) {
+      html = html.replace(/<div class="review-grid"[^>]*>[\s\S]*?<\/div>(?=\s*<div class="review-load-more")/, newGrid);
+    }
   }
 
   // Fix image references

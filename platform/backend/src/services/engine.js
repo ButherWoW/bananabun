@@ -21,7 +21,7 @@ export function parseProductLink(input, fallbackMarketplace = 'fr') {
     return { source: 'amazon', asin, marketplace: fallbackMarketplace, url: amazonUrl(asin, fallbackMarketplace) };
   }
   let u;
-  try { u = new URL(s); } catch { return null; }
+  try { u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`); } catch { return null; }
   if (!/^https?:$/.test(u.protocol)) return null;
   const host = u.hostname.replace(/^www\./, '').toLowerCase();
 
