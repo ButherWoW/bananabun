@@ -85,4 +85,14 @@ test('durable creative jobs on PostgreSQL', { skip:!hasTestDatabase }, async t =
     await assert.rejects(startGeneration({ws:'no-workspace',userId:'owner',product,body:{count:8}}));
     assert.equal(Number((await db.query('SELECT COUNT(*) FROM creatives')).rows[0].count),before);
   });
+  await t.test('concurrent recovery of an automatic batch inserts each slot only once',async()=>{
+    await db.query('DELETE FROM creatives');
+    const args={ws:'test-ws',userId:'owner',product,body:{count:8},batchKey:'scrape:123'};
+    const answers=await Promise.all([startGeneration(args),startGeneration(args)]);
+    assert.equal(answers.reduce((n,answer)=>n+answer.total,0),8);
+    assert.equal(Number((await db.query('SELECT COUNT(*) FROM creatives')).rows[0].count),8);
+    assert.equal((await startGeneration(args)).total,0,'A replay after a crash must not create more rows');
+    await startGeneration({...args,batchKey:undefined,body:{count:1,auto_batch_key:'scrape:123'}});
+    assert.equal(Number((await db.query('SELECT COUNT(*) FROM creatives')).rows[0].count),9,'Manual requests cannot provide an internal dedupe key');
+  });
 });
