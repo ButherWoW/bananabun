@@ -5,12 +5,13 @@ import { nanoid } from 'nanoid';
 const FAL_BASE = 'https://fal.run';
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 
-const FORMAT_TO_FAL = {
-  '1x1': 'square_hd',
-  '4x5': 'portrait_4_3',
-  '9x16': 'portrait_16_9',
-  '3x2': 'landscape_4_3',
-  '16x9': 'landscape_16_9',
+// Ideogram v2 uses aspect_ratio strings, not pixel sizes
+const FORMAT_TO_ASPECT = {
+  '1x1': '1:1',
+  '4x5': '4:5',
+  '9x16': '9:16',
+  '3x2': '3:2',
+  '16x9': '16:9',
 };
 
 function asArray(raw) {
@@ -74,30 +75,34 @@ function buildDirection(product, slot, options = {}) {
   const ctas = CTAS[lang];
   const headlines = HEADLINES[lang];
   const cta = ctas[slot % ctas.length];
-  const headlineText = headline || headlines[slot % headlines.length];
   const pct = oldPrice && newPrice ? discountPct(oldPrice, newPrice) : null;
+
+  // If user typed a long instruction (in idea field), use it as extra direction, not as headline text
+  const isInstruction = headline && headline.length > 60;
+  const extraInstruction = isInstruction ? `Additional requirements: ${headline}. ` : '';
+  const headlineText = isInstruction ? headlines[slot % headlines.length] : (headline || headlines[slot % headlines.length]);
 
   // Build the visual scene direction
   const scene = SCENE_TEMPLATES[slot % SCENE_TEMPLATES.length](title, lang);
 
-  // Price text block
+  // Price text block — always render when we have any price data
   const priceBlock = [
-    oldPrice ? `crossed-out « ${oldPrice} ${currSign} »` : null,
-    newPrice ? `large bold « ${newPrice} ${currSign} »` : null,
-    pct ? `bold badge « ${pct} »` : null,
+    oldPrice ? `crossed-out price « ${oldPrice} ${currSign} »` : null,
+    newPrice ? `large bold new price « ${newPrice} ${currSign} »` : null,
+    pct ? `bright discount badge « ${pct} »` : null,
   ].filter(Boolean).join(', ');
 
   // French/target-language text instruction
+  const langName = { fr: 'French', es: 'Spanish', en: 'English', de: 'German', it: 'Italian', pt: 'Portuguese' }[lang] || 'French';
   const textItems = [
     `headline « ${headlineText} »`,
-    subline ? `subline « ${subline} »` : null,
+    subline ? `feature text « ${subline} »` : null,
     priceBlock || null,
     `CTA button « ${cta} »`,
   ].filter(Boolean).join(', ');
 
-  const langName = { fr: 'French', es: 'Spanish', en: 'English', de: 'German', it: 'Italian', pt: 'Portuguese' }[lang] || 'French';
-
-  return `${scene} Add ${langName} text only: ${textItems}; render every price and figure exactly as written, make the discount visually unmissable with strong color contrast on the price badge. The overall composition should be a polished, professional Facebook ad.`;
+  // Ideogram renders text best when it's quoted and listed explicitly
+  return `${scene} ${extraInstruction}Text elements to render EXACTLY as written (${langName} only): ${textItems}. Use large bold typography for prices. Strikethrough the old price. Make the discount badge highly visible with contrasting colors. Polished professional Facebook ad composition.`;
 }
 
 export function buildPrompt(product, slot = 0, options = {}) {
@@ -113,9 +118,11 @@ export async function generateFluxCreative(product, _logoKey, format = '1x1', op
   if (!key) throw new Error('FAL_API_KEY не настроен');
 
   const prompt = buildPrompt(product, slot, options);
-  const imageSize = FORMAT_TO_FAL[String(format).replace(':', 'x')] || 'square_hd';
+  const fmt = String(format).replace(':', 'x');
+  const aspectRatio = FORMAT_TO_ASPECT[fmt] || '1:1';
 
-  const falRes = await fetch(`${FAL_BASE}/fal-ai/flux/schnell`, {
+  // Ideogram v2 — best-in-class text rendering for ad creatives
+  const falRes = await fetch(`${FAL_BASE}/fal-ai/ideogram/v2`, {
     method: 'POST',
     headers: {
       'Authorization': `Key ${key}`,
@@ -123,10 +130,10 @@ export async function generateFluxCreative(product, _logoKey, format = '1x1', op
     },
     body: JSON.stringify({
       prompt,
-      image_size: imageSize,
-      num_inference_steps: 4,
-      num_images: 1,
-      enable_safety_checker: false,
+      aspect_ratio: aspectRatio,
+      style_type: 'DESIGN',       // optimised for ads/banners
+      magic_prompt_option: 'OFF', // use our prompt exactly as-is
+      negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text',
     }),
     signal: AbortSignal.timeout(120_000),
   });
