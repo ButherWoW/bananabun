@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { products as productsApi, keitaro as keitaroApi, presets as presetsApi, scrape as scrapeApi } from '../api/client.js';
+import { products as productsApi, keitaro as keitaroApi, presets as presetsApi, scrape as scrapeApi, landings as landingsApi } from '../api/client.js';
 import clsx from 'clsx';
 import { Link } from 'react-router-dom';
 
@@ -242,6 +242,14 @@ function CardTab({ product, qc }) {
     onSuccess: () => qc.invalidateQueries(['product', product.id]),
   });
 
+  const [landingType, setLandingType] = React.useState('cdiscount');
+  const [landingResult, setLandingResult] = React.useState(null);
+  const generateMutation = useMutation({
+    mutationFn: () => landingsApi.generate({ product_id: product.id, type: landingType }),
+    onSuccess: (data) => setLandingResult(data),
+    onError: (err) => setLandingResult({ error: err.error || err.message || 'Ошибка генерации' }),
+  });
+
   const [translations, setTranslations] = useState({});
 
   async function translate(field, text) {
@@ -338,6 +346,35 @@ function CardTab({ product, qc }) {
       >
         {saveMutation.isPending ? 'Сохраняю…' : 'Сохранить'}
       </button>
+
+      {/* Generate Landing */}
+      <div className="border-t border-[color:var(--c2d3148)] pt-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <select
+            value={landingType}
+            onChange={e => { setLandingType(e.target.value); setLandingResult(null); }}
+            className="flex-1 bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+          >
+            <option value="cdiscount">Klein KNECT (Cdiscount)</option>
+            <option value="angry">Angry Modern (опрос)</option>
+          </select>
+          <button
+            onClick={() => { setLandingResult(null); generateMutation.mutate(); }}
+            disabled={generateMutation.isPending}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors whitespace-nowrap"
+          >
+            {generateMutation.isPending ? 'Генерирую…' : 'Создать лендинг'}
+          </button>
+        </div>
+        {landingResult && (
+          landingResult.error
+            ? <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{landingResult.error}</p>
+            : <div className="text-xs text-emerald-400 bg-emerald-500/10 rounded-lg px-3 py-2 space-y-0.5">
+                <p className="font-medium">{landingResult.landing_name}</p>
+                <p className="text-gray-500">ID: {landingResult.landing_id} · {landingResult.local_path}</p>
+              </div>
+        )}
+      </div>
     </div>
   );
 }
