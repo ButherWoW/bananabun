@@ -2,7 +2,7 @@ import { db } from '../db/client.js';
 import { enqueueAgentJob } from '../api/routes/agent.js';
 import { amazonUrl, withRealOldPrice, MARKET_CURRENCY } from './engine.js';
 import { AMAZON_MARKETS, productFromAgentData } from './scraper.js';
-import { scrapeWalmartViaScraperApi, scraperApiEnabled } from './scraper-walmart-api.js';
+import { scrapeWalmartViaScraperApi, scrapeAmazonViaScraperApi, scraperApiEnabled } from './scraper-walmart-api.js';
 
 // Own Amazon scrape that survives a backend restart: the product↔job link is stored
 // (products.scrape_job_id), the agent's result is applied when it arrives (routes/agent.js),
@@ -57,6 +57,33 @@ export async function enqueueOwnScrape(ws, productId, asin, marketplace, source 
   } else {
     if (!AMAZON_MARKETS.includes(marketplace)) throw new Error(`Неизвестный маркетплейс Amazon: ${marketplace}`);
     type = 'scrape_amazon'; url = amazonUrl(asin, marketplace);
+
+    // Fast path: ScraperAPI handles Amazon server-side (~3-5 sec), no Mac agent needed.
+    if (scraperApiEnabled()) {
+      const { rows: [job] } = await db.query(
+        `INSERT INTO agent_jobs (workspace_id, type, payload, status, taken_at)
+         VALUES ($1, $2, $3::jsonb, 'taken', NOW()) RETURNING id`,
+        [ws, type, JSON.stringify({ url, product_id: productId, asin, via: 'scraperapi' })]);
+      const jobId = job.id;
+      await db.query(`UPDATE products SET scrape_job_id = $1, scrape_status = 'processing', scrape_error = NULL,
+                       scrape_started_at = NOW() WHERE id = $2 AND workspace_id = $3`, [jobId, productId, ws]);
+
+      scrapeAmazonViaScraperApi(asin, marketplace)
+        .then(async (data) => {
+          await db.query(
+            `UPDATE agent_jobs SET status = 'done', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
+            [JSON.stringify({ ok: true, data }), jobId]);
+          await applyScrapeResult(ws, jobId, true, data, null);
+        })
+        .catch(async (e) => {
+          // ScraperAPI failed — reset to pending so the Mac agent picks it up as fallback.
+          console.warn(`[scraperapi] amazon/${asin} failed (agent fallback):`, e.message);
+          await db.query(
+            `UPDATE agent_jobs SET status = 'pending', taken_at = NULL WHERE id = $1`,
+            [jobId]);
+        });
+      return jobId;
+    }
   }
   const jobId = await enqueueAgentJob(ws, type, { url, product_id: productId, asin });
   await db.query(`UPDATE products SET scrape_job_id = $1, scrape_status = 'processing', scrape_error = NULL,
