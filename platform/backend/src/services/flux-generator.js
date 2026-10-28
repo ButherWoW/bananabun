@@ -115,7 +115,7 @@ export function fluxEnabled() {
   return !!process.env.FAL_API_KEY;
 }
 
-export async function generateFluxCreative(product, _logoKey, format = '1x1', options = {}, slot = 0) {
+export async function generateFluxCreative(product, logoKey, format = '1x1', options = {}, slot = 0) {
   const key = process.env.FAL_API_KEY;
   if (!key) throw new Error('FAL_API_KEY не настроен');
 
@@ -125,6 +125,7 @@ export async function generateFluxCreative(product, _logoKey, format = '1x1', op
   const cacheKey = crypto.createHash('sha256').update(JSON.stringify({
     model: FAL_MODEL, prompt, aspectRatio, slot,
     productId: product.id || product.sku || product.title,
+    logoKey: logoKey || null,
   })).digest('hex');
   const cachedFilename = `cr_flux_cache_${cacheKey}.jpg`;
   const cachedPath = path.join(UPLOADS_DIR, cachedFilename);

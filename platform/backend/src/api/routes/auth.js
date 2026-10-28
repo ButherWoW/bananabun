@@ -11,6 +11,7 @@ export async function authRoutes(app) {
     if (!validCode || invite_code !== validCode) {
       return reply.status(403).send({ error: 'Неверный инвайт-код.' });
     }
+    if (!password || password.length < 6) return reply.status(400).send({ error: 'Пароль — минимум 6 символов' });
 
     const existing = await db.findOne('users', { email });
     if (existing) return reply.status(400).send({ error: 'Email уже зарегистрирован.' });

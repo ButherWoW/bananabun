@@ -10,7 +10,7 @@ const SOURCES = "'local','flux','banner'";
 // three interrupted attempts fail visibly instead of retrying forever.
 export async function runCreativeJobs({ render = generateCreative, limit = 2 } = {}) {
   await db.query(`UPDATE creatives SET status='failed', render_token=NULL,
-    metadata=metadata || '{"error":"Р РµРЅРґРµСЂ РЅРµСЃРєРѕР»СЊРєРѕ СЂР°Р· РїСЂРµСЂРІР°Р»СЃСЏ вЂ” РїСЂРѕРІРµСЂСЊС‚Рµ Chromium Рё РїРѕРІС‚РѕСЂРёС‚Рµ"}'::jsonb
+    metadata=metadata || '{"error":"Рендер несколько раз прервался — проверьте Chromium и повторите"}'::jsonb
     WHERE metadata->>'source' IN (${SOURCES}) AND status='processing' AND render_attempts >= 3
       AND COALESCE(render_started_at, created_at) < NOW() - INTERVAL '5 minutes'`);
   for (let i=0;i<limit;i++) {

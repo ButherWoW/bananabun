@@ -5,6 +5,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { pipeline } from 'stream/promises';
+import { rasterType } from '../../services/creative-assets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = process.env.UPLOADS_DIR ? resolve(process.env.UPLOADS_DIR) : join(__dirname, '..', '..', '..', 'uploads');
@@ -24,7 +25,9 @@ export async function productRoutes(app) {
   // List products (with pagination + filters)
   app.get('/', auth, async (req) => {
     const { ws } = req.user;
-    const { folder_id, status, scrape_status, page = 1, limit = 50, search, sort = 'new' } = req.query;
+    const { folder_id, status, scrape_status, search, sort = 'new' } = req.query;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
     const offset = (page - 1) * limit;
 
     const isBuyer = req.user.role === 'buyer';
@@ -194,9 +197,13 @@ export async function productRoutes(app) {
 
     for await (const part of parts) {
       if (part.type === 'file') {
-        const filename = `${product.source_id || nanoid(8)}-custom-${nanoid(6)}.jpg`;
+        const buf = await part.toBuffer();
+        const detected = rasterType(buf);
+        if (!detected) continue; // skip non-image bytes silently
+        const ext = detected === 'jpeg' ? 'jpg' : detected;
+        const filename = `${product.source_id || nanoid(8)}-custom-${nanoid(6)}.${ext}`;
         const filepath = join(IMAGES_DIR, filename);
-        await writeFile(filepath, await part.toBuffer());
+        await writeFile(filepath, buf);
         newUrls.push(`/uploads/images/${filename}`);
       }
     }

@@ -63,6 +63,9 @@ export async function adminRoutes(app) {
       return reply.status(400).send({ error: 'Нельзя изменить свою роль' });
     }
 
+    const VALID_ROLES = ['owner', 'lead', 'buyer'];
+    if (role && !VALID_ROLES.includes(role)) return reply.status(400).send({ error: 'Недопустимая роль' });
+
     const updates = {};
     if (name) updates.name = name;
     if (role) updates.role = role;

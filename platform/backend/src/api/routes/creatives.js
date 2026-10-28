@@ -153,7 +153,7 @@ export async function creativeRoutes(app) {
   app.post('/:id/retry', auth, async (req, reply) => {
     const creative = await db.findOne('creatives', { id: req.params.id, workspace_id: req.user.ws });
     if (!creative) return reply.status(404).send({ error: 'Not found' });
-    if (req.user.role === 'buyer' && creative.created_by !== req.user.id) return reply.status(403).send({ error: 'Р­С‚Рѕ РЅРµ РІР°С€ РєСЂРµР°С‚РёРІ' });
+    if (req.user.role === 'buyer' && creative.created_by !== req.user.id) return reply.status(403).send({ error: 'Это не ваш креатив' });
     if (creative.status !== 'failed') return reply.status(400).send({ error: 'Only failed creatives can be retried' });
 
     const product = await db.findOne('products', { id: creative.product_id, workspace_id: req.user.ws });
@@ -164,7 +164,7 @@ export async function creativeRoutes(app) {
     const { rowCount } = await db.query(`UPDATE creatives SET status='pending',metadata=$1::jsonb,
       render_attempts=0,render_token=NULL,render_started_at=NULL
       WHERE id=$2 AND workspace_id=$3 AND status='failed'`, [JSON.stringify(metadata),creative.id,req.user.ws]);
-    if (!rowCount) return reply.status(409).send({ error: 'РџРѕРІС‚РѕСЂ СѓР¶Рµ Р·Р°РїСѓС‰РµРЅ' });
+    if (!rowCount) return reply.status(409).send({ error: 'Повтор уже запущен' });
     wakeCreativeWorker();
 
     return { ok: true };
@@ -183,7 +183,7 @@ export async function creativeRoutes(app) {
   // Template rendering has no FA usage bill. Null means not measured, not zero cost.
   app.get('/spend', auth, async () => ({ total_usd: null, count: 0, source: fluxEnabled() ? 'flux' : 'local' }));
   // Legacy URLs are explicit retired features; never contact an external service.
-  const retired = async (req, reply) => reply.status(410).send({ error: 'FA РѕС‚РєР»СЋС‡С‘РЅ. РСЃРїРѕР»СЊР·СѓР№С‚Рµ СЃРѕР±СЃС‚РІРµРЅРЅС‹Рµ РєСЂРµР°С‚РёРІС‹.', code: 'FA_DISABLED' });
+  const retired = async (req, reply) => reply.status(410).send({ error: 'FA отключён. Используйте собственные креативы.', code: 'FA_DISABLED' });
   app.get('/ready-images', auth, retired);
   app.post('/import-ready/:genId', auth, retired);
   app.get('/fa-ready', auth, async () => ({ ready: [], pending: [], disabled: true }));

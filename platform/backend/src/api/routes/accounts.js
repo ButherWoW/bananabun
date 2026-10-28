@@ -162,6 +162,8 @@ export async function accountRoutes(app) {
       }
       await new Promise(r => setTimeout(r, 700));
     }
+    // Wipe any partial result left by the agent so the code never leaks via a later read.
+    await db.query(`UPDATE agent_jobs SET result = '{"ok":false,"data":{"source":"timeout"}}'::jsonb WHERE id = $1`, [jobId]);
     return reply.status(504).send({ error: 'Агент на Mac не ответил за 25 секунд — он занят другой задачей или не запущен' });
   });
 
