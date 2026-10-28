@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
-import { assertCampaignAccess } from '../../middleware/access.js';
+import { assertCampaignAccess, assertRecordAccess } from '../../middleware/access.js';
 import { keitaroClient } from '../../services/keitaro.js';
 import { enqueueAgentJob } from './agent.js';
 import { logFbEvent } from '../../services/fb-campaigns.js';
@@ -304,7 +304,8 @@ export async function campaignRoutes(app) {
     const c = await fbCampaign(req, req.params.id);
     const adset = findAdset(c, adset_id);
     if (!adset) bad('Пресет применяется к адсету — выбери адсет');
-    const p = await db.findOne('ad_settings', { id: String(preset_id || ''), workspace_id: req.user.ws });
+    if (!preset_id) bad('Выберите пресет');
+    const [p] = await assertRecordAccess(req, 'ad_settings', String(preset_id));
     if (!p) bad('Пресет не найден');
     // Per-adset bids follow the creation order «#n» in the adset name; never borrow another adset's bid.
     let bid = p.bid_amount;
