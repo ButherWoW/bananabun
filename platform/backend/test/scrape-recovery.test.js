@@ -149,13 +149,26 @@ test('own scrape survives restarts', { skip: !testUrl }, async t => {
 
   await t.test('crash after the batch insert: the mark is cleared without a second batch', async () => {
     await product('p9');
-    await db.query(`UPDATE products SET creative_preset_id = 'cp1', scrape_status = 'done',
+    await db.query(`UPDATE products SET creative_preset_id = 'cp1', scrape_status = 'done', scrape_job_id = 999,
                     preset_creatives_due_at = NOW() - INTERVAL '2 minutes' WHERE id = 'p9'`);
+    // This scrape's batch was inserted, then the process died before the mark was cleared.
     await pool.query(`INSERT INTO creatives(id,workspace_id,created_by,product_id,status,metadata)
-                      VALUES ('existing','w1','a','p9','pending','{"source":"local"}')`);
+                      VALUES ('existing','w1','a','p9','pending','{"source":"local","auto_batch_key":"scrape:999","auto_slot":0}')`);
     await recoverScrapes();
     assert.equal(await batches('p9'), 1);
     assert.equal((await row('p9')).preset_creatives_due_at, null);
+  });
+
+  await t.test('a manual generation after the scrape does not suppress the automatic batch', async () => {
+    await product('p11');
+    await db.query(`UPDATE products SET creative_preset_id = 'cp1', scrape_status = 'done', scrape_job_id = 1001,
+                    preset_creatives_due_at = NOW() - INTERVAL '2 minutes' WHERE id = 'p11'`);
+    await pool.query(`INSERT INTO creatives(id,workspace_id,created_by,product_id,status,metadata)
+                      VALUES ('manual','w1','a','p11','pending','{"source":"local"}')`);
+    await recoverScrapes();
+    assert.equal(await batches('p11'), 2, 'manual + automatic');
+    const { rows } = await db.query(`SELECT metadata->>'auto_batch_key' AS k FROM creatives WHERE product_id = 'p11' AND id <> 'manual'`);
+    assert.equal(rows[0].k, 'scrape:1001');
   });
 
   await t.test('a failed preset generation keeps the mark, counts attempts, stops after 3 with the reason', async () => {

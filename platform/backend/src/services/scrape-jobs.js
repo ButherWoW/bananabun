@@ -58,23 +58,23 @@ export async function applyScrapeResult(ws, jobId, ok, data, error) {
 }
 
 // Queues the scrape preset's creatives once. The «due» mark is set with scrape_status='done';
-// a 5-minute lease keeps concurrent workers apart; a batch already inserted for this scrape
-// (crash after the insert, before the mark was cleared) is not generated again.
+// a 5-minute lease keeps concurrent workers apart. The batch carries the internal key of this scrape
+// event ('scrape:<job id>'): a replay after a crash between the insert and clearing the mark adds
+// nothing (unique index + ON CONFLICT DO NOTHING, migration 024), manual generations are not confused with it.
 export async function runPresetCreatives(ws, productId) {
   const { rows: [p] } = await db.query(`
     UPDATE products SET preset_creatives_lease_at = NOW()
      WHERE id = $1 AND workspace_id = $2 AND preset_creatives_due_at IS NOT NULL
        AND (preset_creatives_lease_at IS NULL OR preset_creatives_lease_at < NOW() - INTERVAL '5 minutes')
-    RETURNING preset_creatives_due_at::text AS due`, [productId, ws]);
+    RETURNING preset_creatives_due_at::text AS due, scrape_job_id`, [productId, ws]);
   if (!p) return;
   const clear = () => db.query(`UPDATE products SET preset_creatives_due_at = NULL, preset_creatives_lease_at = NULL, preset_creatives_error = NULL
                                  WHERE id = $1 AND preset_creatives_due_at = $2::timestamptz`, [productId, p.due]);
-  const { rows: [already] } = await db.query(
-    `SELECT 1 FROM creatives WHERE product_id = $1 AND created_at >= $2::timestamptz LIMIT 1`, [productId, p.due]);
-  if (already) return clear();
+  // Stable per scrape event: the job id; rows marked before job ids existed fall back to the mark itself.
+  const batchKey = p.scrape_job_id ? `scrape:${p.scrape_job_id}` : `scrape-due:${p.due}`;
   try {
     const { generateFromScrapePreset } = await import('../api/routes/creatives.js');
-    await generateFromScrapePreset(productId);
+    await generateFromScrapePreset(productId, { batchKey });
   } catch (e) {
     // Keep the mark: release the lease, count the attempt, show why. After 3 failures stop retrying,
     // the reason stays visible on the product.
