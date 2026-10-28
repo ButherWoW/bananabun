@@ -106,5 +106,21 @@ export function keitaroClient(baseUrl, apiKey) {
     createLanding(name, content) {
       return req('POST', '/landing_pages', { name, content_type: 'html', content });
     },
+    async uploadLandingZip(name, groupId, zipBuffer) {
+      const form = new FormData();
+      form.append('name', name);
+      form.append('group_id', String(groupId));
+      form.append('landing_type', 'local');
+      form.append('action_type', 'local_file');
+      form.append('archive', new Blob([zipBuffer], { type: 'application/zip' }), 'landing.zip');
+      const res = await fetch(`${base}/landing_pages`, {
+        method: 'POST',
+        headers: { 'Api-Key': apiKey, 'User-Agent': 'Mozilla/5.0' },
+        body: form,
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!res.ok) throw new Error(`Keitaro ${res.status}: ${await res.text()}`);
+      return res.json();
+    },
   };
 }
