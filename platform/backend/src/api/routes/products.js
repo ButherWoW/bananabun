@@ -220,7 +220,7 @@ export async function productRoutes(app) {
 
   app.post('/:id/reviews', auth, async (req, reply) => {
     await assertProductAccess(req, req.params.id);
-    const { author, rating, text } = req.body || {};
+    const { author, rating, text, images } = req.body || {};
     if (!String(text || '').trim()) return reply.status(400).send({ error: 'Нужен текст отзыва' });
     // Only a real 1–5 rating; none given stays empty (no stars), never a default 5.
     const r = Math.round(Number(rating));
