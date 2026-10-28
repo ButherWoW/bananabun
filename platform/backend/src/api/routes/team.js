@@ -54,6 +54,9 @@ export async function teamRoutes(app) {
     const member = await db.findOne('users', { id: req.params.id, workspace_id: req.user.ws });
     if (!member) return reply.status(404).send({ error: 'Not found' });
     if (req.user.role !== 'owner' && member.role !== 'buyer') return reply.status(403).send({ error: 'Lead может удалять только баеров' });
+    await db.query(`UPDATE products  SET created_by = NULL WHERE created_by = $1`, [member.id]);
+    await db.query(`UPDATE creatives SET created_by = NULL WHERE created_by = $1`, [member.id]);
+    await db.query(`UPDATE folders   SET created_by = NULL WHERE created_by = $1`, [member.id]);
     await db.delete('users', member.id);
     return { ok: true };
   });

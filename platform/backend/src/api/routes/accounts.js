@@ -1,49 +1,58 @@
-import { db } from '../../db/client.js';
+import { db, pool } from '../../db/client.js';
 import { enqueueAgentJob } from './agent.js';
 
-// Replaces an account's BMs, cabinets and pages (manual edit or the agent's FB check).
+// Replaces an account's BMs, cabinets and pages atomically (manual edit or the agent's FB check).
 export async function saveAssets(ws, id, bms) {
-  // Delete old data
-  await db.query('DELETE FROM fb_bms WHERE fb_account_id = $1', [id]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM fb_bms WHERE fb_account_id = $1', [id]);
 
-  let cabinets_count = 0, pages_count = 0;
-  for (const bm of bms) {
-    const bmId = `fbbm_${id}_${bm.external_id}`;
-    await db.query(`
-      INSERT INTO fb_bms (id, workspace_id, fb_account_id, external_id, name, agency, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
-      ON CONFLICT (id) DO UPDATE SET name=$5, status=$7
-    `, [bmId, ws, id, bm.external_id, bm.name, bm.agency || '', bm.status || 'active']);
-
-    for (const cab of bm.cabinets || []) {
-      const cabId = `fbcab_${bmId}_${cab.external_id}`;
-      await db.query(`
-        INSERT INTO fb_cabinets (id, workspace_id, bm_id, fb_account_id, external_id, name, pixel_id, status, status_label, ready_kind, ready_label, payment_missing)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-        ON CONFLICT (id) DO UPDATE SET name=$6, status=$8, status_label=$9, ready_kind=$10, ready_label=$11, payment_missing=$12
-      `, [cabId, ws, bmId, id, cab.external_id, cab.name, cab.pixel || null,
-          cab.status || 'active', cab.status_label || null,
-          cab.ready?.kind || 'unknown', cab.ready?.label || null,
-          cab.payment_missing || false]);
-      cabinets_count++;
-    }
-
-    for (const pg of bm.pages || []) {
-      const pgId = `fbpage_${bmId}_${pg.external_id}`;
-      await db.query(`
-        INSERT INTO fb_pages (id, workspace_id, bm_id, fb_account_id, external_id, name, status)
+    let cabinets_count = 0, pages_count = 0;
+    for (const bm of bms) {
+      const bmId = `fbbm_${id}_${bm.external_id}`;
+      await client.query(`
+        INSERT INTO fb_bms (id, workspace_id, fb_account_id, external_id, name, agency, status)
         VALUES ($1,$2,$3,$4,$5,$6,$7)
-        ON CONFLICT (id) DO UPDATE SET name=$6, status=$7
-      `, [pgId, ws, bmId, id, pg.external_id, pg.name, pg.status || 'active']);
-      pages_count++;
+        ON CONFLICT (id) DO UPDATE SET name=$5, status=$7
+      `, [bmId, ws, id, bm.external_id, bm.name, bm.agency || '', bm.status || 'active']);
+
+      for (const cab of bm.cabinets || []) {
+        const cabId = `fbcab_${bmId}_${cab.external_id}`;
+        await client.query(`
+          INSERT INTO fb_cabinets (id, workspace_id, bm_id, fb_account_id, external_id, name, pixel_id, status, status_label, ready_kind, ready_label, payment_missing)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          ON CONFLICT (id) DO UPDATE SET name=$6, status=$8, status_label=$9, ready_kind=$10, ready_label=$11, payment_missing=$12
+        `, [cabId, ws, bmId, id, cab.external_id, cab.name, cab.pixel || null,
+            cab.status || 'active', cab.status_label || null,
+            cab.ready?.kind || 'unknown', cab.ready?.label || null,
+            cab.payment_missing || false]);
+        cabinets_count++;
+      }
+
+      for (const pg of bm.pages || []) {
+        const pgId = `fbpage_${bmId}_${pg.external_id}`;
+        await client.query(`
+          INSERT INTO fb_pages (id, workspace_id, bm_id, fb_account_id, external_id, name, status)
+          VALUES ($1,$2,$3,$4,$5,$6,$7)
+          ON CONFLICT (id) DO UPDATE SET name=$6, status=$7
+        `, [pgId, ws, bmId, id, pg.external_id, pg.name, pg.status || 'active']);
+        pages_count++;
+      }
     }
+
+    await client.query(`
+      UPDATE fb_accounts SET bms_count=$1, cabinets_count=$2, pages_count=$3, last_checked_at=NOW()
+      WHERE id=$4
+    `, [bms.length, cabinets_count, pages_count, id]);
+
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
   }
-
-  await db.query(`
-    UPDATE fb_accounts SET bms_count=$1, cabinets_count=$2, pages_count=$3, last_checked_at=NOW()
-    WHERE id=$4
-  `, [bms.length, cabinets_count, pages_count, id]);
-
 }
 
 // An account of this workspace that the user may touch: buyers only their own AdsPower group.
