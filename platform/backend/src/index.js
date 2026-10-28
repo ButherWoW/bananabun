@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createReadStream, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -43,7 +43,7 @@ await app.register(jwt, { secret: process.env.JWT_SECRET, sign: { expiresIn: '7d
 await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
 // Serve uploaded files
-const uploadsDir = join(__dirname, '..', 'uploads');
+const uploadsDir = process.env.UPLOADS_DIR ? resolve(process.env.UPLOADS_DIR) : join(__dirname, '..', 'uploads');
 await app.register(staticPlugin, { root: uploadsDir, prefix: '/uploads/', decorateReply: false });
 
 // Auth decorator

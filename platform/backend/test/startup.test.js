@@ -53,6 +53,9 @@ test('real backend starts its worker and shuts down cleanly', { skip:!hasTestDat
     const completed=await db.findOne('creatives',{id:record.id});
     assert.equal(completed.status,'done',JSON.stringify(completed.metadata));
     assert.ok((await readFile(join(directory,completed.file_url.split('/').pop()))).length>1000);
+    const download=await fetch(base+completed.file_url);
+    assert.equal(download.status,200,'A completed creative must actually be served at its returned URL');
+    assert.match(download.headers.get('content-type'),/image\/jpeg/);
     assert.equal(completed.metadata.options.headline,'Real queued output');
     assert.equal(completed.metadata.options.logo_key,logo_key);
   }
