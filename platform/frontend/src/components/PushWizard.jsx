@@ -509,6 +509,9 @@ function StepLaunch({ opts, form, set }) {
           </button>
         </div>
 
+        {textsMut.error && (
+          <div className="text-[11px] text-amber-400 mb-2">{textsMut.error?.error || textsMut.error?.message || 'Не удалось сгенерировать тексты'}</div>
+        )}
         {form._text_variants?.length > 1 && (
           <div className="flex gap-1 mb-2">
             {form._text_variants.map((v, i) => (

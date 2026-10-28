@@ -66,7 +66,7 @@ export async function campaignRoutes(app) {
         adsets: (c.adsets || []).map(a => ({ ...a,
           daily_budget: a.daily_budget != null ? Number(a.daily_budget) / 100 : null,
           bid_amount: a.bid_amount != null ? Number(a.bid_amount) / 100 : null })),
-        spend, lp_clicks: lp, leads: Number(k.conversions) || 0, revenue,
+        spend, lp_clicks: lp, leads: Number(k.leads) || 0, sales: Number(k.sales) || 0, revenue,
         lp_cost: lp ? spend / lp : null,
         profit: revenue - spend, roi: spend ? (revenue - spend) / spend * 100 : null,
         created_time: c.created_time, synced_at: c.synced_at,
@@ -100,7 +100,7 @@ export async function campaignRoutes(app) {
         } catch (e) { keitaroError = e.message; }
       }
       const spend = Number(c[col]) || 0, revenue = Number(k.revenue) || 0, clicks = Number(k.clicks) || 0;
-      periods.push({ period, label, spend, clicks, lp_clicks: Number(k.lp_clicks) || 0, sales: Number(k.sales ?? k.conversions) || 0, revenue,
+      periods.push({ period, label, spend, clicks, lp_clicks: Number(k.lp_clicks) || 0, sales: Number(k.sales) || 0, revenue,
         profit: revenue - spend, roi: spend ? (revenue - spend) / spend * 100 : null, cpc: clicks ? spend / clicks : null });
     }
 
@@ -196,6 +196,9 @@ export async function campaignRoutes(app) {
     if (ad_id && (daily_budget != null || bid_amount != null || targeting)) bad('У объявления меняются только статус и имя');
     if (bid_amount != null && !adset_id) bad('Ставка задаётся на адсете');
     if (targeting && !adset_id) bad('Таргетинг меняется у адсета');
+    // Budgets on the adsets (no CBO): FB would reject a campaign budget — say it here, not in the history.
+    if (daily_budget != null && !adset_id && !ad_id && (c.adsets || []).some(a => a.daily_budget != null))
+      bad('У этой кампании бюджет на адсетах — меняйте бюджет у адсета');
     if ((spend_cap != null || spend_cap_clear) && (adset_id || ad_id)) bad('Лимит трат — у кампании');
 
     const op = { id: String(target.id) };
@@ -251,13 +254,24 @@ export async function campaignRoutes(app) {
     if (!adset) bad('Пресет применяется к адсету — выбери адсет');
     const p = await db.findOne('ad_settings', { id: String(preset_id || ''), workspace_id: req.user.ws });
     if (!p) bad('Пресет не найден');
-    const index = (c.adsets || []).findIndex(a => String(a.id) === String(adset_id));
-    const bid = Array.isArray(p.bid_amounts) && p.bid_amounts.length ? p.bid_amounts[index] ?? p.bid_amounts[p.bid_amounts.length - 1] : p.bid_amount;
-    const op = { id: String(adset.id), targeting: { age_min: Number(p.age_min) || 18, age_max: Number(p.age_max) || 65, genders: p.genders || 'all' } };
+    // Per-adset bids follow the creation order «#n» in the adset name; never borrow another adset's bid.
+    let bid = p.bid_amount;
+    if (Array.isArray(p.bid_amounts) && p.bid_amounts.length) {
+      const n = Number(String(adset.name || '').match(/#(\d+)\s*$/)?.[1]);
+      if (!(n >= 1 && n <= p.bid_amounts.length)) bad(`У пресета ставки для ${p.bid_amounts.length} адсетов, а номер этого адсета не определить — задайте ставку вручную`);
+      bid = p.bid_amounts[n - 1];
+    }
+    // Only what the preset actually sets: empty preset fields keep the live targeting.
+    const targeting = {};
+    if (Number(p.age_min) > 0) targeting.age_min = Number(p.age_min);
+    if (Number(p.age_max) > 0) targeting.age_max = Number(p.age_max);
+    if (p.genders) targeting.genders = p.genders;
+    const op = { id: String(adset.id), ...(Object.keys(targeting).length ? { targeting } : {}) };
     if (toCents(p.budget)) op.daily_budget = toCents(p.budget);
     if (toCents(bid)) op.bid_amount = toCents(bid);
+    if (!op.targeting && !op.daily_budget && !op.bid_amount) bad('В пресете нет ничего, что можно поменять у живого адсета');
     return queueEdit(req, c, [op],
-      `пресет «${p.name}» на адсет «${adset.name}»: ${op.targeting.age_min}–${op.targeting.age_max} · ${GENDERS[op.targeting.genders]}`
+      `пресет «${p.name}» на адсет «${adset.name}»: ${targeting.age_min ?? '…'}–${targeting.age_max ?? '…'}${targeting.genders ? ` · ${GENDERS[targeting.genders]}` : ''}`
       + `${op.daily_budget ? `, бюджет ${op.daily_budget / 100}` : ''}${op.bid_amount ? `, ставка ${op.bid_amount / 100}` : ''}`
       + ' (устройства, площадки, цель и раскладка — только новым заливом)');
   });
@@ -273,7 +287,7 @@ export async function campaignRoutes(app) {
     if (action === 'budget_pct' && !(v >= -90 && v <= 500 && v !== 0)) bad('Процент — от −90 до +500');
 
     const camps = [];
-    for (const id of ids) camps.push(await fbCampaign(req, id));
+    for (const id of [...new Set(ids.map(String))]) camps.push(await fbCampaign(req, id));
     const byProfile = new Map();
     const lines = [];
     for (const c of camps) {

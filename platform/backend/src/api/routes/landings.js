@@ -87,7 +87,8 @@ export async function landingRoutes(app) {
   });
 
   app.post('/templates/white-page', auth, async (req, reply) => {
-    const { name = 'White Page' } = req.body || {};
+    const rawName = String(req.body?.name || 'White Page').slice(0, 120);
+    const name = rawName.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -107,6 +108,7 @@ export async function landingRoutes(app) {
       name,
       html,
       geo: '',
+      type: 'white',
       created_by: req.user.id,
     });
     return template;
@@ -133,13 +135,10 @@ export async function landingRoutes(app) {
 
   app.post('/templates/form-page', auth, async (req, reply) => {
     const { geo = 'FR' } = req.body || {};
-    // Price is never invented: it must be given. Text goes into HTML, so it is escaped.
+    // Name and price come from the product when the page is compiled ({{title}}, {{price_fmt}}),
+    // so one form page serves any product with its real price.
     const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const name = esc(req.body?.name || 'Form Page');
-    const product_name = esc(req.body?.product_name || 'Produit');
-    const priceRaw = String(req.body?.price ?? '').trim().replace(',', '.');
-    if (!/^\d+(\.\d{1,2})?$/.test(priceRaw)) return reply.status(400).send({ error: 'Укажите реальную цену товара' });
-    const price = Number(priceRaw).toFixed(2);
     const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -181,11 +180,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="product-info">
       <div class="product-img" style="display:flex;align-items:center;justify-content:center;font-size:32px">🛍️</div>
       <div>
-        <div class="product-name">${product_name}</div>
+        <div class="product-name">{{title}}</div>
         <div>
-          <span class="product-price">${price}€</span>
+          <span class="product-price">{{price_fmt}}</span>
         </div>
-        <div style="font-size:12px;color:#2d6a4f;margin-top:4px;font-weight:600">✅ En stock — Livraison sous 3-5 jours</div>
       </div>
     </div>
     <div class="form-section" id="form-section">
@@ -232,25 +230,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             <option value="LU" ${geo==='LU'?'selected':''}>🇱🇺 Luxembourg</option>
           </select>
         </div>
-        <button type="submit" class="submit-btn">🛒 Confirmer la commande — ${price}€</button>
+        <button type="submit" class="submit-btn">🛒 Confirmer la commande — {{price_fmt}}</button>
       </form>
       <div class="security">🔒 Paiement sécurisé · SSL · RGPD conforme</div>
-    </div>
-    <div class="confirm-screen" id="confirm-screen">
-      <div class="check-icon">✅</div>
-      <h2>Commande confirmée!</h2>
-      <p>Merci pour votre commande.<br>Vous serez contacté dans les 24h pour la livraison.</p>
     </div>
   </div>
 </div>
 <script>
+// The order goes to the Keitaro offer of this stream with the form fields, the same parameters the
+// team's Keitaro offer script uses (sub10 first name, adv3 last name, sub4 email, sub8 phone,
+// sub7 address, sub6 city, sub3 zip). No pixel event here: a purchase is reported by the offer.
 function handleSubmit(e) {
   e.preventDefault();
-  const data = Object.fromEntries(new FormData(e.target));
-  // Send to tracking pixel / postback
-  if (window.fbq) fbq('track', 'Purchase', {value: ${price}, currency: 'EUR'});
-  document.getElementById('form-section').style.display = 'none';
-  document.getElementById('confirm-screen').style.display = 'block';
+  const d = Object.fromEntries(new FormData(e.target));
+  const url = new URL('/', location.origin);
+  new URLSearchParams(location.search).forEach((v, k) => url.searchParams.set(k, v));
+  url.searchParams.set('_lp', '1');
+  const put = { sub10: d.first_name, adv3: d.last_name, sub4: (d.email || '').replace(/ /g, ''), sub8: d.phone, sub7: d.address, sub6: d.city, sub3: (d.zip || '').replace(/ /g, ''), country: d.country };
+  for (const [k, v] of Object.entries(put)) url.searchParams.set(k, v || '');
+  location.href = url.toString();
 }
 </script>
 </body>

@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs/promises';
 import { nanoid } from 'nanoid';
+import dns from 'dns/promises';
 import { compileLanding } from './landing-compiler.js';
 
 // Opens a compiled landing in our Chromium the way a visitor would and lists what is wrong:
@@ -10,7 +11,25 @@ import { compileLanding } from './landing-compiler.js';
 // made, analytics and private addresses are blocked.
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
-const PRIVATE = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.|\[?::1\]?$)/i;
+// A landing is opened on our server: it must not reach our own services. Hosts are resolved and every
+// address checked, so internal names (postgres, backend) and DNS tricks (127.0.0.1.nip.io) are refused.
+function privateIp(ip) {
+  const v = String(ip).toLowerCase().replace(/^::ffff:/, '');
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(v)) {
+    const [a, b] = v.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
+  }
+  return v === '::' || v === '::1' || /^f[cd]/.test(v) || /^fe[89ab]/.test(v);
+}
+const hostCache = new Map();
+async function hostAllowed(host) {
+  if (!host || !host.includes('.') || /\.(local|internal|localhost)$/i.test(host)) return false;
+  if (hostCache.has(host)) return hostCache.get(host);
+  const ok = await dns.lookup(host, { all: true }).then(list => list.length > 0 && list.every(a => !privateIp(a.address))).catch(() => false);
+  hostCache.set(host, ok);
+  return ok;
+}
 const ANALYTICS = /posthog|google-analytics|googletagmanager|facebook\.net|connect\.facebook|hotjar|clarity\.ms|yandex|doubleclick|\/api\/t(\?|$)/i;
 
 let browser = null;
@@ -67,12 +86,14 @@ export async function checkLanding({ templateId, productId, geo, ws }) {
       userAgent: view.mobile ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148' : undefined });
     const page = await ctx.newPage();
     try {
-      await page.route('**/*', (route) => {
+      // WebSockets bypass page.route: switch them off before any script runs.
+      await page.addInitScript(() => { try { window.WebSocket = undefined; window.EventSource = undefined; } catch {} });
+      await page.route('**/*', async (route) => {
         const u = route.request().url();
         if (u.startsWith('data:') || u.startsWith('blob:') || u === 'about:blank') return route.continue();
         let host = '';
-        try { host = new URL(u).hostname; } catch { return route.abort(); }
-        if (!/^https?:/.test(u) || PRIVATE.test(host) || ANALYTICS.test(u)) { out.blocked++; return route.abort(); }
+        try { host = new URL(u).hostname.replace(/^\[|\]$/g, ''); } catch { return route.abort(); }
+        if (!u.startsWith('https:') || ANALYTICS.test(u) || privateIp(host) || !(await hostAllowed(host))) { out.blocked++; return route.abort(); }
         return route.continue();
       });
       if (view.mobile) {

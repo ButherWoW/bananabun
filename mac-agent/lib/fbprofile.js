@@ -225,12 +225,17 @@ async function copyObject(g, op, done) {
       const d = must(`copy adset ${op.id}`, await g.post(`${op.id}/copies`, { status_option: 'PAUSED', deep_copy: false }));
       const newId = d.copied_adset_id || d.ad_object_ids?.[0]?.copied_id;
       if (!newId) throw Object.assign(new Error(`copy adset ${op.id}: Facebook не вернул id копии`), { data: { done } });
+      // The copy exists from here on: record it before its ads, so a failure halfway still reports it.
+      const entry = { id: op.id, copied: newId, level: 'adset', ads: 0, ads_total: null };
+      done.push(entry);
       const ads = must(`ads of ${op.id}`, await g.get(`${op.id}/ads`, { fields: 'id', limit: '100' })).data || [];
+      entry.ads_total = ads.length;
       for (const ad of ads) {
-        must(`copy ad ${ad.id}`, await g.post(`${ad.id}/copies`, { adset_id: newId, status_option: 'PAUSED' }));
+        must(`copy ad ${ad.id} (копия адсета ${newId} создана, объявлений скопировано ${entry.ads} из ${ads.length})`,
+          await g.post(`${ad.id}/copies`, { adset_id: newId, status_option: 'PAUSED' }));
+        entry.ads++;
         await sleep(350);
       }
-      done.push({ id: op.id, copied: newId, level: 'adset', ads: ads.length });
     }
     await sleep(350);
   }

@@ -32,8 +32,12 @@ export async function waitAgentJobDone(ws, id, timeoutMs = 240000) {
     const { rows: [job] } = await db.query('SELECT status, result FROM agent_jobs WHERE id = $1 AND workspace_id = $2', [id, ws]);
     if (job?.status === 'done') return job.result?.data;
     if (job?.status === 'failed') throw new Error(job.result?.error || 'Агент не смог выполнить задачу');
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 1500));
   }
+  // Nobody waits for it any more: a job still in the queue is cancelled so the agent doesn't run it for nothing.
+  await db.query(`UPDATE agent_jobs SET status = 'failed', done_at = NOW(),
+    result = '{"ok":false,"error":"Не дождались ответа агента — задача отменена","data":null}'::jsonb
+    WHERE id = $1 AND workspace_id = $2 AND status = 'pending'`, [id, ws]).catch(() => {});
   throw new Error('Агент на Mac не ответил: проверьте, что он запущен и AdsPower открыт');
 }
 
@@ -57,9 +61,13 @@ export async function agentRoutes(app) {
   });
 
   app.get('/jobs/:id', { onRequest: [app.authenticate] }, async (req, reply) => {
+    // Buyers read only their own jobs; 2FA jobs are readable by nobody but whoever asked for the code.
     const { rows } = await db.query(
-      'SELECT id, type, status, result, created_at, done_at FROM agent_jobs WHERE id = $1 AND workspace_id = $2',
-      [req.params.id, req.user.ws]);
+      `SELECT id, type, status, result, created_at, done_at FROM agent_jobs
+        WHERE id = $1 AND workspace_id = $2
+          AND ($3::text IS NULL OR created_by = $3)
+          AND (type <> 'totp' OR created_by = $4)`,
+      [req.params.id, req.user.ws, req.user.role === 'buyer' ? req.user.id : null, req.user.id]);
     if (!rows[0]) return reply.status(404).send({ error: 'Not found' });
     return rows[0];
   });
@@ -86,12 +94,14 @@ export async function agentRoutes(app) {
     // Reaper: jobs nobody finished within an hour fail visibly instead of hanging forever.
     const { rows: stale } = await db.query(`
       UPDATE agent_jobs SET status = 'failed', done_at = NOW(),
-             result = '{"ok":false,"error":"Агент не выполнил задачу за час","data":null}'::jsonb
-       WHERE workspace_id = $1 AND status IN ('pending', 'taken') AND created_at < NOW() - INTERVAL '1 hour'
+             result = '{"ok":false,"error":"Агент не выполнил задачу: взята больше 2 ч назад или ждала больше 6 ч","data":null}'::jsonb
+       WHERE workspace_id = $1 AND type <> 'totp' AND (
+             (status = 'taken' AND taken_at < NOW() - INTERVAL '2 hours')
+          OR (status = 'pending' AND created_at < NOW() - INTERVAL '6 hours'))
       RETURNING id, type, payload`, [req.agentWs]);
     for (const j of stale) {
-      if (j.type === 'fb_edit') await closeFbEvents(req.agentWs, j.id, false, 'Агент не выполнил правку за час');
-      if (j.type === 'push' && j.payload?.push_id) await applyPushResult(req.agentWs, j.payload.push_id, false, 'Агент не выполнил залив за час', null);
+      if (j.type === 'fb_edit') await closeFbEvents(req.agentWs, j.id, false, 'Агент не выполнил правку вовремя');
+      if (j.type === 'push' && j.payload?.push_id) await applyPushResult(req.agentWs, j.payload.push_id, false, 'Агент не выполнил залив вовремя — проверьте кабинет, прежде чем повторять', null, j.id);
     }
 
     // A 2FA code nobody picked up within a minute is useless: fail it instead of computing it late.
@@ -102,18 +112,19 @@ export async function agentRoutes(app) {
 
     // One job at a time, so nothing sits 'taken' while the agent is busy with another.
     // Pushes and FB edits are never handed out twice: a rerun could duplicate objects or undo a newer edit.
-    // ?type=totp is the agent's fast lane for 2FA codes (no browser), polled apart from the main loop.
-    const onlyTotp = req.query?.type === 'totp';
+    // Fast lane, polled by the agent apart from its main loop so short jobs don't wait behind a push:
+    // ?type=fast — 2FA codes and Amazon searches; ?type=totp — 2FA only (older agents).
+    const lane = req.query?.type === 'fast' ? ['totp', 'search_amazon'] : req.query?.type === 'totp' ? ['totp'] : null;
     const { rows } = await db.query(`
       UPDATE agent_jobs SET status = 'taken', taken_at = NOW()
       WHERE id IN (
         SELECT id FROM agent_jobs
-        WHERE workspace_id = $1 AND ($2::boolean = false OR type = 'totp')
+        WHERE workspace_id = $1 AND ($2::text[] IS NULL OR type = ANY($2))
           AND (status = 'pending' OR (status = 'taken' AND type NOT IN ('push', 'fb_edit', 'totp') AND taken_at < NOW() - INTERVAL '10 minutes'))
         ORDER BY id LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING id, type, payload`, [req.agentWs, onlyTotp]);
+      RETURNING id, type, payload`, [req.agentWs, lane]);
     return { jobs: rows };
   });
 
@@ -135,7 +146,7 @@ export async function agentRoutes(app) {
       await applyFbEdits(req.agentWs, result.data?.done);
       await closeFbEvents(req.agentWs, req.params.id, ok, result.error);
     }
-    if (type === 'push' && payload?.push_id) await applyPushResult(req.agentWs, payload.push_id, ok, result.error, result.data);
+    if (type === 'push' && payload?.push_id) await applyPushResult(req.agentWs, payload.push_id, ok, result.error, result.data, req.params.id);
     return { ok: true };
   });
 }

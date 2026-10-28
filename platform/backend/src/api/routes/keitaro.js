@@ -10,12 +10,12 @@ export function campaignBuyerTag(name = '') {
 }
 
 // A buyer's campaign: its name tag or its Keitaro campaign group matches one of the buyer's tags.
-function inScope(scope, name, groupName) {
+export function inScope(scope, name, groupName) {
   return scope.has(campaignBuyerTag(name)) || scope.has(String(groupName || '').replace(/^\[|\]$/g, '').trim().toLowerCase());
 }
 
 // Owner/lead see every campaign; a buyer only those tagged with their Keitaro nickname (set by the owner).
-async function buyerScope(req) {
+export async function buyerScope(req) {
   if (req.user.role !== 'buyer') return null;
   const { rows: [u] } = await db.query('SELECT keitaro_tag FROM users WHERE id = $1', [req.user.id]);
   const tags = String(u?.keitaro_tag || '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
@@ -52,9 +52,20 @@ async function withFbSpend(client, ws, range, rows) {
   const { rows: fb } = await db.query(
     `SELECT id, ${col} AS spend, currency, synced_at FROM fb_campaigns WHERE workspace_id = $1 AND id = ANY($2)`, [ws, all]);
   const byId = new Map(fb.map(f => [String(f.id), f]));
+  // An FB campaign seen under two Keitaro campaigns can't be split between them.
+  const owners = new Map();
+  for (const [k, set] of fbIds) for (const id of set) owners.set(id, (owners.get(id) || 0) + 1);
+  const trackerCurrency = (process.env.KEITARO_CURRENCY || 'USD').toUpperCase();
   for (const r of rows) {
-    const known = [...(fbIds.get(String(r.campaign_id)) || [])].map(id => byId.get(id)).filter(Boolean);
+    const ids = [...(fbIds.get(String(r.campaign_id)) || [])];
+    const known = ids.map(id => byId.get(id)).filter(Boolean);
     if (!known.length) continue;
+    // Replace only a complete, single-currency, unshared picture; otherwise keep Keitaro's cost and say why.
+    const currencies = new Set(known.map(f => String(f.currency || '').toUpperCase()));
+    const why = known.length < ids.length ? 'не все FB-кампании прочитаны'
+      : ids.some(id => owners.get(id) > 1) ? 'FB-кампания в нескольких кампаниях Keitaro'
+      : currencies.size !== 1 || !currencies.has(trackerCurrency) ? 'валюта кабинета не совпадает с Keitaro' : null;
+    if (why) { r.spend_note = why; continue; }
     r.keitaro_cost = Number(r.cost) || 0;
     r.cost = known.reduce((s, f) => s + (Number(f.spend) || 0), 0);
     r.profit = (Number(r.revenue) || 0) - r.cost;

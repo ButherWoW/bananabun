@@ -1,0 +1,457 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Bananabun Progress</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --bg: #080b14;
+    --surface: #0e1221;
+    --surface2: #141829;
+    --border: #1e2540;
+    --border2: #252c42;
+    --fg: #e2e8f0;
+    --fg2: #94a3b8;
+    --fg3: #64748b;
+    --accent: #6366f1;
+    --accent-dim: rgba(99,102,241,0.15);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.12);
+    --yellow: #f59e0b;
+    --yellow-dim: rgba(245,158,11,0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.12);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.12);
+    color-scheme: dark;
+    --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px;
+  }
+
+  .header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+  .header-left h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.02em; color: var(--fg); text-wrap: balance; }
+  .header-left p { margin: 0; color: var(--fg2); font-size: 13px; }
+
+  .total-badge { background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 10px; padding: 12px 20px; text-align: center; flex-shrink: 0; }
+  .total-badge .pct { font-size: 32px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1; display: block; }
+  .total-badge .lbl { font-size: 11px; color: var(--fg2); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 4px; display: block; }
+
+  .notice { background: var(--yellow-dim); border: 1px solid var(--yellow); border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: var(--fg); display: grid; gap: 4px; }
+  .notice b { color: var(--yellow); }
+  .notice code { font-family: var(--font-mono); font-size: 12px; color: var(--fg2); }
+
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+  .stat .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; font-family: var(--font-mono); line-height: 1.2; }
+  .stat .t { font-size: 11px; color: var(--fg2); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .progress-bar-outer { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; height: 8px; margin-bottom: 28px; overflow: hidden; }
+  .progress-bar-inner { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--accent), #818cf8); transition: width 1s cubic-bezier(.4,0,.2,1); }
+
+  .sections-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+
+  .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; min-width: 0; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+  .section-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--fg); }
+  .section-icon { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+  .section-pct { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+  .section-bar { height: 3px; background: var(--border); }
+  .section-bar-fill { height: 3px; transition: width 1s cubic-bezier(.4,0,.2,1); }
+
+  .items-list { padding: 6px 0; }
+  .item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 16px; cursor: default; }
+  .item:hover { background: var(--surface2); }
+  .item-dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; }
+  .dot-done { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+  .dot-partial { background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow); }
+  .dot-todo { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+
+  .item-text { flex: 1; min-width: 0; }
+  .item-label { color: var(--fg); font-size: 13px; line-height: 1.4; }
+  .item-sub { color: var(--fg3); font-size: 11px; margin-top: 1px; font-family: var(--font-mono); overflow-wrap: anywhere; }
+  .tag-new { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; font-size: 12px; color: var(--fg2); }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .timestamp { text-align: center; color: var(--fg3); font-size: 11px; font-family: var(--font-mono); margin-top: 24px; letter-spacing: 0.04em; }
+
+  @media (max-width: 500px) {
+    .sections-grid { grid-template-columns: 1fr; }
+    .total-badge .pct { font-size: 26px; }
+  }
+</style>
+
+<div class="header">
+  <div class="header-left">
+    <h1>🍌 Bananabun Platform</h1>
+    <p>Готовность платформы относительно оригинала FA · аудит кода и сверка с оригиналом 27.10 · <b>nespizdili.lol</b></p>
+  </div>
+  <div class="total-badge">
+    <span class="pct" id="total-pct">—</span>
+    <span class="lbl">Готово</span>
+  </div>
+</div>
+
+<div class="notice">
+  <div><b>28.10: платформа работает без FA</b> — скрап, аналитика, правки кампаний, список FB, расход, лендинги — своими силами. Токен FA нужен только для генерации креативов FA и скрапа Walmart/Target/Etsy.</div>
+  <div>Второе: картинки товаров и креативов FA закрыты Cloudflare Access — нужен сервисный токен от админов FA. Миграции 004–006 применены, бэкапы в <code>/root/backups</code>.</div>
+  <div><b>Сверка с оригиналом 28.10:</b> план — ① весь пресет в заливе ✓, ② модерация и «Внимание» ✓, ③ правки кампаний через агента без FA ✓, ④ свой счётчик поведения на лендингах ✓, ⑤ подсказка кабинета и залив в несколько кабинетов ✓, ⑥ проверка лендинга, ⑦ похожие товары по продажам Keitaro.</div>
+  <div><b>Аудит кода 28.10:</b> 4 ревью, ~65 находок. Исправлены и выкачены все критические и высокие: SQL-инъекция, вечные токены входа, ключ Keitaro в /auth/me, доступ байеров к чужому, дубли при повторе залива, зависание агента, стирание Keitaro в Настройках, выдуманная старая цена, фейковая аналитика, бюджет пресета × адсеты.</div>
+  <div><b>Выкачено 27.10:</b> фиксы после построчного аудита на проде; агент AdsPower на Mac подключён (11 профилей, без секретов). Исходники — <code>~/bananabun</code> (git), выкатка — <code>ship.sh</code> с бэкапом.</div>
+</div>
+
+<div class="summary" id="summary"></div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Работает</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Частично / ждёт миграции</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Нет / сломано</div>
+  <div class="legend-item"><span class="tag-new" style="margin:0">27.10</span> изменилось после аудита</div>
+</div>
+
+<div class="progress-bar-outer">
+  <div class="progress-bar-inner" id="main-bar" style="width:0%"></div>
+</div>
+
+<div class="sections-grid" id="sections-container"></div>
+
+<div class="timestamp" id="ts"></div>
+
+<script>
+const SECTIONS = [
+  {
+    id: 'security',
+    title: 'Права доступа',
+    icon: '🔒',
+    color: 'var(--red)',
+    items: [
+      { label: 'Приглашать, менять роли и удалять участников — только owner/lead', status: 'done', isNew: true, sub: 'проверено на сервере: баер получает 403' },
+      { label: 'Ключи Keitaro и AdsPower меняет только owner/lead', status: 'done', isNew: true },
+      { label: 'Баер не может менять чужие кампании через FA', status: 'done', isNew: true, sub: 'бюджет, таргетинг, дубль, переименование, bulk — проверка автора' },
+      { label: 'Баер не может править и удалять чужие товары', status: 'done', isNew: true, sub: 'PATCH, удаление, перенос, фото, отзывы, повтор скрапа' },
+      { label: 'Вкл/выкл кампаний в Keitaro для баера', status: 'done', isNew: true, sub: 'как в оригинале: баер видит и переключает только кампании со своим ником в названии; чужие — 403, удалять нельзя' },
+      { label: 'Баер не видит чужие кампании и цифры Keitaro', status: 'done', isNew: true, sub: 'список, статистика и дневной график фильтруются по нику' },
+      { label: 'Пароли, токены FB и прокси из AdsPower не уходят в браузер и базу', status: 'done', isNew: true, sub: 'было: /api/adspower и синхронизация отдавали и хранили профиль целиком' },
+      { label: 'Загрузки: только картинки (нет XSS через .html/.svg)', status: 'done', isNew: true, sub: 'логотип и референсы' },
+      { label: 'Баер удаляет только свои креативы, шаблоны лендингов — только owner/lead', status: 'done', isNew: true, sub: 'выкачено 27.10' },
+      { label: 'Баер видит товары общих папок, чужие по id не открывает', status: 'done', isNew: true, sub: 'выкачено 27.10' },
+    ]
+  },
+  {
+    id: 'products',
+    title: 'Товары',
+    icon: '📦',
+    color: 'var(--blue)',
+    items: [
+      { label: 'Список товаров + пагинация + поиск', status: 'done', isNew: true, sub: 'аудит: видно только 100 товаров, «старые» сортировались неверно. Исправлено: сортировка на сервере + «Показать ещё»' },
+      { label: 'Перевод RU только для просмотра', status: 'done', isNew: true, sub: 'было: перевод затирал заголовок и описание, на ленд ушёл бы русский' },
+      { label: 'Карточка товара (сайдпанель)', status: 'done', isNew: true, sub: 'исправлено: клик по карточке открывал пустую панель' },
+      { label: 'Окно скрапинга по ссылке — вид как в оригинале', status: 'done', sub: 'URL-поля, площадки, пресеты' },
+      { label: 'Скрапинг через движок FA', status: 'partial', isNew: true, sub: 'переключатель движков готов (FA сейчас); ждёт токена агента FA' },
+      { label: 'Свой скрапер Amazon', status: 'done', isNew: true, sub: '28.10: включён (без токена FA движок own), профиль #7; проверено от начала до конца — Scheppach CSE2700: цена, рейтинг 4.2, 231 отзыв, 8 фото. С IP сервера Amazon карточку не отдаёт (проверка на робота), поэтому страницу открывает агент' },
+      { label: 'Маркетплейс из ссылки (amazon.de / .es / .it / .com / .co.uk)', status: 'done', isNew: true },
+      { label: 'Скрапинг Walmart / Target / Best Buy / Etsy', status: 'partial', isNew: true, sub: 'ссылки принимаются, скрапит FA — ждёт токена' },
+      { label: 'Пресеты комплектов: создание в окне скрапинга', status: 'done', isNew: true, sub: 'имя, валюта, старая / новая цена, количество, оффер из Keitaro' },
+      { label: 'Перенос пресетов из FA', status: 'done', isNew: true, sub: '«1 / 2+1 · EUR» и «1 шт — оффер 313»; старая цена 199.99 убрана' },
+      { label: 'Пресет копируется в комплекты товара при скрапе', status: 'done', isNew: true, sub: 'старая цена = реальная цена × оплачиваемое кол-во, как в FA' },
+      { label: 'Фото товаров из FA', status: 'todo', isNew: true, sub: 'закрыты Cloudflare Access — нужен сервисный токен от админов FA' },
+      { label: 'Создать вручную (панель «Новая связка»)', status: 'done', isNew: true, sub: 'заголовок, описание, характеристики → дальше комплекты, фото, отзывы; характеристики теперь и в карточке любого товара' },
+      { label: 'Колонка папок: Все / Без папки / SHARED', status: 'done', isNew: true, sub: 'счётчики по видимости (баер — свои), «+ Папка» для личных и общих' },
+      { label: '«Ошибка скрапинга» + причина + «Ещё раз» на карточке', status: 'done', isNew: true },
+      { label: 'Теги-кнопки → открывают нужный таб', status: 'done' },
+      { label: 'Комплекты с qty/price + Keitaro offers', status: 'done' },
+      { label: 'Бейдж состояния: ready / draft / no_offer', status: 'done' },
+      { label: 'Поиск по Amazon (Search страница)', status: 'done', isNew: true, sub: 'исправлен вечный спиннер «Ищем...»' },
+      { label: 'Массовое редактирование', status: 'done', isNew: true, sub: 'колонки tags/notes и статусы ready/no_offer добавлены' },
+      { label: 'Вкладка «Отзывы»', status: 'done', isNew: true, sub: 'таблица product_reviews создана' },
+      { label: 'Похожие товары AI', status: 'done' },
+      { label: 'История поисков', status: 'done' },
+      { label: 'Повтор упавшего скрапа', status: 'done' },
+    ]
+  },
+  {
+    id: 'creatives',
+    title: 'Креативы',
+    icon: '🎨',
+    color: 'var(--accent)',
+    items: [
+      { label: 'Генерация креативов через FA', status: 'partial', isNew: true, sub: 'шлёт FA-id товара (раньше слали наш id — FA его не знал); ждёт токена; картинки — нужен доступ Cloudflare' },
+      { label: 'Окно генерации из карточки товара', status: 'done', isNew: true, sub: '«Креативы» на карточке открывает окно для этого товара, как в оригинале' },
+      { label: 'Свои креативы на шаблонах (без FA)', status: 'done', isNew: true, sub: 'проверено на сервере: готово за 4 с' },
+      { label: 'Референсы (до 4 картинок)', status: 'done', isNew: true, sub: 'свой движок: референс i — картинка стиля i. У генерации FA поля для референсов нет' },
+      { label: 'Пресет креативов применяется при скрапе', status: 'done', isNew: true, sub: 'пресет сохраняется на товаре, генерация после скрапа; оба формата (наш и FA)' },
+      { label: 'В FA уходят только id шаблонов mtpl_ и её логотипы', status: 'done', isNew: true, sub: 'раньше слали id Keitaro и наш /uploads — генерация FA ломалась' },
+      { label: 'Подсказка «выбери товар» у кнопки', status: 'done', isNew: true },
+      { label: 'Список + удаление', status: 'done' },
+      { label: '7 языков / 3 соотношения', status: 'done' },
+      { label: 'Сохранение и загрузка пресетов', status: 'done' },
+      { label: 'Счётчик дневных лимитов', status: 'done' },
+      { label: 'Привязка к лендинг-шаблону', status: 'done' },
+      { label: 'Избранное', status: 'done' },
+      { label: 'Готовые изображения из FA', status: 'done' },
+      { label: 'Фильтр видео', status: 'done' },
+      { label: 'Счётчик расходов, имя и стоимость на карточке', status: 'done' },
+      { label: 'Повтор сорвавшейся генерации', status: 'partial', isNew: true, sub: '500 исправлен; через FA ждёт токена' },
+    ]
+  },
+  {
+    id: 'campaigns',
+    title: 'Кампании',
+    icon: '🏹',
+    color: 'var(--green)',
+    items: [
+      { label: 'Список из Keitaro + локальная DB', status: 'done', isNew: true, sub: 'было только 200 последних — теперь все 1868' },
+      { label: 'Вид как в оригинале', status: 'done', sub: 'toggle, Крутится/Выключена, GEO/buyer бейджи, ROI/Прибыль/Доход' },
+      { label: 'Фильтры Байер / Статус', status: 'done' },
+      { label: 'Фильтры Гео / Товар / Шаблон / Кабинет', status: 'done', isNew: true, sub: 'значения из названий кампаний, фильтруют строки и итоги' },
+      { label: 'Период Сегодня / Вчера / 7 / 30 дней', status: 'done', isNew: true },
+      { label: 'Кнопки «Столбцы» и «Группировать»', status: 'done', isNew: true, sub: '8 колонок на выбор; группы по баеру / гео / товару с подитогами' },
+      { label: 'Вкладки «Заливы» и «Архив»', status: 'done', isNew: true, sub: '28.10: Архив — 112 удалённых кампаний из Keitaro (только просмотр, без тумблера и удаления)' },
+      { label: 'Табы с реальными счётчиками', status: 'done', isNew: true },
+      { label: 'Цифры Keitaro в строках кампаний', status: 'done', isNew: true, sub: 'были нули: статистика не цеплялась к строкам. Клики, продажи, доход, расход, ROI' },
+      { label: 'Статистика FB (spend из кабинета)', status: 'done', isNew: true, sub: 'свой список из кабинетов через агента, без FA' },
+      { label: 'Свежесть данных FB / Keitaro / лендинги', status: 'done', isNew: true, sub: 'метки в шапке: время чтения FB, возраст Keitaro, свой счётчик' },
+      { label: 'Расход из FB, а не из cost Keitaro', status: 'done', isNew: true, sub: '28.10: кампании Keitaro, связанные по sub_id_2, берут расход, прибыль и ROI из кабинета (сегодня / вчера / 7 дней; за 7 дней — 171 кампания, 615.51). За 30 дней и свои даты FB-расхода не храним — там Keitaro, помечено KT' },
+      { label: 'Сегодня / вчера по поясу Keitaro', status: 'done', isNew: true, sub: 'были даты UTC сервера' },
+      { label: 'Карточка кампании: Сводка / Состав / Лендинг / История', status: 'done', isNew: true, sub: '28.10: цифры по периодам (расход FB + Keitaro), состав и модерация, залив за кампанией, воронка лендинга по кампании' },
+      { label: 'Раскрытие строки: стримы, история, адсеты FB', status: 'done' },
+      { label: 'Бюджет, таргетинг, дубль, переименование, пресет из таблицы', status: 'done', isNew: true, sub: '28.10: через агента Mac, без FA — таргетинг адсета, вкл/выкл и имя объявления, дубль на паузе, лимит трат, пресет на живой адсет, массовые правки' },
+      { label: 'История кампании', status: 'done', isNew: true, sub: 'своя лента: залив и каждая правка с итогом (в очереди / готово / не вышло)' },
+      { label: 'Модерация объявлений и вкладка «Внимание»', status: 'done', isNew: true, sub: 'проверено вживую: 1666 объявлений, 118 отклонено, 136 с проблемой — с причиной; «Внимание» — модерация, кабинет в блоке, деньги' },
+      { label: 'Массовое вкл/выкл и ±20% бюджета', status: 'done' },
+      { label: 'Ошибки действий видны пользователю', status: 'done', isNew: true, sub: 'глобальные сообщения об ошибках для всех действий' },
+      { label: 'Свой список кампаний из Facebook', status: 'done', isNew: true, sub: 'агент читает кампании и адсеты из кабинетов (расход сегодня/вчера/7 дней), склейка с Keitaro по sub_id_2; статус, бюджет, ставка, имя — через профиль, включение с подтверждением. Профиль #8: 105 кампаний, 53 сошлись с Keitaro. Дубль, таргетинг, история пока через FA' },
+      { label: 'Аналитика Keitaro у байера', status: 'done', isNew: true, sub: 'байер видел пусто: у байеров не задан тег. Теперь тег сравнивается и с группой Keitaro (Yana, Ruslan…); теги проставляет owner в Админке' },
+    ]
+  },
+  {
+    id: 'push',
+    title: 'Залив',
+    icon: '🚀',
+    color: 'var(--yellow)',
+    items: [
+      { label: 'Мастер залива открывается', status: 'done' },
+      { label: 'Настройки мастера (кабинеты, страницы, пресеты)', status: 'done', isNew: true, sub: 'таблицы созданы, отвечает 200' },
+      { label: 'Создание залива', status: 'partial', isNew: true, sub: '28.10: цепочка собрана целиком — мастер → сервер (Keitaro) → агент Mac → FB через профиль, всё на паузе. Не запускали вживую: в базе 0 готовых креативов, бюджет и ставку даёт лид' },
+      { label: 'Журнал заливов', status: 'done', isNew: true },
+      { label: 'Вход через панель «Пресеты» как в оригинале', status: 'done', isNew: true, sub: 'поиск, сортировка, «Залить» открывает мастер уже заполненным из пресета; «Без пресета»' },
+      { label: 'Компиляция HTML лендинга + загрузка в Keitaro', status: 'done' },
+      { label: 'Создание кампании + стримов в Keitaro', status: 'done', isNew: true, sub: 'кампания с макросами FB (campaign_id → sub_id_2), поток лендинг+офферы без фильтра стран, default-поток вайт; повтор не плодит дублей. Ждёт первого боевого залива' },
+      { label: 'Создание AdSet + Ad в Facebook', status: 'done', isNew: true, sub: 'агент на Mac в сессии Ads Manager профиля: 1 кампания → 3 адсета → все креативы, всё PAUSED, OPT_OUT; ставка и бюджет обязательны. Ждёт первого боевого залива' },
+      { label: 'Прогресс и трассировка залива', status: 'done' },
+      { label: 'Убрать упавшие / вернуть', status: 'done' },
+      { label: 'Авто-язык по ГЕО, OUTCOME_LEADS', status: 'done' },
+    ]
+  },
+  {
+    id: 'own_push',
+    title: 'Свой залив (без FA)',
+    icon: '🛠️',
+    color: '#eab308',
+    items: [
+      { label: 'Схема залива и параметры FB (регламент)', status: 'done', isNew: true, sub: 'кампания → 3 адсета → все креативы; OPT_OUT всех creative_features + contextual_multi_ads' },
+      { label: 'Доступ к AdsPower API', status: 'done', isNew: true, sub: 'ключ работает в заголовке Authorization: Bearer; список профилей без паролей и токенов' },
+      { label: 'Поиск offscreen-страницы профиля по serial_number', status: 'done', isNew: true, sub: 'ws_find.js; offscreen найден в открытом профиле #8' },
+      { label: 'Запросы к FB через профиль (get / post / batch / soft)', status: 'partial', isNew: true, sub: 'cdp_get, cdp_post, cdp_batch написаны; ждут токен и тестовый профиль' },
+      { label: 'Загрузка картинок креативов', status: 'partial', isNew: true, sub: 'cdp_upload_img.js написан, не проверен на кабинете' },
+      { label: 'Проверка профиля: токен, кабинеты, страницы, пиксели', status: 'done', isNew: true, sub: 'кнопка «Проверить» у аккаунта → агент; токен из сессии Ads Manager остаётся на Mac. Профиль #8: 14 БМ, 14 кабинетов (5 готовы), 13 страниц' },
+      { label: 'Создание кампании + 3 адсета + объявления (PAUSED)', status: 'partial', isNew: true, sub: 'fb_push.js: без --go только план, повторный запуск доливает недостающее; бид и бюджет без значений по умолчанию' },
+      { label: 'Тестовый залив на одном кабинете', status: 'todo', isNew: true, sub: 'кандидат — US-0929-10 профиля #7 (активен, USD, лимит 50); нужны креативы и бюджет/ставка от лида' },
+      { label: 'Связка с Keitaro (sub_id_2 = campaign_id)', status: 'done', isNew: true, sub: 'кампания Keitaro с макросами FB, url_tags в объявлениях' },
+      { label: 'Кнопка залива в мастере Bananabun', status: 'done', isNew: true, sub: '«Залить» ставит залив, прогресс по шагам, пачка — по заливу на кабинет' },
+    ]
+  },
+  {
+    id: 'accounts',
+    title: 'FB Аккаунты',
+    icon: '👤',
+    color: '#3b82f6',
+    items: [
+      { label: 'Список аккаунтов', status: 'done', isNew: true, sub: 'агент на Mac пишет профили на сервер (без секретов); баер видит группу со своей почтой' },
+      { label: 'AdsPower с сервера', status: 'done', isNew: true, sub: 'через агента на Mac: сервер ставит задачу (синхронизация, открыть профиль), агент выполняет локально' },
+      { label: 'AdsPower API на локальной машине', status: 'done', isNew: true, sub: 'ключ работает (Bearer); MCP adspower-local-api тоже подключён' },
+      { label: 'Открыть профиль', status: 'done', isNew: true, sub: 'команда уходит агенту на Mac, он открывает профиль в AdsPower' },
+      { label: 'Кнопка «Проверить» AdsPower и страница AdsPower', status: 'done', isNew: true, sub: 'было: сервер стучался в AdsPower на Mac и всегда падал; теперь проверка, список профилей, открыть и закрыть идут через агента' },
+      { label: 'Привязка BM + пикселей', status: 'done', isNew: true, sub: 'больше не затирает статус, BM и пиксели сохраняются' },
+      { label: 'Сортировка списка', status: 'done', isNew: true, sub: 'по названию / статусу / кабинетам' },
+      { label: 'Бейджи готовности, CAPI, payment_missing', status: 'done' },
+      { label: 'Проверить профиль, ads_running / ads_limit', status: 'done' },
+      { label: 'Коды 2FA', status: 'done', isNew: true, sub: '28.10: кнопка «🔐 2FA» у аккаунта — агент считает код на Mac из поля 2FA AdsPower или строки «2FA: …» в заметке, наружу уходят только 6 цифр (ответ ~2 с); страница «Коды 2FA» — ключ вставляется вручную, код считается в браузере, никуда не отправляется. Замена 2fa.cn' },
+    ]
+  },
+  {
+    id: 'ad_settings',
+    title: 'Настройки рекламы',
+    icon: '⚙️',
+    color: '#8b5cf6',
+    items: [
+      { label: 'Страница и CRUD пресетов', status: 'done', isNew: true },
+      { label: 'Счётчик заливов на пресете', status: 'done', isNew: true },
+      { label: 'Живой предпросмотр', status: 'done' },
+      { label: 'Применение пресета при заливе', status: 'done', isNew: true, sub: '28.10: залив учитывает весь пресет — ставка у каждого адсета, пол, устройства, площадки, раскладка креативов по адсетам' },
+      { label: 'Несколько товаров, UTM, creo_mode, все креативы', status: 'done' },
+      { label: 'Ставки по адсетам и ручные площадки в пресете', status: 'done', isNew: true, sub: 'как в FA: 27 / 30 / 30 по адсетам; Facebook / Instagram / AN / Messenger' },
+      { label: 'Подсказка «куда лить» и залив в несколько кабинетов', status: 'done', isNew: true, sub: 'кабинеты по свободе: лимит в день, расход сегодня, крутящиеся объявления; пачка — по заливу на кабинет' },
+      { label: 'Свой счётчик поведения на лендингах', status: 'done', isNew: true, sub: 'вместо PostHog через FA: просмотры, блоки, скролл, «купить», комплекты, квиз, время, устройства; проверено в браузере. Выдуманный рейтинг 4.7 убран' },
+    ]
+  },
+  {
+    id: 'landings',
+    title: 'Лендинги',
+    icon: '🌐',
+    color: '#06b6d4',
+    items: [
+      { label: 'Свой шаблон витрины на 12 ГЕО', status: 'done', isNew: true, sub: '28.10: кнопка «Витрина» — свой магазин, тексты на языке гео, только реальные данные; ссылка на оффер — касса keitaro.js как на лендингах Keitaro. Проверено в браузере сервера. Шаблоны FA из Keitaro (ManoMano, Easy, Cdiscount) не переносим: подделка магазинов, фейковые опрос, остатки, таймеры и отзывы' },
+      { label: 'Сборщик лендинга получает комплекты, отзывы, фото', status: 'done', isNew: true, sub: 'было: читал несуществующее поле — на лендинг не шли комплекты, отзывы и старая цена; фото со своего сервера были относительными' },
+      { label: 'Страница Лендинги', status: 'done' },
+      { label: 'Вайт, форма, загрузка своего HTML', status: 'done' },
+      { label: 'Синхронизация шаблонов из FA', status: 'done' },
+    ]
+  },
+  {
+    id: 'analytics',
+    title: 'Аналитика',
+    icon: '📊',
+    color: '#ec4899',
+    items: [
+      { label: 'Overview, дневные графики, Keitaro stats', status: 'done' },
+      { label: 'Воронка и поведение лендинга', status: 'done', isNew: true, sub: 'свой счётчик на лендингах вместо PostHog FA' },
+      { label: 'Статистика по байерам + сравнение периодов', status: 'done', isNew: true, sub: '28.10: из Keitaro и наших заливов, без FA' },
+      { label: 'Конструктор запросов (срезы и метрики)', status: 'done', isNew: true, sub: '28.10: напрямую по Keitaro — дата, гео, устройство, ОС, байер, кампания…; CPC/CPA/ROAS/EPC считаются' },
+    ]
+  },
+  {
+    id: 'ui',
+    title: 'Интерфейс',
+    icon: '🧭',
+    color: '#14b8a6',
+    items: [
+      { label: 'Боковое меню как в оригинале: Связки / Залив / Аккаунты', status: 'done', isNew: true, sub: 'остальные разделы свёрнуты в «Ещё», ничего не потеряно' },
+      { label: 'Меню пользователя', status: 'done', isNew: true, sub: 'Команда, Настройки, Выйти' },
+      { label: 'Переключатель светлой / тёмной темы', status: 'done', isNew: true, sub: 'меню пользователя → Тема; 575 зашитых цветов переведены на переменные; выбор запоминается' },
+      { label: 'Ошибки действий видны во всех разделах', status: 'done', isNew: true, sub: 'любая неудачная операция показывает сообщение с текстом' },
+      { label: 'Вход «Делай Деньги!»: логин или email, два шага, цвет Тиффани, музыка', status: 'done', isNew: true, sub: 'свечение Тиффани на кнопках по всему приложению' },
+    ]
+  },
+  {
+    id: 'deploy',
+    title: 'Деплой (VPS)',
+    icon: '🖥️',
+    color: '#10b981',
+    items: [
+      { label: 'VPS, Node 20, PostgreSQL 16, Redis, Nginx', status: 'done', sub: '148.230.98.232 · srv2100328.hstgr.cloud' },
+      { label: 'Свой домен nespizdili.lol', status: 'done', isNew: true, sub: 'A-записи @ и www в Porkbun → 148.230.98.232; nginx отвечает на оба; старый адрес hstgr тоже работает' },
+      { label: 'SSL (HTTPS)', status: 'done', isNew: true, sub: 'один сертификат на hstgr + nespizdili.lol + www, до 2027-01-25, авто-продление; http → https' },
+      { label: 'Фронт с исправлениями', status: 'done', isNew: true, sub: 'собран и выложен 27.10' },
+      { label: 'Бэкенд с исправлениями', status: 'done', isNew: true, sub: 'перезапущен, проверен тестом на сервере' },
+      { label: 'Миграции 004–006', status: 'done', isNew: true, sub: '7 таблиц, колонки, движок скрапа; бэкапы сняты' },
+      { label: 'Браузер для своего скрапера (Chromium)', status: 'done', isNew: true },
+      { label: 'Keitaro подключён через workspace', status: 'done' },
+      { label: 'Подключение к FA через MCP', status: 'partial', isNew: true, sub: 'клиент переписан; нужен секретный токен агента вместо id agt_e78e…' },
+      { label: 'Доступ к картинкам FA (Cloudflare Access)', status: 'todo', isNew: true, sub: 'сервисный токен от админов FA' },
+    ]
+  },
+  {
+    id: 'team',
+    title: 'Команда',
+    icon: '👥',
+    color: '#f97316',
+    items: [
+      { label: 'Список, приглашение, удаление', status: 'done' },
+      { label: 'Роли owner / lead / buyer', status: 'done' },
+      { label: 'Регистрация по инвайт-коду', status: 'done' },
+      { label: 'Ник в Keitaro у участника', status: 'done', isNew: true, sub: 'владелец задаёт в «Команда», можно несколько через запятую' },
+      { label: 'Ошибки Keitaro/AdsPower по роли', status: 'done' },
+      { label: 'Смена роли / имени участника', status: 'done', isNew: true, sub: '500 исправлен' },
+    ]
+  },
+];
+
+function statusDot(status) {
+  if (status === 'done') return '<div class="item-dot dot-done">✓</div>';
+  if (status === 'partial') return '<div class="item-dot dot-partial">~</div>';
+  return '<div class="item-dot dot-todo">✗</div>';
+}
+
+function score(it) { return it.status === 'done' ? 1 : it.status === 'partial' ? 0.5 : 0; }
+
+function sectionColor(pct) {
+  if (pct >= 80) return 'var(--green)';
+  if (pct >= 40) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+function render() {
+  const container = document.getElementById('sections-container');
+  let totalDone = 0, totalAll = 0;
+  const counts = { done: 0, partial: 0, todo: 0 };
+
+  SECTIONS.forEach(sec => {
+    const secScore = sec.items.reduce((s, it) => s + score(it), 0);
+    const pct = Math.round((secScore / sec.items.length) * 100);
+    totalDone += secScore;
+    totalAll += sec.items.length;
+    sec.items.forEach(it => counts[it.status]++);
+
+    const card = document.createElement('div');
+    card.className = 'section-card';
+    card.innerHTML = `
+      <div class="section-head">
+        <div class="section-title">
+          <div class="section-icon" style="background:${sec.color}22;color:${sec.color}">${sec.icon}</div>
+          ${sec.title}
+        </div>
+        <div class="section-pct" style="color:${sectionColor(pct)}">${pct}%</div>
+      </div>
+      <div class="section-bar">
+        <div class="section-bar-fill" style="width:${pct}%;background:${sectionColor(pct)}"></div>
+      </div>
+      <div class="items-list">
+        ${sec.items.map(it => `
+          <div class="item">
+            ${statusDot(it.status)}
+            <div class="item-text">
+              <div class="item-label">${it.label}${it.isNew ? '<span class="tag-new">27.10</span>' : ''}</div>
+              ${it.sub ? `<div class="item-sub">${it.sub}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(card);
+  });
+
+  const total = Math.round((totalDone / totalAll) * 100);
+  document.getElementById('total-pct').textContent = total + '%';
+  setTimeout(() => { document.getElementById('main-bar').style.width = total + '%'; }, 100);
+
+  document.getElementById('summary').innerHTML = [
+    ['Работает', counts.done, 'var(--green)'],
+    ['Частично / ждёт миграции', counts.partial, 'var(--yellow)'],
+    ['Нет / сломано', counts.todo, 'var(--red)'],
+  ].map(([t, n, c]) => `<div class="stat"><div class="n" style="color:${c}">${n}</div><div class="t">${t}</div></div>`).join('');
+
+  document.getElementById('ts').textContent =
+    `Аудит: 27.10.2026 · ${totalAll} пунктов · обновлено ${new Date().toLocaleDateString('ru-RU')}`;
+}
+
+render();
+</script>
+
+</body></html>

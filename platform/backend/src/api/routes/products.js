@@ -216,19 +216,18 @@ export async function productRoutes(app) {
 
   app.post('/:id/reviews', auth, async (req, reply) => {
     await assertProductAccess(req, req.params.id);
-    const { author, rating, text } = req.body;
+    const { author, rating, text } = req.body || {};
+    if (!String(text || '').trim()) return reply.status(400).send({ error: 'Нужен текст отзыва' });
+    // Only a real 1–5 rating; none given stays empty (no stars), never a default 5.
+    const r = Math.round(Number(rating));
     const review = await db.insert('product_reviews', {
       id: `rev_${nanoid(20)}`,
       product_id: req.params.id,
       author: author || 'Аноним',
-      rating: Number(rating) || 5,
+      rating: r >= 1 && r <= 5 ? r : null,
       text,
     });
-    // Update reviews_count
-    await db.query(
-      `UPDATE products SET reviews_count = (SELECT COUNT(*) FROM product_reviews WHERE product_id = $1) WHERE id = $1`,
-      [req.params.id]
-    );
+    // products.reviews_count is the marketplace's count (scraped) — not the number of reviews added here.
     return review;
   });
 
@@ -237,10 +236,6 @@ export async function productRoutes(app) {
     await db.query(
       `DELETE FROM product_reviews WHERE id = $1 AND product_id = $2`,
       [req.params.rid, req.params.id]
-    );
-    await db.query(
-      `UPDATE products SET reviews_count = (SELECT COUNT(*) FROM product_reviews WHERE product_id = $1) WHERE id = $1`,
-      [req.params.id]
     );
     return { ok: true };
   });

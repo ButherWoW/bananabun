@@ -322,8 +322,7 @@ export default function LandingsPage() {
             onClick={() => {
               const name = window.prompt('Название форм-страницы:', 'Form Page FR');
               if (!name) return;
-              const price = window.prompt('Реальная цена товара, €:', '');
-              if (price) createFormPageMutation.mutate({ name, price, geo: 'FR' });
+              createFormPageMutation.mutate({ name, geo: 'FR' });
             }}
             disabled={createFormPageMutation.isPending}
             className="text-xs px-3 py-1.5 rounded-lg bg-[color:var(--c1e2240)] hover:bg-emerald-600/40 text-gray-400 hover:text-emerald-300 transition-colors disabled:opacity-50"

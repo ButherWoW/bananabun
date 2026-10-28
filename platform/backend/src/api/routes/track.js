@@ -8,11 +8,29 @@ const idOr = (v) => (ID.test(String(v || '')) ? String(v) : null);
 
 let lastPrune = 0;
 
+// Per-visitor-IP limit: a real page sends a few beacons a minute. The IP comes from nginx's X-Real-IP,
+// trusted only when the request itself came from the local proxy.
+const LIMIT = 120;
+const hits = new Map();
+function clientIp(req) {
+  const local = /^(127\.|::1$|::ffff:127\.)/.test(String(req.ip || ''));
+  return local && req.headers['x-real-ip'] ? String(req.headers['x-real-ip']) : String(req.ip || '');
+}
+function overLimit(ip) {
+  const now = Date.now();
+  const h = hits.get(ip);
+  if (!h || now - h.at > 60000) { hits.set(ip, { at: now, n: 1 }); }
+  else if (++h.n > LIMIT) return true;
+  if (hits.size > 50000) for (const [k, v] of hits) if (now - v.at > 60000) hits.delete(k);
+  return false;
+}
+
 // Public endpoint for the landing tracker: no auth (the page is on the tracker's domain),
 // text/plain body so the browser sends it without a CORS preflight. Answers 204 whatever comes.
 export async function trackRoutes(app) {
   app.post('/', { logLevel: 'warn', bodyLimit: 64 * 1024 }, async (req, reply) => {
     reply.header('Access-Control-Allow-Origin', '*').status(204);
+    if (overLimit(clientIp(req))) return reply.send();
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { return reply.send(); } }
     const m = body?.m || {};
@@ -26,12 +44,15 @@ export async function trackRoutes(app) {
       visitor, idOr(m.c), idOr(m.s), idOr(m.a), idOr(m.t), idOr(m.p), clip(m.g, 4),
       deviceOf(ua, Number(m.w) || 0), osOf(ua), appOf(ua), clip(m.pl, 60), clip(m.src, 40), country,
     ];
-    const rows = events.filter(e => EVENTS.has(e?.e));
+    // A real page sends a handful of events per beacon; more is noise or abuse.
+    const rows = events.filter(e => EVENTS.has(e?.e)).slice(0, 50);
     if (!rows.length) return reply.send();
+    const int32 = (v) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null
+      : Math.max(-2147483648, Math.min(2147483647, Math.round(Number(v)))));
 
     const vals = [];
     const ph = rows.map((e, i) => {
-      vals.push(...base, e.e, clip(e.b, 40), Number.isFinite(Number(e.n)) && e.n !== null ? Math.round(Number(e.n)) : null);
+      vals.push(...base, e.e, clip(e.b, 40), int32(e.n));
       const o = i * 16;
       return `(${Array.from({ length: 16 }, (_, k) => `$${o + k + 1}`).join(',')})`;
     });

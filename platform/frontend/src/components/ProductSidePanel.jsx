@@ -688,7 +688,7 @@ function GalleryTab({ product, qc }) {
 function ReviewsTab({ product, qc }) {
   const [reviews, setReviews] = useState([]);
   const [adding, setAdding] = useState(false);
-  const [newReview, setNewReview] = useState({ author: '', rating: 5, text: '' });
+  const [newReview, setNewReview] = useState({ author: '', rating: null, text: '' });
 
   useEffect(() => {
     fetch(`${API_BASE}/api/products/${product.id}/reviews`, {
@@ -713,7 +713,7 @@ function ReviewsTab({ product, qc }) {
       if (r.ok) {
         const d = await r.json();
         setReviews(prev => [...prev, d]);
-        setNewReview({ author: '', rating: 5, text: '' });
+        setNewReview({ author: '', rating: null, text: '' });
         setAdding(false);
         qc.invalidateQueries(['products']);
       }
@@ -757,10 +757,11 @@ function ReviewsTab({ product, qc }) {
             <div>
               <label className="text-[10px] text-gray-500 mb-1 block">Рейтинг</label>
               <select
-                value={newReview.rating}
-                onChange={e => setNewReview(r => ({ ...r, rating: Number(e.target.value) }))}
+                value={newReview.rating ?? ''}
+                onChange={e => setNewReview(r => ({ ...r, rating: e.target.value ? Number(e.target.value) : null }))}
                 className="w-full bg-[color:var(--c0d0f1e)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none"
               >
+                <option value="">без оценки</option>
                 {[5,4,3,2,1].map(n => <option key={n} value={n}>{'⭐'.repeat(n)}</option>)}
               </select>
             </div>

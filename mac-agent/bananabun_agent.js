@@ -95,10 +95,18 @@ async function runPush(job) {
   } finally { graph.close(); }
 }
 
+// Amazon jobs share the scrape profile and its language cookie: one at a time, whichever lane runs them.
+let amazonQueue = Promise.resolve();
+function amazonJob(fn) {
+  const run = amazonQueue.then(fn, fn);
+  amazonQueue = run.catch(() => {});
+  return run;
+}
+
 async function runJob(job) {
   if (job.type === 'push') return runPush(job);
-  if (job.type === 'scrape_amazon') return scrapeAmazon(String(job.payload?.url || ''));
-  if (job.type === 'search_amazon') return searchAmazonPage(String(job.payload?.url || ''));
+  if (job.type === 'scrape_amazon') return amazonJob(() => scrapeAmazon(String(job.payload?.url || '')));
+  if (job.type === 'search_amazon') return amazonJob(() => searchAmazonPage(String(job.payload?.url || '')));
   if (job.type === 'sync') return syncProfiles();
   if (job.type === 'open') {
     const uid = String(job.payload?.user_id || '');
@@ -190,15 +198,15 @@ async function refreshOpenProfiles() {
   }
 }
 
-// Fast lane for 2FA codes: no browser involved, so they never wait behind a push or a campaign read.
-async function totpLane() {
+// Fast lane for short jobs (2FA codes, Amazon searches): they never wait behind a push or a campaign read.
+async function fastLane() {
   for (;;) {
     try {
-      const { jobs } = await server('GET', '/api/agent/jobs?type=totp');
+      const { jobs } = await server('GET', '/api/agent/jobs?type=fast');
       for (const job of jobs) {
         let body;
-        try { body = { ok: true, data: await runJob(job) }; log(`job ${job.id} totp: ok`); }
-        catch (e) { body = { ok: false, error: redact(e.message) }; log(`job ${job.id} totp: ${e.message}`); }
+        try { body = { ok: true, data: await runJob(job) }; log(`job ${job.id} ${job.type}: ok`); }
+        catch (e) { body = { ok: false, error: redact(e.message), data: e.data }; log(`job ${job.id} ${job.type}: ${e.message}`); }
         await report(job.id, body);
       }
       if (jobs.length) continue;
@@ -210,7 +218,7 @@ async function totpLane() {
 let lastSync = 0;
 let lastCampaigns = 0;
 log(`agent → ${SERVER}`);
-if (!once) totpLane();
+if (!once) fastLane();
 for (;;) {
   try {
     if (Date.now() - lastSync > 5 * 60 * 1000) {

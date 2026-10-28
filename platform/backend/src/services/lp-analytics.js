@@ -82,7 +82,10 @@ export async function landingFunnel(user, { from, to, group = 'template', campai
     };
   });
   const sum = (k) => out.reduce((t, r) => t + (r[k] || 0), 0);
-  const totals = { views: sum('views'), bundle_pick: sum('bundle_pick'), buy_click: sum('buy_click'), scroll_75: sum('scroll_75'), sales: sales ? sum('sales') : null };
+  // A campaign whose visitors hit several rows would be counted per row: total sales over distinct campaigns.
+  const distinct = new Set(rows.flatMap(r => r.campaigns || []).filter(Boolean).map(String));
+  const totals = { views: sum('views'), bundle_pick: sum('bundle_pick'), buy_click: sum('buy_click'), scroll_75: sum('scroll_75'),
+    sales: sales ? [...distinct].reduce((t, id) => t + (sales.get(id) || 0), 0) : null };
   totals.buy_rate = pct(totals.buy_click, totals.views);
   totals.pick_rate = pct(totals.bundle_pick, totals.views);
   return { group, period: { from, to, days: 'сутки UTC' }, rows: out, totals, sales_source: sales ? 'keitaro' : null };

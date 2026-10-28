@@ -941,7 +941,7 @@ export default function CampaignsPage() {
           cabinet: c.act_name || c.act_id,
           fb_campaign_id: c.id,
           clicks: Number(c.lp_clicks || 0),
-          sales: Number(c.leads || 0),
+          sales: Number(c.sales || 0),
           source: 'fb',
         };
       });
@@ -969,6 +969,7 @@ export default function CampaignsPage() {
           revenue: Number(st.revenue || 0),
           spend: Number(st.cost || 0),
           spend_source: st.spend_source || 'keitaro',
+          spend_note: st.spend_note || null,
           fb_synced_at: st.fb_synced_at || null,
           source: 'keitaro',
         };
@@ -1199,7 +1200,7 @@ export default function CampaignsPage() {
                   </td>
                   )}
                   {show('spend') && <td className="px-4 py-3 text-right text-sm text-gray-300"
-                    title={c.spend_source === 'fb' ? 'Расход из кабинета Facebook' : c.source === 'keitaro' ? 'Оценка Keitaro: кампания не связана с FB или период без данных FB' : undefined}>
+                    title={c.spend_source === 'fb' ? 'Расход из кабинета Facebook' : c.source === 'keitaro' ? `Оценка Keitaro: ${c.spend_note || 'кампания не связана с FB или период без данных FB'}` : undefined}>
                     {Number(c.spend || 0) > 0 ? Number(c.spend).toFixed(2) : '—'}
                     {c.source === 'keitaro' && Number(c.spend || 0) > 0 && (
                       <span className={`ml-1 text-[9px] ${c.spend_source === 'fb' ? 'text-blue-400' : 'text-orange-400/70'}`}>{c.spend_source === 'fb' ? 'FB' : 'KT'}</span>

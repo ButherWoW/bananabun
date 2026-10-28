@@ -279,7 +279,11 @@ export async function pushRoutes(app) {
       wsRow?.keitaro_url && wsRow?.keitaro_api_key
         ? keitaroClient(wsRow.keitaro_url, wsRow.keitaro_api_key).domains().catch(() => [])
         : Promise.resolve([]),
-      db.query(`SELECT id, name, store, state, geos, versions FROM landing_templates WHERE workspace_id=$1 AND state='ready' ORDER BY name`, [ws]),
+      // Only templates that can be compiled: FA-synced rows without HTML would upload a blank page.
+      db.query(`SELECT id, name, store, state, geos, versions, type FROM landing_templates
+                 WHERE workspace_id=$1 AND state='ready' AND COALESCE(type, '') <> 'white'
+                   AND (COALESCE(html, '') <> '' OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(versions, '[]'::jsonb)) v WHERE COALESCE(v->>'html', '') <> ''))
+                 ORDER BY name`, [ws]),
     ]);
 
     // Merge local templates + Keitaro landings (local templates first, marked with source)
@@ -313,13 +317,9 @@ export async function pushRoutes(app) {
     const product = await db.findOne('products', { id: product_id, workspace_id: ws });
     if (!product) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
 
+    // No generator configured: say so instead of handing out canned claims (discounts, «official», guarantees).
     if (!process.env.ANTHROPIC_API_KEY) {
-      return {
-        variants: [
-          { title: product.title.slice(0, 40), body: `Закажи ${product.title} сейчас со скидкой!` },
-          { title: `${product.title} — официально`, body: `Быстрая доставка. Гарантия качества.` },
-        ],
-      };
+      throw Object.assign(new Error('Генерация текстов не настроена — впишите заголовок и текст вручную'), { statusCode: 503 });
     }
 
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -329,9 +329,11 @@ export async function pushRoutes(app) {
 
 Товар: ${product.title}
 Описание: ${product.description || ''}
-Цена: ${product.price || ''} ${product.currency || ''}
+Цена: ${product.source_price || ''}
 Страна: ${geo}
 Язык объявления: ${language}
+
+Пиши только то, что следует из названия и описания. Не выдумывай скидки, акции, сроки, остатки, гарантии, «официальность» и отзывы.
 
 Для каждого варианта дай:
 - title: заголовок (до 40 символов)

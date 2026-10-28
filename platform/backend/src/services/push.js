@@ -174,7 +174,9 @@ export async function runPush(pushId) {
     if (!page?.name) throw new Error('Страница не найдена в кабинетах аккаунта — обновите проверку аккаунта');
 
     const { rows: creatives } = await db.query(
-      `SELECT id, file_url FROM creatives WHERE workspace_id=$1 AND id = ANY($2) AND status='done' AND file_url IS NOT NULL`,
+      // In the buyer's order: the creative layout indexes positions of creative_ids.
+      `SELECT id, file_url FROM creatives WHERE workspace_id=$1 AND id = ANY($2) AND status='done' AND file_url IS NOT NULL
+        ORDER BY array_position($2::varchar[], id)`,
       [push.workspace_id, params.creative_ids]);
     if (creatives.length !== params.creative_ids.length) throw new Error('Часть креативов не готова или не найдена');
 
@@ -214,6 +216,7 @@ export async function runPush(pushId) {
     };
 
     const jobId = await enqueueAgentJob(push.workspace_id, 'push', { push_id: pushId, user_id: owner.user_id, spec }, push.created_by);
+    await db.query(`UPDATE pushes SET agent_job_id = $1 WHERE id = $2`, [jobId, pushId]);
     await log(pushId, 'fb_queued', { job_id: jobId, ads: spec.layout.flat().length });
   } catch (err) {
     console.error(`[push:${pushId}] ERROR:`, err.message);
@@ -222,14 +225,18 @@ export async function runPush(pushId) {
 }
 
 // Agent reported back on a push job.
-export async function applyPushResult(ws, pushId, ok, error, data) {
-  await db.query(`
+// Only the push's current job may close it. A late result of that job after the reaper marked the push
+// failed still records the FB ids (the objects exist), so nothing created in FB is lost.
+export async function applyPushResult(ws, pushId, ok, error, data, jobId) {
+  const { rowCount } = await db.query(`
     UPDATE pushes SET status=$1, error=$2, fb_campaign_id=COALESCE($3, fb_campaign_id),
            fb_adset_ids=COALESCE($4::jsonb, fb_adset_ids), fb_ad_ids=COALESCE($5::jsonb, fb_ad_ids),
            finished_at=NOW(), updated_at=NOW()
-     WHERE id=$6 AND workspace_id=$7 AND status='running'`,
+     WHERE id=$6 AND workspace_id=$7 AND (agent_job_id IS NULL OR agent_job_id = $8)
+       AND (status = 'running' OR (status = 'failed' AND $1 = 'done'))`,
     [ok ? 'done' : 'failed', ok ? null : error, data?.campaign_id || null,
-     data?.adset_ids ? JSON.stringify(data.adset_ids) : null, data?.ad_ids ? JSON.stringify(data.ad_ids) : null, pushId, ws]);
+     data?.adset_ids ? JSON.stringify(data.adset_ids) : null, data?.ad_ids ? JSON.stringify(data.ad_ids) : null, pushId, ws, jobId ?? null]);
+  if (!rowCount) return;
   await log(pushId, ok ? 'done' : 'fb_failed', { campaign_id: data?.campaign_id, ads: data?.ad_ids?.length || 0, ...(ok ? {} : { error }) });
   if (data?.campaign_id) {
     const { rows: [p] } = await db.query(`SELECT created_by FROM pushes WHERE id=$1 AND workspace_id=$2`, [pushId, ws]);

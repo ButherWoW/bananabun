@@ -4,7 +4,8 @@ import { readFileSync } from 'fs';
 import { trackerScript } from './lp-tracker.js';
 import { words, langOf } from './landing-i18n.js';
 
-const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// «{» is escaped too, so a «{{…}}» inside scraped text is never expanded as a placeholder.
+const esc = (v) => String(v ?? '').replace(/[&<>"'{]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '{': '&#123;' }[c]));
 const SYMBOL = { EUR: '€', USD: '$', GBP: '£', PLN: 'zł', CHF: 'CHF' };
 
 function asArray(raw) {
@@ -72,10 +73,16 @@ function galleryHtml(images, title) {
   return `<div class="bb-gallery" data-block="gallery">${urls.map((u, i) => `<img src="${esc(u)}" alt="${esc(title)}" loading="${i ? 'lazy' : 'eager'}">`).join('')}</div>`;
 }
 
+// Stars only for a real 1–5 rating.
+function starsOf(rating) {
+  const n = Math.round(Number(rating));
+  return n >= 1 && n <= 5 ? ` <span class="bb-stars">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</span>` : '';
+}
+
 function reviewsHtml(reviews, t) {
   if (!reviews.length) return '';
   return `<section class="bb-reviews" data-block="reviews"><h2>${esc(t.reviews)}</h2>${reviews.map(r => `
-<div class="bb-review"><div class="bb-review-head"><b>${esc(r.author || '')}</b>${r.rating ? ` <span class="bb-stars">${'★'.repeat(Math.round(r.rating))}${'☆'.repeat(5 - Math.round(r.rating))}</span>` : ''}</div><p>${esc(r.text || '')}</p></div>`).join('')}</section>`;
+<div class="bb-review"><div class="bb-review-head"><b>${esc(r.author || '')}</b>${starsOf(r.rating)}</div><p>${esc(r.text || '')}</p></div>`).join('')}</section>`;
 }
 
 function specsHtml(specs, t) {
@@ -95,14 +102,20 @@ export async function compileLanding(templateId, productId, geo = 'FR', ws) {
   if (!product) throw new Error('Product not found');
 
   const G = String(geo || 'FR').toUpperCase();
+  if (!/^[A-Z]{2}$/.test(G)) throw new Error('Гео — код из двух букв');
   const version = asArray(template.versions).find(v => String(v.geo || '').toUpperCase() === G);
   let html = version?.html || template.html || template.html_content || template.content || '';
   if (!html && template.file_url) html = await readFile('.' + template.file_url, 'utf8').catch(() => '');
+  if (!String(html).trim()) throw new Error('У шаблона нет HTML — его нельзя собрать (шаблоны FA без файла не годятся)');
 
   const t = words(G);
   const images = asArray(product.images);
   const mainImage = imageUrl(images[0]);
   const bundles = asArray(product.bundle_config);
+  // Our store sells only through Keitaro offers: without them the buy button would send an empty offer_id.
+  if (template.type === 'store' && (!bundles.length || bundles.some(b => !b.offer_id))) {
+    throw new Error('У товара нет комплектов с оффером Keitaro — добавьте комплекты с оффером, иначе кнопка покупки никуда не ведёт');
+  }
   const { rows: reviews } = await db.query(
     `SELECT author, rating, text FROM product_reviews WHERE product_id = $1 AND COALESCE(text, '') <> '' ORDER BY created_at LIMIT 12`, [product.id]);
   const currency = bundles[0]?.currency || 'EUR';
@@ -136,7 +149,8 @@ export async function compileLanding(templateId, productId, geo = 'FR', ws) {
       ? `<span class="save">−${Math.round((1 - Number(price1) / Number(oldPrice)) * 100)}%</span>` : '',
     '{{description_html}}': product.description
       ? `<section data-block="description"><h2>${esc(t.description)}</h2><div class="desc">${esc(product.description).replace(/\n/g, '<br>')}</div></section>` : '',
-    '{{reviews_count}}': String(product.reviews_count || reviews.length || ''),
+    // The marketplace's count only; reviews added by hand are not a count of buyers.
+    '{{reviews_count}}': Number(product.reviews_count) > 0 ? String(Number(product.reviews_count)) : '',
     // Only the real Amazon rating; without one the placeholder stays empty — never a made-up number.
     '{{rating}}': realRating != null ? String(realRating) : '',
     '{{rating_html}}': realRating != null ? `<span class="bb-rating">★ ${realRating} / 5${product.reviews_count ? ` · ${Number(product.reviews_count)}` : ''}</span>` : '',
@@ -159,9 +173,14 @@ export async function compileLanding(templateId, productId, geo = 'FR', ws) {
   html = html.replace(/\{\{\s*(review_\d+_(text|author|rating)|image_\d+)\s*\}\}/g, '');
 
   // Offer data + the Keitaro offer script (builds the buy link), then our visitor tracker.
-  const tail = `<script>window.FA_PRODUCT = ${jsonForScript(offerData(product, bundles, images, t, template.id))};</script>`
-    + `<script>${OFFER_JS}</script>`
-    + trackerScript({ templateId: template.id, productId: product.id, geo: G });
+  // The offer script is ours only for our store template: uploaded landings bring their own KEITARO_OFFERS
+  // and must not be overwritten. A white page gets nothing (moderators see it).
+  const isStore = template.type === 'store';
+  const isService = template.type === 'white';
+  const tail = (isStore
+    ? `<script>window.FA_PRODUCT = ${jsonForScript(offerData(product, bundles, images, t, template.id))};</script><script>${OFFER_JS}</script>`
+    : '')
+    + (isService ? '' : trackerScript({ templateId: template.id, productId: product.id, geo: G }));
   html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, () => `${tail}</body>`) : html + tail;
 
   return { html, product, template };

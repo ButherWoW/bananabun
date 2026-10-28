@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-28",
+  "backend_tests": {
+    "passed": 26,
+    "failed": 0,
+    "skipped": 0,
+    "postgresql": 16,
+    "browser_generation": true
+  },
+  "frontend": {
+    "production_build": "passed",
+    "ui_smoke": "passed: desktop/mobile login and nine pages on fixtures"
+  },
+  "dependencies": {
+    "backend_known_vulnerabilities": 0,
+    "frontend_known_vulnerabilities": 0
+  },
+  "live_checks": {
+    "adspower_profiles": 11,
+    "open_profiles": 0,
+    "fa_http_status": 401,
+    "cloudflare_service_credentials_present": false
+  },
+  "not_performed": [
+    "production deployment",
+    "paid FA scraping or generation",
+    "Facebook image upload or campaign creation",
+    "ad activation"
+  ]
+}

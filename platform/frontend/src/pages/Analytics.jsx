@@ -720,7 +720,7 @@ function ClickHeatmapSection({ from, to }) {
 }
 
 function QueryBuilderSection() {
-  const METRICS = ['clicks','impressions','spend','revenue','leads','sales','cpc','cpm','ctr','cr','cpa','roas','roi','profit','lp_views','lp_ctr','epc'];
+  const METRICS = ['clicks','spend','revenue','leads','sales','cpc','cr','cpa','roas','roi','profit','lp_views','lp_ctr','epc'];
   const DIMS = ['date','campaign','buyer','geo','os','device','browser','language','offer','landing','adset','ad','week','month'];
 
   const [metrics, setMetrics] = useState(['clicks','spend','revenue','profit','roi']);

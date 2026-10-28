@@ -9,7 +9,8 @@
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
 
 export function trackerScript({ templateId, productId, geo }) {
-  const cfg = JSON.stringify({ u: `${PUBLIC_URL}/api/t`, t: String(templateId || ''), p: String(productId || ''), g: String(geo || '') });
+  const cfg = JSON.stringify({ u: `${PUBLIC_URL}/api/t`, t: String(templateId || ''), p: String(productId || ''), g: String(geo || '') })
+    .replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
   return `<script>(function(){try{
 var C=${cfg},q=new URLSearchParams(location.search),S=window.sessionStorage,v;
 try{v=S.getItem('_bbv');if(!v){v=Math.random().toString(36).slice(2)+Date.now().toString(36);S.setItem('_bbv',v);}}catch(e){v=Math.random().toString(36).slice(2);}
@@ -28,7 +29,7 @@ if(x.closest('[data-quiz-answer],[class*=quiz] label,[class*=quiz] button,[class
 else if(x.hasAttribute('data-buy')||(!x.closest('[data-bundle]')&&BUY.test(x.textContent||''))){bought=1;ev('buy_click',b);send();}
 else if(x.closest('[data-bundle],[class*=bundle]'))ev('bundle_select',b);},true);
 var gone=0;function leave(){if(gone)return;gone=1;ev('leave',bought?'':last,Math.round((Date.now()-t0)/1000));send();}
-addEventListener('pagehide',leave);document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){leave();}else{gone=0;}});
+addEventListener('pagehide',leave);document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){leave();}});
 setInterval(send,15000);
 }catch(e){}})();</script>`;
 }

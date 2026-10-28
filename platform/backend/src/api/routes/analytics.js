@@ -2,37 +2,50 @@ import { db } from '../../db/client.js';
 import { faAnalyticsQuery, faAvailable } from '../../services/fa-client.js';
 import { landingFunnel, landingBehavior } from '../../services/lp-analytics.js';
 import { keitaroClient } from '../../services/keitaro.js';
+import { buyerScope, inScope } from './keitaro.js';
 
-// Keitaro dimension names for our query builder
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+// Query-builder dimensions → Keitaro grouping. Sub ids follow the push (services/push.js KT_PARAMETERS):
+// sub_id_2 FB campaign, sub_id_3 adset id, sub_id_4 ad id, sub_id_5 adset name.
 const DIM_MAP = {
   date: 'day', day: 'day', week: 'week', month: 'month',
-  campaign: 'campaign_id', geo: 'country', country: 'country',
-  device: 'device_type', os: 'os', browser: 'browser',
-  language: 'language', offer: 'sub_id_3', adset: 'sub_id_4',
-  landing: 'sub_id_5', ad: 'sub_id_6',
+  campaign: 'campaign', geo: 'country', country: 'country',
+  device: 'device_type', os: 'os', browser: 'browser', language: 'language',
+  offer: 'offer', landing: 'landing', adset: 'sub_id_3', ad: 'sub_id_4',
 };
-// Metrics Keitaro returns natively; others are computed below
-const METRIC_MAP = {
-  clicks: 'clicks', impressions: 'impressions', spend: 'cost', cost: 'cost',
-  revenue: 'revenue', leads: 'leads', sales: 'conversions', conversions: 'conversions',
-  profit: 'profit', roi: 'roi', cr: 'cr', lp_views: 'lp_clicks', lp_ctr: 'lp_ctr',
-};
-// Metrics computed from raw numbers after the query
-const COMPUTED = new Set(['cpc', 'cpm', 'ctr', 'cpa', 'roas', 'epc']);
+// Raw Keitaro metrics; every ratio is recomputed from them so rows can be summed (buyer dimension).
+const RAW = ['clicks', 'lp_clicks', 'sales', 'leads', 'revenue', 'cost'];
+const METRICS = new Set(['clicks', 'spend', 'cost', 'revenue', 'leads', 'sales', 'profit', 'roi', 'cr', 'lp_views', 'lp_ctr', 'cpc', 'cpa', 'roas', 'epc']);
 
-function computeRow(row, wantComputed) {
-  for (const m of wantComputed) {
-    const cl = Number(row.clicks || 0), cost = Number(row.cost || 0),
-      rev = Number(row.revenue || 0), imp = Number(row.impressions || 0),
-      conv = Number(row.conversions || 0);
-    if (m === 'cpc') row.cpc = cl > 0 ? cost / cl : null;
-    if (m === 'cpm') row.cpm = imp > 0 ? cost / imp * 1000 : null;
-    if (m === 'ctr') row.ctr = imp > 0 ? cl / imp * 100 : null;
-    if (m === 'cpa') row.cpa = conv > 0 ? cost / conv : null;
-    if (m === 'roas') row.roas = cost > 0 ? rev / cost : null;
-    if (m === 'epc') row.epc = cl > 0 ? rev / cl : null;
-  }
-  return row;
+function finish(r) {
+  const cl = r.clicks, cost = r.cost, rev = r.revenue, sales = r.sales;
+  return {
+    ...r, spend: cost, lp_views: r.lp_clicks, profit: rev - cost,
+    roi: cost > 0 ? (rev - cost) / cost * 100 : null,
+    cr: cl > 0 ? sales / cl * 100 : null,
+    lp_ctr: cl > 0 ? r.lp_clicks / cl * 100 : null,
+    cpc: cl > 0 ? cost / cl : null,
+    cpa: sales > 0 ? cost / sales : null,
+    roas: cost > 0 ? rev / cost : null,
+    epc: cl > 0 ? rev / cl : null,
+  };
+}
+
+// FB campaign id (sub_id_2) → buyer: our pushes first, then the tag in the Keitaro campaign name.
+async function buyerResolver(ws, rows) {
+  const ids = [...new Set(rows.map(r => String(r.sub_id_2 || '')).filter(id => /^\d+$/.test(id)))];
+  const { rows: pushRows } = ids.length ? await db.query(
+    `SELECT p.fb_campaign_id, u.name, u.email FROM pushes p JOIN users u ON u.id = p.created_by
+      WHERE p.workspace_id = $1 AND p.fb_campaign_id = ANY($2)`, [ws, ids]) : { rows: [] };
+  const byId = new Map(pushRows.map(r => [String(r.fb_campaign_id), r.name || r.email?.split('@')[0] || '?']));
+  return (r) => byId.get(String(r.sub_id_2 || '')) || buyerTag(r.campaign) || 'без метки';
+}
+
+async function keitaroFor(req, reply) {
+  const ws = await db.findOne('workspaces', { id: req.user.ws });
+  if (!ws?.keitaro_url || !ws?.keitaro_api_key) { reply.status(503).send({ error: 'Keitaro не настроен' }); return null; }
+  return keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
 }
 
 // Previous period of the same length
@@ -131,114 +144,92 @@ export async function analyticsRoutes(app) {
     }
   });
 
-  // Buyer stats from Keitaro + our pushes table (no FA dependency).
+  // Keitaro rows with the extra keys needed for buyer attribution and the buyer's own scope.
+  async function scopedRows(req, client, range, grouping, needBuyer) {
+    const scope = await buyerScope(req);
+    const extra = [...(needBuyer ? ['sub_id_2', 'campaign'] : []), ...(scope ? ['campaign', 'campaign_group'] : [])];
+    const data = await client.stats(range, [...new Set([...grouping, ...extra])], RAW);
+    let rows = data?.rows || [];
+    if (scope) rows = rows.filter(r => inScope(scope, r.campaign, r.campaign_group));
+    return rows;
+  }
+
+  // Sums raw metrics per key; ratios are recomputed afterwards by finish().
+  function aggregate(rows, keyOf, label) {
+    const map = new Map();
+    for (const r of rows) {
+      const k = keyOf(r);
+      const acc = map.get(k) || { ...label(r), ...Object.fromEntries(RAW.map(m => [m, 0])) };
+      for (const m of RAW) acc[m] += Number(r[m]) || 0;
+      map.set(k, acc);
+    }
+    return [...map.values()].map(finish);
+  }
+
+  // Buyer stats from Keitaro + our pushes (buyer: only their own campaigns), optional previous period.
   app.get('/buyers', auth, async (req, reply) => {
     const { from, to, compare } = req.query;
     if (!DAY.test(from || '') || !DAY.test(to || '')) return reply.status(400).send({ error: 'from и to — даты YYYY-MM-DD' });
-    const ws = await db.findOne('workspaces', { id: req.user.ws });
-    if (!ws?.keitaro_url || !ws?.keitaro_api_key) return reply.status(503).send({ error: 'Keitaro не настроен' });
-    const client = keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
-
-    const KM = ['clicks', 'conversions', 'revenue', 'cost', 'profit', 'roi', 'cr'];
-    const [mainData, prevData] = await Promise.all([
-      client.stats({ from, to }, ['sub_id_2', 'campaign_id'], KM),
-      compare === 'true' ? client.stats(prevPeriod(from, to), ['sub_id_2', 'campaign_id'], KM) : null,
-    ]);
-
-    // campaign_id (sub_id_2) → buyer name: first try our pushes, then campaign name tag
-    const allIds = [...new Set((mainData?.rows || []).map(r => String(r.sub_id_2 || '')).filter(Boolean))];
-    const { rows: pushRows } = allIds.length
-      ? await db.query(
-          `SELECT p.fb_campaign_id, u.email, u.display_name
-             FROM pushes p JOIN users u ON u.id = p.created_by
-            WHERE p.workspace_id = $1 AND p.fb_campaign_id = ANY($2)`,
-          [req.user.ws, allIds])
-      : { rows: [] };
-    const byId = new Map(pushRows.map(r => [String(r.fb_campaign_id), r.display_name || r.email?.split('@')[0] || '?']));
-
-    // Group by buyer
-    function aggregate(rows) {
-      const map = new Map();
-      for (const r of rows || []) {
-        const buyer = byId.get(String(r.sub_id_2 || '')) || buyerTag(r.campaign_id) || 'unknown';
-        const acc = map.get(buyer) || { buyer, clicks: 0, sales: 0, cost: 0, revenue: 0, profit: 0, _roi_sum: 0, _n: 0 };
-        acc.clicks += Number(r.clicks || 0);
-        acc.sales += Number(r.conversions || 0);
-        acc.cost += Number(r.cost || 0);
-        acc.revenue += Number(r.revenue || 0);
-        acc.profit += Number(r.profit || 0);
-        acc._roi_sum += Number(r.roi || 0);
-        acc._n += 1;
-        map.set(buyer, acc);
-      }
-      return [...map.values()].map(r => {
-        const cr = r.clicks > 0 ? r.sales / r.clicks * 100 : 0;
-        const roi = r.cost > 0 ? r.profit / r.cost * 100 : 0;
-        delete r._roi_sum; delete r._n;
-        return { ...r, cr: parseFloat(cr.toFixed(2)), roi: parseFloat(roi.toFixed(2)) };
-      }).sort((a, b) => b.profit - a.profit);
-    }
-
-    const main = aggregate(mainData?.rows);
-    if (!prevData) return { rows: main, period: { from, to } };
-
-    const prev = aggregate(prevData?.rows);
-    const prevMap = new Map(prev.map(r => [r.buyer, r]));
-    const rows = main.map(r => {
-      const p = prevMap.get(r.buyer);
-      return { ...r, compare: p ? { profit_diff: parseFloat((r.profit - p.profit).toFixed(2)), cost_diff: parseFloat((r.cost - p.cost).toFixed(2)), roi_diff: parseFloat((r.roi - p.roi).toFixed(2)), sales_diff: r.sales - p.sales } : null };
-    });
+    const client = await keitaroFor(req, reply);
+    if (!client) return;
     const pp = prevPeriod(from, to);
-    return { rows, period: { from, to }, compare_period: pp };
+    let main, prev;
+    try {
+      [main, prev] = await Promise.all([
+        scopedRows(req, client, { from, to }, [], true),
+        compare === 'true' ? scopedRows(req, client, pp, [], true) : null,
+      ]);
+    } catch {
+      return reply.status(502).send({ error: 'Keitaro не ответил' });
+    }
+    const who = await buyerResolver(req.user.ws, [...main, ...(prev || [])]);
+    const byBuyer = (rows) => aggregate(rows, who, (r) => ({ buyer: who(r) })).sort((a, b) => b.profit - a.profit);
+    const rows = byBuyer(main);
+    if (!prev) return { rows, period: { from, to } };
+    const before = new Map(byBuyer(prev).map(r => [r.buyer, r]));
+    return {
+      rows: rows.map(r => {
+        const p = before.get(r.buyer);
+        return { ...r, compare: p ? { profit_diff: r.profit - p.profit, cost_diff: r.cost - p.cost, roi_diff: r.roi != null && p.roi != null ? r.roi - p.roi : null, sales_diff: r.sales - p.sales } : null };
+      }),
+      period: { from, to }, compare_period: pp,
+    };
   });
 
-  // Flexible analytics query builder — Keitaro directly, no FA.
+  // Query builder straight over Keitaro. Buyers get only their own campaigns.
   app.post('/query', auth, async (req, reply) => {
-    const { from, to, dimensions = ['date'], metrics = ['clicks', 'spend', 'revenue', 'profit', 'roi'], sort, limit = 50 } = req.body || {};
+    const body = req.body || {};
+    const { from, to } = body;
     if (!DAY.test(from || '') || !DAY.test(to || '')) return reply.status(400).send({ error: 'from и to — даты YYYY-MM-DD' });
-    const ws = await db.findOne('workspaces', { id: req.user.ws });
-    if (!ws?.keitaro_url || !ws?.keitaro_api_key) return reply.status(503).send({ error: 'Keitaro не настроен' });
-    const client = keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
+    const dims = (Array.isArray(body.dimensions) ? body.dimensions : ['date']).filter(d => d === 'buyer' || own(DIM_MAP, d));
+    const metrics = (Array.isArray(body.metrics) ? body.metrics : []).filter(m => METRICS.has(m));
+    if (!dims.length) dims.push('date');
+    if (!metrics.length) return reply.status(400).send({ error: 'Выберите хотя бы одну метрику' });
+    const client = await keitaroFor(req, reply);
+    if (!client) return;
 
-    const hasBuyer = dimensions.includes('buyer');
-    // Map dimensions to Keitaro groupings; 'buyer' needs sub_id_2 + campaign
-    const grouping = [...new Set([
-      ...(hasBuyer ? ['sub_id_2', 'campaign_id'] : []),
-      ...dimensions.filter(d => d !== 'buyer').map(d => DIM_MAP[d]).filter(Boolean),
-    ])];
-    if (!grouping.length) grouping.push('day');
-
-    // Metrics: split native vs computed
-    const wantComputed = metrics.filter(m => COMPUTED.has(m));
-    const nativeMetrics = [...new Set([
-      ...metrics.filter(m => METRIC_MAP[m]).map(m => METRIC_MAP[m]),
-      ...(wantComputed.length ? ['clicks', 'cost', 'revenue', 'impressions', 'conversions'] : []),
-    ])];
-
-    const data = await client.stats({ from, to }, grouping, nativeMetrics);
-    let rows = (data?.rows || []).map(r => {
-      // Rename Keitaro fields back to our names
-      const out = {};
-      if (hasBuyer) out.buyer = r.sub_id_2 ? (r.sub_id_2 + '') : (buyerTag(r.campaign_id) || 'unknown');
-      for (const d of dimensions.filter(d => d !== 'buyer')) {
-        const kd = DIM_MAP[d];
-        out[d] = kd ? r[kd] : r[d];
-      }
-      for (const m of metrics.filter(m => METRIC_MAP[m])) {
-        const km = METRIC_MAP[m];
-        out[m] = Number(r[km] ?? 0);
-        if (m !== km) delete out[km];
-      }
-      computeRow(out, wantComputed);
-      return out;
-    });
-
-    // Sort
-    if (sort?.field && rows.length) {
-      const dir = sort.direction === 'asc' ? 1 : -1;
-      rows.sort((a, b) => dir * ((Number(a[sort.field]) || 0) - (Number(b[sort.field]) || 0)));
+    const hasBuyer = dims.includes('buyer');
+    const grouping = [...new Set(dims.filter(d => d !== 'buyer').map(d => DIM_MAP[d]))];
+    let raw;
+    try {
+      raw = await scopedRows(req, client, { from, to }, grouping, hasBuyer);
+    } catch {
+      return reply.status(502).send({ error: 'Keitaro не ответил' });
     }
-    rows = rows.slice(0, Math.min(Number(limit) || 50, 500));
-    return { rows, total: rows.length, period: { from, to } };
+    const who = hasBuyer ? await buyerResolver(req.user.ws, raw) : null;
+    const label = (r) => Object.fromEntries(dims.map(d => [d, d === 'buyer' ? who(r) : r[DIM_MAP[d]] ?? null]));
+    let rows = aggregate(raw, (r) => JSON.stringify(label(r)), label)
+      .map(r => Object.fromEntries([...dims.map(d => [d, r[d]]), ...metrics.map(m => [m, r[m]])]));
+
+    const field = body.sort?.field;
+    if (field && (dims.includes(field) || metrics.includes(field))) {
+      const dir = body.sort.direction === 'asc' ? 1 : -1;
+      rows.sort((a, b) => {
+        const x = a[field], y = b[field];
+        return typeof x === 'number' || typeof y === 'number' ? dir * ((Number(x) || 0) - (Number(y) || 0)) : dir * String(x ?? '').localeCompare(String(y ?? ''));
+      });
+    }
+    const limit = Math.min(Math.max(Number(body.limit) || 50, 1), 500);
+    return { rows: rows.slice(0, limit), total: rows.length, period: { from, to } };
   });
 }

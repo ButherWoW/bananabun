@@ -34,7 +34,8 @@ export async function adSettingsRoutes(app) {
   // bid_amounts is JSONB (a bare array would be sent as a Postgres array); platforms is TEXT[].
   function pick(body) {
     const data = {};
-    for (const k of allowed) if (body?.[k] !== undefined) data[k] = body[k];
+    // An empty form field means «not set» — NULL, not '' (numeric columns reject '').
+    for (const k of allowed) if (body?.[k] !== undefined) data[k] = body[k] === '' ? null : body[k];
     if (data.bid_amounts !== undefined) {
       const bids = Array.isArray(data.bid_amounts) ? data.bid_amounts.map(Number) : [];
       if (bids.some(b => !(b > 0))) throw Object.assign(new Error('Ставки по адсетам должны быть больше нуля'), { statusCode: 400 });
