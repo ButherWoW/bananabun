@@ -240,6 +240,10 @@ export const landingTemplates = {
   check: (data) => api.post('/api/landings/check', data, { timeout: 120000 }),
 };
 
+export const landings = {
+  generate: (data) => api.post('/api/landings/generate', data),
+};
+
 export const admin = {
   users: () => api.get('/api/admin/users'),
   create: (data) => api.post('/api/admin/users', data),
