@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
@@ -91,6 +91,7 @@ export const analytics = {
   buyers: (from, to, compare = false) => api.get('/api/analytics/buyers', { params: { from, to, compare: compare ? 'true' : undefined } }),
   query: (plan) => api.post('/api/analytics/query', plan),
   faQuery: (plan) => api.post('/api/analytics/fa-query', { plan }),
+  dashboard: (range = 'today') => api.get('/api/analytics/dashboard', { params: { range } }),
 };
 
 export const campaigns = {
@@ -265,4 +266,5 @@ export const tiktok = {
   pixels: (accountId) => api.get(`/api/tiktok/pixels/${accountId}`),
   push: (data) => api.post('/api/tiktok/push', data),
 };
+
 
