@@ -265,6 +265,7 @@ export const tiktok = {
   oauthUrl: () => api.get('/api/tiktok/oauth/url'),
   pixels: (accountId) => api.get(`/api/tiktok/pixels/${accountId}`),
   push: (data) => api.post('/api/tiktok/push', data),
+  generateVideo: (product_id) => api.post('/api/tiktok/generate-video', { product_id }),
 };
 
 
