@@ -7,6 +7,7 @@ import { logFbEvent } from '../../services/fb-campaigns.js';
 import { faAvailable, faCampaignHistory, faGetCampaignAds, faSetBudget, faDuplicate, faRename, faSetTargeting, faBulkEdit, faApplyAdSettings } from '../../services/fa-client.js';
 
 const _ktCache = new Map();
+setInterval(() => { const now = Date.now(); for (const [k, v] of _ktCache) if (now - v.ts > 60_000) _ktCache.delete(k); }, 5 * 60_000).unref();
 
 export async function campaignRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
