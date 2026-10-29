@@ -14,7 +14,7 @@ const GEO_OPTIONS = [
 
 const STEPS = ['Компилирую...', 'Загружаю в Keitaro...', 'Создаю кампанию...'];
 
-export default function GenerateLandingModal({ productId, productTitle, onClose }) {
+export default function GenerateLandingModal({ productId, productTitle, onClose, onUrlReady }) {
   const [templateId, setTemplateId] = useState('');
   const [geo, setGeo] = useState('FR');
   const [campaignName, setCampaignName] = useState(`[BB] ${productTitle || ''} [${geo}]`);
@@ -51,6 +51,7 @@ export default function GenerateLandingModal({ productId, productTitle, onClose 
     onSuccess: (data) => {
       if (generate._timers) generate._timers.forEach(clearTimeout);
       setResult(data);
+      if (onUrlReady && data?.campaign_alias) { onUrlReady(data.campaign_alias); onClose(); }
     },
     onError: () => {
       if (generate._timers) generate._timers.forEach(clearTimeout);
