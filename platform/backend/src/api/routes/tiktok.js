@@ -202,7 +202,15 @@ export async function tiktokRoutes(app) {
     const product = await db.findOne('products', { id: product_id, workspace_id: req.user.ws });
     if (!product) return reply.status(404).send({ error: 'Product not found' });
 
-    const images = Array.isArray(product.images) ? product.images : [];
+    const allImages = Array.isArray(product.images) ? product.images : [];
+    const images = allImages.filter(url => {
+      try {
+        const u = new URL(String(url));
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+        const h = u.hostname.toLowerCase();
+        return !h.match(/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|::1|0\.0\.0\.0)/);
+      } catch { return false; }
+    });
     if (!images.length) return { error: 'No images on product', fallback: true };
 
     const { generateTikTokVideo } = await import('../../services/tiktok-video.js');
