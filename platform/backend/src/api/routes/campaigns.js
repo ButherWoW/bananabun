@@ -99,12 +99,17 @@ export async function campaignRoutes(app) {
     let kResults = {};
     if (ws?.keitaro_url && ws?.keitaro_api_key && activePeriods.length) {
       const kt = keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
-      await Promise.all(activePeriods.map(async ([period]) => {
-        try {
-          const data = await kt.stats(period, ['sub_id_2'], ['clicks', 'lp_clicks', 'conversions', 'sales', 'revenue']);
-          kResults[period] = (data?.rows || []).find(r => String(r.sub_id_2) === c.id) || {};
-        } catch (e) { keitaroError = e.message; }
-      }));
+      const queue = [...activePeriods];
+      async function runKt() {
+        while (queue.length) {
+          const [period] = queue.shift();
+          try {
+            const data = await kt.stats(period, ['sub_id_2'], ['clicks', 'lp_clicks', 'conversions', 'sales', 'revenue']);
+            kResults[period] = (data?.rows || []).find(r => String(r.sub_id_2) === c.id) || {};
+          } catch (e) { keitaroError = e.message; }
+        }
+      }
+      await Promise.all([runKt(), runKt()]);
     }
     const periods = activePeriods.map(([period, col, label]) => {
       const k = kResults[period] || {};
