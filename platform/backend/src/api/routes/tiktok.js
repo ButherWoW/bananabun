@@ -81,8 +81,15 @@ export async function tiktokRoutes(app) {
 
   // OAuth callback
   app.get('/oauth/callback', async (req, reply) => {
-    const { code, state: ws } = req.query;
-    if (!code || !ws) return reply.redirect('/?error=tiktok_oauth_missing');
+    const { code, state: nonce } = req.query;
+    if (!code || !nonce) return reply.redirect('/?error=tiktok_oauth_missing');
+    const stateRow = await db.query(
+      'SELECT workspace_id FROM tiktok_oauth_states WHERE nonce = \ AND created_at > NOW() - INTERVAL \'10 minutes\'',
+      [nonce]
+    );
+    if (!stateRow.rows[0]) return reply.redirect('/?error=tiktok_oauth_invalid_state');
+    const ws = stateRow.rows[0].workspace_id;
+    await db.query('DELETE FROM tiktok_oauth_states WHERE nonce = \', [nonce]);
     const appId = process.env.TIKTOK_APP_ID;
     const appSecret = process.env.TIKTOK_APP_SECRET;
     const redirectUri = process.env.TIKTOK_REDIRECT_URI || `${process.env.PUBLIC_URL || 'https://srv2100328.hstgr.cloud'}/api/tiktok/oauth/callback`;
