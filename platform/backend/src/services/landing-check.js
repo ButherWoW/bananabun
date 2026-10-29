@@ -23,11 +23,13 @@ function privateIp(ip) {
   return v === '::' || v === '::1' || /^f[cd]/.test(v) || /^fe[89ab]/.test(v);
 }
 const hostCache = new Map();
+const HOST_CACHE_TTL = 10 * 60 * 1000;
 async function hostAllowed(host) {
   if (!host || !host.includes('.') || /\.(local|internal|localhost)$/i.test(host)) return false;
-  if (hostCache.has(host)) return hostCache.get(host);
+  const cached = hostCache.get(host);
+  if (cached && Date.now() - cached.at < HOST_CACHE_TTL) return cached.ok;
   const ok = await dns.lookup(host, { all: true }).then(list => list.length > 0 && list.every(a => !privateIp(a.address))).catch(() => false);
-  hostCache.set(host, ok);
+  hostCache.set(host, { ok, at: Date.now() });
   return ok;
 }
 const ANALYTICS = /posthog|google-analytics|googletagmanager|facebook\.net|connect\.facebook|hotjar|clarity\.ms|yandex|doubleclick|\/api\/t(\?|$)/i;
