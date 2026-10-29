@@ -246,6 +246,24 @@ export default function LandingsPage() {
     onError: (e) => window.alert?.(e?.error || 'Не удалось создать шаблон'),
   });
 
+  const createCdiscountMutation = useMutation({
+    mutationFn: () => landingTemplates.createCdiscount({}),
+    onSuccess: () => { qc.invalidateQueries(['landing-templates']); setTab('templates'); },
+    onError: (e) => window.alert?.(e?.error || e?.message || 'Ошибка'),
+  });
+
+  const createManomanoMutation = useMutation({
+    mutationFn: () => landingTemplates.createManomano({}),
+    onSuccess: () => { qc.invalidateQueries(['landing-templates']); setTab('templates'); },
+    onError: (e) => window.alert?.(e?.error || e?.message || 'Ошибка'),
+  });
+
+  const createEasyMutation = useMutation({
+    mutationFn: () => landingTemplates.createEasy({}),
+    onSuccess: () => { qc.invalidateQueries(['landing-templates']); setTab('templates'); },
+    onError: (e) => window.alert?.(e?.error || e?.message || 'Ошибка'),
+  });
+
   const { data: landings = [], isLoading, error } = useQuery({
     queryKey: ['keitaro', 'landings'],
     queryFn: keitaroApi.landings,
@@ -322,6 +340,34 @@ export default function LandingsPage() {
           >
             {createFormPageMutation.isPending ? '...' : '📋 Форм'}
           </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => createCdiscountMutation.mutate()}
+                disabled={createCdiscountMutation.isPending}
+                className="text-xs px-3 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 transition-colors disabled:opacity-50"
+                title="Добавить шаблон Cdiscount в воркспейс"
+              >
+                {createCdiscountMutation.isPending ? '...' : 'cDiscount'}
+              </button>
+              <button
+                onClick={() => createManomanoMutation.mutate()}
+                disabled={createManomanoMutation.isPending}
+                className="text-xs px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-colors disabled:opacity-50"
+                title="Добавить шаблон ManoMano в воркспейс"
+              >
+                {createManomanoMutation.isPending ? '...' : 'ManoMano'}
+              </button>
+              <button
+                onClick={() => createEasyMutation.mutate()}
+                disabled={createEasyMutation.isPending}
+                className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 transition-colors disabled:opacity-50"
+                title="Добавить шаблон Easy в воркспейс"
+              >
+                {createEasyMutation.isPending ? '...' : 'Easy'}
+              </button>
+            </>
+          )}
 
         </div>
       </div>
