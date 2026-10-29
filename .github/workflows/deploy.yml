@@ -21,6 +21,10 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H 148.230.98.232 >> ~/.ssh/known_hosts
 
+      - name: Syntax check backend JS
+        run: |
+          find platform/backend/src -name '*.js' -print0 | xargs -0 node --check
+          echo "Syntax OK"
       - name: Sync backend source
         run: |
           rsync -az --delete-after \
