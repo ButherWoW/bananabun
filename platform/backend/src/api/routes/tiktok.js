@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { adminOnly } from '../../middleware/access.js';
-import { tiktokClient, getOAuthUrl, exchangeCode, TIKTOK_LOCATIONS } from '../../services/tiktok.js';
+import { tiktokClient, getOAuthUrl, exchangeCode, refreshAccessToken, TIKTOK_LOCATIONS } from '../../services/tiktok.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -88,7 +88,8 @@ export async function tiktokRoutes(app) {
     const redirectUri = process.env.TIKTOK_REDIRECT_URI || `${process.env.PUBLIC_URL || 'https://srv2100328.hstgr.cloud'}/api/tiktok/oauth/callback`;
     try {
       const tokens = await exchangeCode(appId, appSecret, code, redirectUri);
-      const { access_token, refresh_token, advertiser_ids = [] } = tokens;
+      const { access_token, refresh_token, access_token_expires_in = 86400, advertiser_ids = [] } = tokens;
+      const tokenExpiresAt = new Date(Date.now() + access_token_expires_in * 1000);
       const client = tiktokClient(access_token);
       let created = 0;
       for (const advertiserId of advertiser_ids) {
@@ -96,7 +97,7 @@ export async function tiktokRoutes(app) {
         try { info = (await client.getAdvertiserInfo(advertiserId))?.advertiser_info?.[0] || {}; } catch { /* */ }
         const existing = await db.findOne('tiktok_accounts', { advertiser_id: String(advertiserId), workspace_id: ws });
         if (existing) {
-          await db.update('tiktok_accounts', existing.id, { access_token, refresh_token: refresh_token || null, updated_at: new Date() });
+          await db.update('tiktok_accounts', existing.id, { access_token, refresh_token: refresh_token || null, token_expires_at: tokenExpiresAt, updated_at: new Date() });
         } else {
           await db.insert('tiktok_accounts', {
             id: `tt_${nanoid(20)}`,
@@ -104,6 +105,7 @@ export async function tiktokRoutes(app) {
             advertiser_id: String(advertiserId),
             access_token,
             refresh_token: refresh_token || null,
+            token_expires_at: tokenExpiresAt,
             name: info.advertiser_name || advertiserId,
             currency: info.currency || 'EUR',
             timezone: info.timezone || null,
@@ -117,6 +119,40 @@ export async function tiktokRoutes(app) {
       req.log.error(e, 'TikTok OAuth failed');
       return reply.redirect('/?error=tiktok_oauth_failed');
     }
+  });
+
+
+  // Refresh expiring TikTok tokens for this workspace
+  app.post('/accounts/refresh-tokens', adminOnly(app), async (req, reply) => {
+    const appId = process.env.TIKTOK_APP_ID;
+    const appSecret = process.env.TIKTOK_APP_SECRET;
+    if (!appId || !appSecret) return reply.status(503).send({ error: 'TIKTOK_APP_ID/SECRET not configured' });
+
+    const { rows: accounts } = await db.query(
+      `SELECT id, advertiser_id, refresh_token FROM tiktok_accounts
+       WHERE workspace_id = $1 AND status = 'active' AND refresh_token IS NOT NULL
+         AND (token_expires_at IS NULL OR token_expires_at < NOW() + INTERVAL '2 days')`,
+      [req.user.ws]
+    );
+
+    const results = [];
+    for (const acc of accounts) {
+      try {
+        const tokens = await refreshAccessToken(appId, appSecret, acc.refresh_token);
+        const { access_token, refresh_token, access_token_expires_in = 86400 } = tokens;
+        const token_expires_at = new Date(Date.now() + access_token_expires_in * 1000);
+        await db.update('tiktok_accounts', acc.id, {
+          access_token,
+          refresh_token: refresh_token || acc.refresh_token,
+          token_expires_at,
+          updated_at: new Date(),
+        });
+        results.push({ advertiser_id: acc.advertiser_id, ok: true });
+      } catch (e) {
+        results.push({ advertiser_id: acc.advertiser_id, ok: false, error: e.message });
+      }
+    }
+    return { refreshed: results.filter(r => r.ok).length, total: accounts.length, results };
   });
 
   // Get pixels for an account
