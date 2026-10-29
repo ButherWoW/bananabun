@@ -113,6 +113,21 @@ export function tiktokClient(accessToken) {
         operation_status: status,
       });
     },
+
+    getCampaignStats(advertiserId, { from, to }) {
+      const params = new URLSearchParams({
+        advertiser_id: advertiserId,
+        report_type: 'BASIC',
+        dimensions: JSON.stringify(['campaign_id']),
+        metrics: JSON.stringify(['spend', 'clicks', 'impressions', 'conversion', 'cpc', 'cpm', 'ctr']),
+        start_date: from,
+        end_date: to,
+        page: '1',
+        page_size: '100',
+      });
+      return req('GET', `/report/integrated/get/?${params}`);
+    },
+
   };
 }
 
