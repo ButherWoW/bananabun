@@ -148,7 +148,7 @@ export async function accountRoutes(app) {
     if (!ap?.raw?.user_id) return reply.status(400).send({ error: 'Профиль AdsPower не найден — запустите синхронизацию' });
     const jobId = await enqueueAgentJob(req.user.ws, 'totp', { user_id: ap.raw.user_id }, req.user.id);
     req.log.info({ account: acc.id, user: req.user.id }, '2fa code requested');
-    const until = Date.now() + 20000;
+    const until = Date.now() + 25000;
     while (Date.now() < until) {
       const { rows: [job] } = await db.query('SELECT status, result FROM agent_jobs WHERE id = $1 AND workspace_id = $2', [jobId, req.user.ws]);
       if (job?.status === 'done' || job?.status === 'failed') {
@@ -162,7 +162,7 @@ export async function accountRoutes(app) {
     }
     // Wipe any partial result left by the agent so the code never leaks via a later read.
     await db.query(`UPDATE agent_jobs SET result = '{"ok":false,"data":{"source":"timeout"}}'::jsonb WHERE id = $1`, [jobId]);
-    return reply.status(504).send({ error: 'Агент на Mac не ответил за 20 секунд — он занят другой задачей или не запущен' });
+    return reply.status(504).send({ error: 'Агент на Mac не ответил за 25 секунд — он занят другой задачей или не запущен' });
   });
 
   // Update account fields (status, BM, pixels) — only those present in the body
