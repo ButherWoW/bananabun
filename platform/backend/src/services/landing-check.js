@@ -24,6 +24,7 @@ function privateIp(ip) {
 }
 const hostCache = new Map();
 const HOST_CACHE_TTL = 10 * 60 * 1000;
+setInterval(() => { const now = Date.now(); for (const [k, v] of hostCache) if (now - v.at > HOST_CACHE_TTL) hostCache.delete(k); }, HOST_CACHE_TTL).unref();
 async function hostAllowed(host) {
   if (!host || !host.includes('.') || /\.(local|internal|localhost)$/i.test(host)) return false;
   const cached = hostCache.get(host);
