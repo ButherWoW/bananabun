@@ -132,6 +132,23 @@ export async function tiktokRoutes(app) {
     }
   });
 
+  // Toggle campaign status: ENABLE or DISABLE
+  app.patch('/campaigns/:campaign_id/status', auth, async (req, reply) => {
+    const { campaign_id } = req.params;
+    const { advertiser_id, status = 'ENABLE' } = req.body || {};
+    if (!advertiser_id) return reply.status(400).send({ error: 'advertiser_id required' });
+    if (!['ENABLE', 'DISABLE'].includes(status)) return reply.status(400).send({ error: 'status must be ENABLE or DISABLE' });
+    const acc = await db.findOne('tiktok_accounts', { advertiser_id: String(advertiser_id), workspace_id: req.user.ws });
+    if (!acc) return reply.status(404).send({ error: 'TikTok account not found' });
+    const client = tiktokClient(acc.access_token);
+    try {
+      await client.setCampaignStatus(acc.advertiser_id, campaign_id, status);
+      return { ok: true, campaign_id, status };
+    } catch (e) {
+      return reply.status(502).send({ error: e.message });
+    }
+  });
+
   // Generate video slideshow from product images
   app.post('/generate-video', auth, async (req, reply) => {
     const { product_id } = req.body || {};
