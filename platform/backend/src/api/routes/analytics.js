@@ -287,16 +287,33 @@ export async function analyticsRoutes(app) {
       result.fb = { spend: Number(fb.spend)||0, clicks: Number(fb.clicks)||0, impressions: Number(fb.impressions)||0, leads: Number(fb.leads)||0 };
     } catch { /* FB data unavailable */ }
 
-    try {
-      const { rows: ttRows } = await db.query(
-        `SELECT COALESCE(SUM((params->>'spend')::numeric),0) as spend
-         FROM pushes WHERE workspace_id=$1 AND status='active'
-           AND (params->>'platform'='tiktok' OR params->>'tiktok'='true')
-           AND DATE(created_at) BETWEEN $2 AND $3`,
-        [ws, from, to]
-      );
-      result.tiktok.spend = Number(ttRows[0]?.spend) || 0;
-    } catch { /* TikTok data unavailable */ }
+  // Real TikTok analytics via Marketing API
+  try {
+    const { rows: ttAccounts } = await db.query(
+      `SELECT advertiser_id, access_token FROM tiktok_accounts WHERE workspace_id = $1 AND status = 'active'`,
+      [ws]
+    );
+
+    let ttSpend = 0, ttClicks = 0, ttImpressions = 0, ttConversions = 0;
+
+    for (const acc of ttAccounts) {
+      try {
+        const client = tiktokClient(acc.access_token);
+        const statsResp = await client.getCampaignStats(acc.advertiser_id, { from, to });
+        if (statsResp?.list) {
+          for (const row of statsResp.list) {
+            const m = row.metrics || {};
+            ttSpend       += parseFloat(m.spend       || 0);
+            ttClicks      += parseInt(m.clicks         || 0);
+            ttImpressions += parseInt(m.impressions    || 0);
+            ttConversions += parseInt(m.conversion     || 0);
+          }
+        }
+      } catch { /* skip individual account errors */ }
+    }
+
+    result.tiktok = { spend: ttSpend, clicks: ttClicks, impressions: ttImpressions, conversions: ttConversions };
+  } catch { /* TikTok data unavailable */ }
 
     const totalSpend = result.fb.spend + result.tiktok.spend + result.keitaro.cost;
     const revenue = result.keitaro.revenue;
