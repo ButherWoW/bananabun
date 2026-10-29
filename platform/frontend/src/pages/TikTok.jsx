@@ -309,6 +309,24 @@ export default function TikTokPage() {
     }
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState(null);
+
+  const doRefreshTokens = async () => {
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      const res = await tiktok.refreshTokens();
+      setRefreshResult(res);
+      qc.invalidateQueries(['tiktok-accounts']);
+    } catch (e) {
+      setRefreshResult({ error: e?.error || e?.message || 'Ошибка обновления' });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -331,6 +349,15 @@ export default function TikTokPage() {
           <button onClick={connectOAuth}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00f2ea]/10 hover:bg-[#00f2ea]/20 text-[#00f2ea] text-xs font-medium transition-colors border border-[#00f2ea]/30">
             🔗 Подключить OAuth
+          </button>
+          <button onClick={doRefreshTokens} disabled={refreshing}
+            title={refreshResult?.error || (refreshResult?.refreshed != null ? 'Готово' : 'Обновить истекающие токены')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border disabled:opacity-50 ${
+              refreshResult?.error ? 'bg-red-500/10 text-red-400 border-red-500/30' :
+              refreshResult?.refreshed != null ? 'bg-green-500/10 text-green-400 border-green-500/30' :
+              'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
+            }`}>
+            {refreshing ? '⏳ Обновляем...' : refreshResult?.refreshed != null ? `✅ ${refreshResult.refreshed}/${refreshResult.total}` : '🔄 Токены'}
           </button>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors">
