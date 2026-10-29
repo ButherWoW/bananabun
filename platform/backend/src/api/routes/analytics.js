@@ -71,25 +71,17 @@ export async function analyticsRoutes(app) {
   app.get('/overview', auth, async (req) => {
     const { ws } = req.user;
 
-    const [{ rows: [{ count: products_count }] }, { rows: [{ count: creatives_count }] }, { rows: campaigns }, campaigns_count] =
+    const [{ rows: [{ count: products_count }] }, { rows: [{ count: creatives_count }] }, { rows: [{ count: pushes_count }] }] =
       await Promise.all([
         db.query('SELECT COUNT(*) FROM products WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
         db.query('SELECT COUNT(*) FROM creatives WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
-        db.query('SELECT spend, revenue FROM campaigns WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
-        db.query('SELECT COUNT(*) FROM campaigns WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
+        db.query('SELECT COUNT(*) FROM pushes WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2)', [ws, ownUser(req)]),
       ]);
 
-    const total_spend = campaigns.reduce((s, c) => s + Number(c.spend || 0), 0);
-    const total_revenue = campaigns.reduce((s, c) => s + Number(c.revenue || 0), 0);
-    const roi = total_spend > 0 ? total_revenue / total_spend : 0;
-
     return {
-      total_spend,
-      total_revenue,
-      roi,
       products_count: Number(products_count),
       creatives_count: Number(creatives_count),
-      campaigns_count: Number(campaigns_count.rows[0].count),
+      campaigns_count: Number(pushes_count),
     };
   });
 
