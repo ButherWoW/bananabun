@@ -35,13 +35,22 @@ export async function scrapeMarketplace(source, url) {
     if (!response.ok) throw new Error('Не удалось открыть вкладку скрапа');
     tab = await response.json(); cdp = await connect(tab.webSocketDebuggerUrl);
     const expression = `(${readMarketplaceProduct.toString()})(${JSON.stringify(source)},${JSON.stringify(link.id)})`;
-    let result;
+    // Errors that are definitively fatal once they repeat (some appear on frame 0 before navigation)
+    const FATAL = ['ROBOT_CHECK', 'VARIANT_REQUIRED', 'AMBIGUOUS_PRODUCT', 'PRODUCT_REDIRECT', 'NO_PRICE', 'NO_CURRENCY', 'NO_TITLE'];
+    let result, lastError = null, sameCount = 0;
     for (let n = 0; n < 60; n++) {
       await sleep(1000);
       const response = await cdp.send('Runtime.evaluate', { expression, returnByValue: true }, 10000).catch(() => null);
       result = response?.result?.value;
       if (result?.title) return result;
-      if (['ROBOT_CHECK', 'VARIANT_REQUIRED', 'AMBIGUOUS_PRODUCT'].includes(result?.error)) break;
+      const err = result?.error;
+      if (FATAL.includes(err)) {
+        sameCount = err === lastError ? sameCount + 1 : 1;
+        lastError = err;
+        if (sameCount >= 2) break;
+      } else {
+        lastError = null; sameCount = 0;
+      }
     }
     throw new Error(`${source}: ${REASONS[result?.error] || 'Страница не загрузилась за 60 секунд; проверьте профиль скрапа.'}`);
   } finally {

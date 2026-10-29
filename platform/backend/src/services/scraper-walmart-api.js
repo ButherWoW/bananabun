@@ -134,20 +134,18 @@ export async function scrapeAmazonViaScraperApi(asin, marketplace = 'com') {
     throw new Error(`ScraperAPI invalid JSON: ${e.message}`);
   }
 
-  const name = d.name;
+  // autoparse fields: product_name (same as Walmart), price as number or string
+  const name = d.product_name || d.name;
   if (!name) throw new Error(`ScraperAPI: Amazon товар не найден (ASIN=${asin}, ${domain})`);
 
-  // pricing is localized string like "59,99€" or "29.99"
   let price = null;
-  const priceSrc = d.pricing || d.price || '';
+  const priceSrc = d.price ?? d.pricing ?? '';
   if (typeof priceSrc === 'number') {
     price = priceSrc;
   } else if (typeof priceSrc === 'string' && priceSrc) {
-    // Strip currency symbols, keep digits, dot, comma; last comma/dot = decimal
     const digits = priceSrc.replace(/[^0-9.,]/g, '');
     const last = digits.replace(/^.*[,.]/, '');
     if (last.length <= 2) {
-      // last separator is decimal
       price = parseFloat(digits.replace(/[.,](?=\d{1,2}$)/, '__').replace(/[.,]/g, '').replace('__', '.'));
     } else {
       price = parseFloat(digits.replace(/[.,]/g, ''));
@@ -161,14 +159,16 @@ export async function scrapeAmazonViaScraperApi(asin, marketplace = 'com') {
   const reviews_count = typeof d.total_reviews === 'number' ? d.total_reviews
     : typeof d.total_reviews === 'string' ? parseInt(String(d.total_reviews).replace(/\D/g, '')) || 0 : 0;
 
-  // Description: full_description or feature bullets
-  const bullets = Array.isArray(d.feature_bullets) ? d.feature_bullets.slice(0, 6).join('\n') : '';
-  const description = d.full_description || bullets || '';
+  // autoparse description: product_short_description or highlights (same fields as Walmart)
+  const description = d.product_short_description
+    || (Array.isArray(d.product_highlights) ? d.product_highlights.slice(0, 6).join('\n') : '')
+    || '';
 
-  // Images: prefer highRes
-  const imgSrc = Array.isArray(d.highResImages) && d.highResImages.length ? d.highResImages : (d.images || []);
-  const images = (Array.isArray(imgSrc) ? imgSrc : [])
+  // autoparse images field (not highResImages which is structured-endpoint only)
+  const images = (Array.isArray(d.images) ? d.images : [])
     .filter(u => typeof u === 'string' && u.startsWith('https://'));
+
+  if (!price && !images.length) throw new Error(`ScraperAPI: Amazon вернул неполные данные — нет цены и фото (ASIN=${asin}). Возможно, autoparse не поддерживает этот регион.`);
 
   const CURRENCY = { fr: 'EUR', es: 'EUR', de: 'EUR', it: 'EUR', nl: 'EUR', be: 'EUR', uk: 'GBP', com: 'USD', pl: 'PLN', se: 'SEK' };
   const currency = CURRENCY[marketplace] || 'USD';

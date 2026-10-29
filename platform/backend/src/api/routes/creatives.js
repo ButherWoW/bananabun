@@ -6,7 +6,7 @@ import { db } from '../../db/client.js';
 import { wakeCreativeWorker } from '../../services/creative-jobs.js';
 import { localImageData, rasterType } from '../../services/creative-assets.js';
 import { creativePlan } from '../../services/creative-plan.js';
-import { fluxEnabled } from '../../services/flux-generator.js';
+import { fluxEnabled, FAL_MODEL } from '../../services/flux-generator.js';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 

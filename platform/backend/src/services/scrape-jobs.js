@@ -73,11 +73,8 @@ export async function enqueueOwnScrape(ws, productId, asin, marketplace, source 
           await applyScrapeResult(ws, jobId, true, data, null);
         })
         .catch(async (e) => {
-          console.warn(`[scraperapi] amazon/${asin} failed:`, e.message);
-          await db.query(
-            `UPDATE agent_jobs SET status = 'failed', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
-            [JSON.stringify({ ok: false, error: e.message }), jobId]);
-          await applyScrapeResult(ws, jobId, false, null, e.message);
+          console.warn(`[scraperapi] amazon/${asin} failed, falling back to Mac agent:`, e.message);
+          await db.query(`UPDATE agent_jobs SET status = 'pending', taken_at = NULL, result = NULL WHERE id = $1`, [jobId]);
         });
       return jobId;
     }

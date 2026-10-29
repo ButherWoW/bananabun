@@ -1,8 +1,20 @@
 import { randomUUID } from 'node:crypto';
+import fs from 'fs/promises';
+import path from 'path';
 import { db } from '../db/client.js';
 import { generateCreative, closeCreativeBrowser } from './creative-generator.js';
 import { generateFluxCreative } from './flux-generator.js';
 import { renderBanner } from './banner-renderer.js';
+
+const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
+async function pruneFluxCache(maxAgeMs = 30 * 24 * 3600 * 1000) {
+  const now = Date.now();
+  for (const f of await fs.readdir(UPLOADS_DIR).catch(() => [])) {
+    if (!/^(cr_flux_cache_|thumb_cr_flux_).*\.jpg$/.test(f)) continue;
+    const st = await fs.stat(path.join(UPLOADS_DIR, f)).catch(() => null);
+    if (st && now - st.mtimeMs > maxAgeMs) await fs.unlink(path.join(UPLOADS_DIR, f)).catch(() => {});
+  }
+}
 
 const SOURCES = "'local','flux','banner'";
 
@@ -57,5 +69,8 @@ export function startCreativeWorker() {
   if (enabled) throw new Error('Creative worker already started');
   enabled=true;
   const timer=setInterval(tick,1000); timer.unref?.(); tick();
-  return async () => { enabled=false; clearInterval(timer); await running; await closeCreativeBrowser(); };
+  // Prune old fal.ai cache files once a day
+  const pruneTimer = setInterval(() => pruneFluxCache().catch(() => {}), 24 * 3600 * 1000);
+  pruneTimer.unref?.();
+  return async () => { enabled=false; clearInterval(timer); clearInterval(pruneTimer); await running; await closeCreativeBrowser(); };
 }

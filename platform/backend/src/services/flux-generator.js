@@ -5,9 +5,10 @@ import { nanoid } from 'nanoid';
 
 const FAL_BASE = 'https://fal.run';
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
-const FAL_MODEL = process.env.FAL_MODEL || 'fal-ai/ideogram/v2';
+export const FAL_MODEL = process.env.FAL_MODEL || 'fal-ai/ideogram/v2';
+const IS_FLUX = /\/flux\//i.test(FAL_MODEL);
 
-// Ideogram v2 uses aspect_ratio strings, not pixel sizes
+// Ideogram v2 uses aspect_ratio strings; FLUX uses named sizes
 const FORMAT_TO_ASPECT = {
   '1x1': '1:1',
   '4x5': '4:5',
@@ -134,20 +135,15 @@ export async function generateFluxCreative(product, logoKey, format = '1x1', opt
     return { url: `/uploads/${cachedFilename}`, thumbnail: `/uploads/${cachedFilename}`, style: 'flux', language: options.language || 'fr', prompt, slot, cached: true };
   } catch { /* cache miss */ }
 
-  // Ideogram v2 — best-in-class text rendering for ad creatives
+  const FLUX_SIZE = { '1:1': 'square_hd', '4:5': 'portrait_4_3', '9:16': 'portrait_4_3', '3:2': 'landscape_4_3', '16:9': 'landscape_16_9' };
+  const falBody = IS_FLUX
+    ? { prompt, image_size: FLUX_SIZE[aspectRatio] || 'square_hd', num_images: 1, enable_safety_checker: false }
+    : { prompt, aspect_ratio: aspectRatio, style_type: 'DESIGN', magic_prompt_option: 'OFF', negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text' };
+
   const falRes = await fetch(`${FAL_BASE}/${FAL_MODEL}`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Key ${key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      prompt,
-      aspect_ratio: aspectRatio,
-      style_type: 'DESIGN',       // optimised for ads/banners
-      magic_prompt_option: 'OFF', // use our prompt exactly as-is
-      negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text',
-    }),
+    headers: { 'Authorization': `Key ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(falBody),
     signal: AbortSignal.timeout(120_000),
   });
 
