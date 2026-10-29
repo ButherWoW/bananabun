@@ -76,7 +76,9 @@ export async function tiktokRoutes(app) {
     const appId = process.env.TIKTOK_APP_ID;
     const redirectUri = process.env.TIKTOK_REDIRECT_URI || `${process.env.PUBLIC_URL || 'https://srv2100328.hstgr.cloud'}/api/tiktok/oauth/callback`;
     if (!appId) return reply.status(503).send({ error: 'TIKTOK_APP_ID not configured' });
-    return { url: getOAuthUrl(appId, redirectUri, req.user.ws) };
+    const nonce = nanoid(32);
+    await db.query('INSERT INTO tiktok_oauth_states (nonce, workspace_id) VALUES ($1, $2)', [nonce, req.user.ws]);
+    return { url: getOAuthUrl(appId, redirectUri, nonce) };
   });
 
   // OAuth callback
@@ -89,41 +91,7 @@ export async function tiktokRoutes(app) {
     );
     if (!stateRow.rows[0]) return reply.redirect('/?error=tiktok_oauth_invalid_state');
     const ws = stateRow.rows[0].workspace_id;
-    await db.query('DELETE FROM tiktok_oauth_states WHERE nonce = \', [nonce]);
-    const appId = process.env.TIKTOK_APP_ID;
-    const appSecret = process.env.TIKTOK_APP_SECRET;
-    const redirectUri = process.env.TIKTOK_REDIRECT_URI || `${process.env.PUBLIC_URL || 'https://srv2100328.hstgr.cloud'}/api/tiktok/oauth/callback`;
-    try {
-      const tokens = await exchangeCode(appId, appSecret, code, redirectUri);
-      const { access_token, refresh_token, access_token_expires_in = 86400, advertiser_ids = [] } = tokens;
-      const tokenExpiresAt = new Date(Date.now() + access_token_expires_in * 1000);
-      const client = tiktokClient(access_token);
-      let created = 0;
-      for (const advertiserId of advertiser_ids) {
-        let info = {};
-        try { info = (await client.getAdvertiserInfo(advertiserId))?.advertiser_info?.[0] || {}; } catch { /* */ }
-        const existing = await db.findOne('tiktok_accounts', { advertiser_id: String(advertiserId), workspace_id: ws });
-        if (existing) {
-          await db.update('tiktok_accounts', existing.id, { access_token, refresh_token: refresh_token || null, token_expires_at: tokenExpiresAt, updated_at: new Date() });
-        } else {
-          await db.insert('tiktok_accounts', {
-            id: `tt_${nanoid(20)}`,
-            workspace_id: ws,
-            advertiser_id: String(advertiserId),
-            access_token,
-            refresh_token: refresh_token || null,
-            token_expires_at: tokenExpiresAt,
-            name: info.advertiser_name || advertiserId,
-            currency: info.currency || 'EUR',
-            timezone: info.timezone || null,
-          });
-          created++;
-        }
-      }
-      const frontendBase = process.env.FRONTEND_URL || 'https://srv2100328.hstgr.cloud';
-      return reply.redirect(`${frontendBase}/tiktok?connected=${created}`);
-    } catch (e) {
-      req.log.error(e, 'TikTok OAuth failed');
+    await db.query('DELETE FROM tiktok_oauth_states WHERE nonce = $1', [nonce]);
       return reply.redirect('/?error=tiktok_oauth_failed');
     }
   });
