@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { folders as foldersApi } from '../../api/client.js';
@@ -10,6 +10,7 @@ import PushPresetsPanel from '../PushPresetsPanel.jsx';
 
 // Same three top-level sections as the original; the rest stays reachable under «Ещё».
 const NAV_MAIN = [
+  { path: '/dashboard', label: 'Дашборд', icon: '📊' },
   { path: '/products', label: 'Связки', icon: '⚡' },
   { path: '/campaigns', label: 'Залив', icon: '🚀' },
   { path: '/accounts', label: 'Аккаунты', icon: '👤' },
@@ -20,7 +21,7 @@ const NAV_MORE = [
   { path: '/landings', label: 'Лендинги', icon: '🌐' },
   { path: '/ad-settings', label: 'Пресеты рекламы', icon: '📣' },
   { path: '/ad-presets', label: 'Пресеты (старые)', icon: '⚙️' },
-  { path: '/analytics', label: 'Аналитика', icon: '📊' },
+  { path: '/analytics', label: 'Аналитика', icon: '📈' },
   { path: '/search', label: 'Поиск на Amazon', icon: '🔍' },
   { path: '/2fa', label: 'Коды 2FA', icon: '🔐' },
   { path: '/tiktok', label: 'TikTok Ads', icon: '🎵' },
@@ -223,4 +224,5 @@ export default function Layout({ children }) {
     </div>
   );
 }
+
 
