@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+﻿import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './store/auth.js';
 import { useRole } from './hooks/useRole.js';
@@ -24,6 +24,7 @@ import AdminPage from './pages/Admin.jsx';
 import AdSettingsPage from './pages/AdSettings.jsx';
 import TwoFaPage from './pages/TwoFa.jsx';
 import TikTokPage from './pages/TikTok.jsx';
+import DashboardPage from './pages/Dashboard.jsx';
 
 export default function App() {
   const { user, loading, loadMe } = useAuth();
@@ -59,8 +60,10 @@ export default function App() {
         <Route path="/ad-settings" element={<AdSettingsPage />} />
         <Route path="/2fa" element={<TwoFaPage />} />
         <Route path="/tiktok" element={<TikTokPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
       </Routes>
     </Layout>
   );
 }
+
 
