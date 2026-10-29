@@ -255,3 +255,14 @@ export const admin = {
   remove: (id) => api.delete(`/api/admin/users/${id}`),
   resetPassword: (id, password) => api.post(`/api/admin/users/${id}/reset-password`, { password }),
 };
+
+export const tiktok = {
+  accounts: () => api.get('/api/tiktok/accounts'),
+  addAccount: (data) => api.post('/api/tiktok/accounts', data),
+  removeAccount: (id) => api.delete(`/api/tiktok/accounts/${id}`),
+  updateAccount: (id, data) => api.patch(`/api/tiktok/accounts/${id}`, data),
+  oauthUrl: () => api.get('/api/tiktok/oauth/url'),
+  pixels: (accountId) => api.get(`/api/tiktok/pixels/${accountId}`),
+  push: (data) => api.post('/api/tiktok/push', data),
+};
+
