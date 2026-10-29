@@ -2,6 +2,7 @@
 import { faAnalyticsQuery, faAvailable } from '../../services/fa-client.js';
 import { landingFunnel, landingBehavior } from '../../services/lp-analytics.js';
 import { keitaroClient } from '../../services/keitaro.js';
+import { tiktokClient } from '../../services/tiktok.js';
 import { buyerScope, inScope } from './keitaro.js';
 import { ownUser } from '../../middleware/access.js';
 
