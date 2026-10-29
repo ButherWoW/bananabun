@@ -115,8 +115,9 @@ export async function pushRoutes(app) {
 
   // List pushes
   app.get('/', auth, async (req) => {
-    const { status, dismissed, offset = 0 } = req.query;
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const { status, dismissed } = req.query;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const offset = Math.max(Math.floor(Number(req.query.offset) || 0), 0);
     let where = 'p.workspace_id = $1';
     const args = [req.user.ws];
     if (req.user.role === 'buyer') { where += ` AND p.created_by = $${args.length + 1}`; args.push(req.user.id); }
