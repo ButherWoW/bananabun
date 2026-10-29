@@ -23,6 +23,7 @@ const NAV_MORE = [
   { path: '/analytics', label: 'Аналитика', icon: '📊' },
   { path: '/search', label: 'Поиск на Amazon', icon: '🔍' },
   { path: '/2fa', label: 'Коды 2FA', icon: '🔐' },
+  { path: '/tiktok', label: 'TikTok Ads', icon: '🎵' },
 ];
 const USER_MENU = [
   { path: '/admin', label: 'Команда', roles: ['owner', 'lead'] },
@@ -222,3 +223,4 @@ export default function Layout({ children }) {
     </div>
   );
 }
+
