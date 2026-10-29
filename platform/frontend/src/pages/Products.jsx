@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { products as productsApi, scrape as scrapeApi, presets as presetsApi, keitaro as keitaroApi, folders as foldersApi } from '../api/client.js';
 import ProductSidePanel, { NewProductPanel } from '../components/ProductSidePanel.jsx';
 import GenerateCreativesModal from '../components/GenerateCreativesModal.jsx';
+import GenerateLandingModal from '../components/GenerateLandingModal.jsx';
 import clsx from 'clsx';
 
 const PLATFORMS = [
@@ -277,6 +278,7 @@ export default function ProductsPage() {
   const [shown, setShown] = useState(24);
   const [showNew, setShowNew] = useState(false);
   const [creativesFor, setCreativesFor] = useState(null);
+  const [generateLandingFor, setGenerateLandingFor] = useState(null);
   const { data: folderList = [] } = useQuery({ queryKey: ['folders'], queryFn: foldersApi.list });
 
   const { data, isLoading } = useQuery({
@@ -420,6 +422,7 @@ export default function ProductsPage() {
                 onToggle={() => toggleSelect(product.id)}
                 onDelete={() => { if (window.confirm(`Удалить товар «${(product.title || '').slice(0, 60)}»?`)) deleteMutation.mutate([product.id]); }}
                 onCreatives={() => setCreativesFor(product.id)}
+                onGenerateLanding={() => setGenerateLandingFor({ id: product.id, title: product.title || '' })}
                 onRetry={() => retryMutation.mutate(product.id)}
                 retrying={retryMutation.isPending && retryMutation.variables === product.id}
                 onOpen={(tab = 'Карточка') => { setActiveProduct(product); setInitialTab(tab); }}
@@ -450,6 +453,13 @@ export default function ProductsPage() {
           productId={creativesFor}
           onClose={() => setCreativesFor(null)}
           onDone={() => navigate(`/creatives?product_id=${creativesFor}`)}
+        />
+      )}
+      {generateLandingFor && (
+        <GenerateLandingModal
+          productId={generateLandingFor.id}
+          productTitle={generateLandingFor.title}
+          onClose={() => setGenerateLandingFor(null)}
         />
       )}
       {showNew && (
@@ -557,7 +567,7 @@ const STATE_CONFIG = {
   draft:    { label: 'draft',    bg: 'rgba(107,114,128,0.15)', border: '#6b728050', color: '#9ca3af' },
 };
 
-function ProductCard({ product, selected, onToggle, onDelete, onCreatives, onOpen, onRetry, retrying }) {
+function ProductCard({ product, selected, onToggle, onDelete, onCreatives, onGenerateLanding, onOpen, onRetry, retrying }) {
   let images = [];
   try {
     if (Array.isArray(product.images)) images = product.images;
@@ -674,6 +684,12 @@ function ProductCard({ product, selected, onToggle, onDelete, onCreatives, onOpe
         >
           🎨 Креативы
         </button>
+        <button
+          onClick={e => { e.stopPropagation(); onGenerateLanding(); }}
+          className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 hover:text-emerald-300 transition-colors border border-emerald-600/30"
+        >
+          🚀 Лендинг
+        </button>
       </div>
     </div>
   );
@@ -694,3 +710,4 @@ function Tag({ label, active, onClick }) {
     </button>
   );
 }
+
