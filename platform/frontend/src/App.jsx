@@ -23,6 +23,7 @@ import PushesPage from './pages/Pushes.jsx';
 import AdminPage from './pages/Admin.jsx';
 import AdSettingsPage from './pages/AdSettings.jsx';
 import TwoFaPage from './pages/TwoFa.jsx';
+import TikTokPage from './pages/TikTok.jsx';
 
 export default function App() {
   const { user, loading, loadMe } = useAuth();
@@ -57,7 +58,9 @@ export default function App() {
         <Route path="/admin" element={<RoleRoute roles={['owner', 'lead']} element={<AdminPage />} />} />
         <Route path="/ad-settings" element={<AdSettingsPage />} />
         <Route path="/2fa" element={<TwoFaPage />} />
+        <Route path="/tiktok" element={<TikTokPage />} />
       </Routes>
     </Layout>
   );
 }
+
