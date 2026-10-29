@@ -111,6 +111,8 @@ function PushTab({ accounts }) {
   });
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [genMsg, setGenMsg] = useState('');
 
   const push = useMutation({
     mutationFn: () => tiktok.push({
@@ -128,6 +130,25 @@ function PushTab({ accounts }) {
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const generateVideo = async () => {
+    if (!form.product_id) { setGenMsg('Введите Product ID'); return; }
+    setGenerating(true);
+    setGenMsg('');
+    try {
+      const res = await tiktok.generateVideo(form.product_id);
+      if (res?.fallback) {
+        setGenMsg('ffmpeg не установлен на сервере — вставьте URL вручную');
+      } else if (res?.video_url) {
+        set('video_url', res.video_url);
+        setGenMsg('✅ Видео готово!');
+      }
+    } catch (e) {
+      setGenMsg(e?.error || e?.message || 'Ошибка генерации');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
     <div className="max-w-xl flex flex-col gap-4">
@@ -148,9 +169,25 @@ function PushTab({ accounts }) {
         </label>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400 col-span-2">
           Ссылка на видео
-          <input value={form.video_url} onChange={e => set('video_url', e.target.value)}
-            placeholder="https://example.com/video.mp4"
-            className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          <div className="flex gap-2">
+            <input value={form.video_url} onChange={e => set('video_url', e.target.value)}
+              placeholder="https://example.com/video.mp4"
+              className="flex-1 bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            <button
+              type="button"
+              onClick={generateVideo}
+              disabled={generating || !form.product_id}
+              className="px-3 py-2 rounded-lg bg-[#00f2ea]/10 hover:bg-[#00f2ea]/20 text-[#00f2ea] text-xs font-medium border border-[#00f2ea]/30 transition-colors disabled:opacity-40 whitespace-nowrap"
+              title="Сгенерировать слайдшоу из фото товара"
+            >
+              {generating ? '⏳ ...' : '🎬 Из фото'}
+            </button>
+          </div>
+          {genMsg && (
+            <span className={`text-xs ${genMsg.startsWith('✅') ? 'text-green-400' : 'text-yellow-400'}`}>
+              {genMsg}
+            </span>
+          )}
         </label>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400 col-span-2">
           Заголовок объявления
