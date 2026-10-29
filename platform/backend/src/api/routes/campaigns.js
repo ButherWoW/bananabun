@@ -416,7 +416,7 @@ export async function campaignRoutes(app) {
     if (!campaign) return reply.status(404).send({ error: 'Not found' });
     if (req.user.role === 'buyer' && campaign.created_by !== req.user.id) return reply.status(403).send({ error: 'Access denied' });
 
-    const allowed = ['name', 'status', 'daily_budget', 'spend', 'revenue', 'clicks', 'impressions', 'targeting', 'fb_campaign_id'];
+    const allowed = ['name', 'status', 'daily_budget', 'targeting', 'fb_campaign_id'];
     const data = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
