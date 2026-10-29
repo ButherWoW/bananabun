@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Easy – {{title}}</title>
+<style>
+:root{--blue:#0053cc;--lblue:#e8f0fe;--ink:#1a1a2e;--muted:#6b7280;--line:#e5e7eb;--bg:#f9fafb;--card:#fff;--star:#f59e0b;--green:#059669;--orange:#f97316}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.5}
+img{max-width:100%;display:block}
+a{color:var(--blue);text-decoration:none}
+
+/* Header */
+.hdr{background:var(--blue);color:#fff}
+.hdr-top{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:14px;padding:10px 16px}
+.hdr-logo{font-size:22px;font-weight:800;color:#fff;letter-spacing:-.5px;flex-shrink:0}
+.hdr-logo em{font-style:normal;color:#7ab3ff}
+.hdr-search{flex:1;display:flex;background:#fff;border-radius:24px;overflow:hidden;max-width:600px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.hdr-search input{flex:1;border:0;padding:10px 16px;font-size:14px;outline:none;color:var(--ink)}
+.hdr-search button{background:var(--orange);border:0;color:#fff;padding:0 18px;cursor:pointer;font-size:15px;font-weight:700;border-radius:0 24px 24px 0}
+.hdr-bar{background:#003d99;overflow:hidden}
+.hdr-bar ul{max-width:1200px;margin:0 auto;display:flex;list-style:none;padding:0 16px}
+.hdr-bar li a{display:block;padding:8px 12px;color:rgba(255,255,255,.85);font-size:13px;font-weight:600}
+
+/* Trust bar */
+.tbar{background:var(--lblue);border-bottom:1px solid #c7d9fa}
+.tbar-in{max-width:1200px;margin:0 auto;padding:6px 16px;display:flex;gap:20px;font-size:12px;color:#1e40af;font-weight:600;flex-wrap:wrap}
+
+/* Breadcrumb */
+.bc{max-width:1200px;margin:12px auto 0;padding:0 16px;font-size:12px;color:var(--muted)}
+
+/* Layout */
+.wrap{max-width:1200px;margin:12px auto 0;padding:0 16px 32px;display:grid;gap:20px;grid-template-columns:1fr}
+@media(min-width:900px){.wrap{grid-template-columns:460px 1fr;align-items:start}}
+
+/* Gallery */
+.gallery{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.easy-badge{display:inline-flex;align-items:center;gap:4px;background:#fff3cd;color:#92400e;font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;margin-bottom:10px}
+.bb-gallery{display:grid;gap:6px;grid-template-columns:repeat(4,1fr)}
+.bb-gallery img:first-child{grid-column:1/-1;aspect-ratio:1/1;object-fit:contain;background:#f8faff;border-radius:8px;cursor:zoom-in}
+.bb-gallery img{aspect-ratio:1;object-fit:contain;border:2px solid var(--line);border-radius:8px;cursor:pointer;background:#f8faff}
+.bb-gallery img:hover{border-color:var(--blue)}
+
+/* Info */
+.info{display:flex;flex-direction:column;gap:14px}
+h1{font-size:19px;font-weight:700;line-height:1.35;color:var(--ink)}
+.bb-rating{display:flex;align-items:center;gap:6px;font-size:13px}
+.bb-stars{color:var(--star)}
+.bb-rating-score{font-weight:700;color:var(--ink)}
+
+/* Price */
+.price-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.prime-tag{display:inline-flex;align-items:center;gap:5px;background:var(--blue);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;margin-bottom:8px}
+.price{font-size:38px;font-weight:800;color:var(--blue);line-height:1}
+.old{font-size:15px;color:var(--muted);text-decoration:line-through}
+.save{background:#fef9c3;color:#713f12;font-size:12px;font-weight:700;padding:2px 8px;border-radius:8px;display:inline-block}
+.price-note{font-size:11px;color:var(--muted);margin-top:6px}
+
+/* Delivery */
+.delivery{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px}
+.delivery strong{font-size:14px;color:var(--green);display:block;margin-bottom:2px}
+.delivery span{font-size:12px;color:var(--muted)}
+
+/* Bundles */
+.bb-bundles{display:flex;flex-direction:column;gap:8px}
+.product-choice{display:flex;align-items:center;gap:10px;background:var(--card);border:2px solid var(--line);border-radius:10px;padding:11px 14px;cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%}
+.product-choice:hover{border-color:var(--blue)}
+.product-choice.is-selected{border-color:var(--blue);background:var(--lblue)}
+.product-choice__radio{width:17px;height:17px;border-radius:50%;border:2px solid var(--line);flex-shrink:0}
+.product-choice.is-selected .product-choice__radio{border:5px solid var(--blue)}
+.product-choice__name{flex:1;font-size:13px;font-weight:600}
+.product-choice__price{font-size:15px;font-weight:700;color:var(--blue);white-space:nowrap}
+.product-choice__price s{font-size:12px;font-weight:400;color:var(--muted);margin-left:4px}
+
+/* Buy */
+.btn-buy{display:block;width:100%;background:var(--orange);color:#fff;border:0;border-radius:10px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;text-align:center}
+.btn-buy:hover{background:#ea6c04}
+.btn-wishlist{display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:var(--muted);margin-top:8px;cursor:pointer;background:none;border:0;width:100%}
+
+/* Trust */
+.trust-row{display:flex;flex-wrap:wrap;gap:8px;font-size:12px}
+.trust-chip{display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--ink)}
+.trust-chip span{color:var(--green);font-weight:700}
+
+/* Sticky */
+.sticky-buy{display:none}
+@media(max-width:899px){.sticky-buy{display:block;position:sticky;bottom:0;padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,var(--bg) 30%)}}
+
+/* Full sections */
+.full{grid-column:1/-1;display:grid;gap:16px}
+@media(min-width:900px){.full{grid-template-columns:1fr 1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+section h2{font-size:16px;font-weight:700;color:var(--ink);padding-bottom:10px;border-bottom:2px solid var(--blue);margin-bottom:14px}
+.desc{font-size:14px;color:#374151;line-height:1.7;overflow-wrap:anywhere}
+.bb-specs table{width:100%;border-collapse:collapse}
+.bb-specs th,.bb-specs td{padding:8px 10px;border-top:1px solid var(--line);text-align:left;font-size:13px;vertical-align:top}
+.bb-specs th{background:#f8faff;color:var(--muted);font-weight:600;width:44%}
+.bb-specs tr:first-child th,.bb-specs tr:first-child td{border-top:0}
+.bb-review{padding:12px 0;border-top:1px solid var(--line)}
+.bb-review:first-of-type{border-top:0}
+.bb-review-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bb-review b{font-size:13px;font-weight:700}
+.bb-stars{color:var(--star);font-size:13px}
+.bb-review p{font-size:13px;color:#4b5563;margin-top:5px;line-height:1.55}
+
+/* Footer */
+footer{background:var(--ink);color:rgba(255,255,255,.65);font-size:12px;padding:24px 16px;text-align:center;margin-top:32px}
+footer strong{color:#fff;display:block;font-size:18px;font-weight:800;margin-bottom:8px}
+footer a{color:rgba(255,255,255,.6);margin:0 8px}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-top">
+    <div class="hdr-logo">Easy<em>.</em></div>
+    <div class="hdr-search">
+      <input type="text" value="{{title}}" readonly>
+      <button>🔍</button>
+    </div>
+  </div>
+  <nav class="hdr-bar">
+    <ul>
+      <li><a href="#">Ventes Flash</a></li>
+      <li><a href="#">High-Tech</a></li>
+      <li><a href="#">Maison</a></li>
+      <li><a href="#">Mode</a></li>
+      <li><a href="#">Sport</a></li>
+      <li><a href="#">Beauté</a></li>
+      <li><a href="#">Jardin</a></li>
+    </ul>
+  </nav>
+</header>
+
+<div class="tbar">
+  <div class="tbar-in">
+    <span>🚚 Livraison gratuite dès 25€</span>
+    <span>↩ Retours 30 jours</span>
+    <span>🔒 Paiement sécurisé</span>
+    <span>⭐ Note client 4,8/5</span>
+  </div>
+</div>
+
+<div class="bc"><a href="#">Accueil</a> › <a href="#">Promotions</a> › {{title}}</div>
+
+<main class="wrap">
+  <div class="gallery">
+    <div class="easy-badge">⚡ Offre limitée</div>
+    {{gallery_html}}
+  </div>
+
+  <div class="info">
+    <h1 data-block="title">{{title}}</h1>
+    {{rating_html}}
+
+    <div class="price-card" data-block="price">
+      <div class="prime-tag">✦ Easy Prix</div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+        <span class="price">{{price_fmt}}</span>
+        <span class="old">{{old_price_fmt}}</span>
+        {{save_html}}
+      </div>
+      <div class="price-note">Prix TTC · Expédié et vendu par Easy</div>
+    </div>
+
+    <div class="delivery">
+      <strong>✅ Livraison GRATUITE</strong>
+      <span>Livraison en 2–4 jours ouvrés · Retours gratuits 30 jours</span>
+    </div>
+
+    {{bundles_html}}
+
+    <button type="button" class="btn-buy" data-buy data-block="buy" onclick="location.href=window.buildKeitaroOfferUrl(false)">
+      🛒 Ajouter au panier
+    </button>
+    <div class="sticky-buy">
+      <button type="button" class="btn-buy" onclick="location.href=window.buildKeitaroOfferUrl(false)">🛒 Ajouter au panier</button>
+    </div>
+
+    <div class="trust-row">
+      <div class="trust-chip"><span>✓</span> Paiement sécurisé</div>
+      <div class="trust-chip"><span>✓</span> Retours 30 jours</div>
+      <div class="trust-chip"><span>✓</span> Garantie 2 ans</div>
+      <div class="trust-chip"><span>✓</span> SAV en France</div>
+    </div>
+  </div>
+
+  <div class="full">
+    {{description_html}}
+    {{specs_html}}
+    {{reviews_html}}
+  </div>
+</main>
+
+<footer>
+  <strong>Easy.</strong>
+  <div style="margin-bottom:8px">
+    <a href="#">Aide</a><a href="#">CGV</a><a href="#">Confidentialité</a><a href="#">Mentions légales</a>
+  </div>
+  © {{year}} Easy — Votre shopping simplifié
+</footer>
+
+</body>
+</html>
