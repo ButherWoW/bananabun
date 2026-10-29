@@ -115,7 +115,8 @@ export async function pushRoutes(app) {
 
   // List pushes
   app.get('/', auth, async (req) => {
-    const { status, dismissed, limit = 50, offset = 0 } = req.query;
+    const { status, dismissed, offset = 0 } = req.query;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
     let where = 'p.workspace_id = $1';
     const args = [req.user.ws];
     if (req.user.role === 'buyer') { where += ` AND p.created_by = $${args.length + 1}`; args.push(req.user.id); }
@@ -335,11 +336,15 @@ export async function pushRoutes(app) {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+    const safeTitle = String(product.title || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').slice(0, 300);
+    const safeDesc = String(product.description || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').slice(0, 1000);
     const prompt = `Ты копирайтер для Facebook рекламы. Напиши 3 варианта рекламного текста для товара.
 
-Товар: ${product.title}
-Описание: ${product.description || ''}
+<product_data>
+Товар: ${safeTitle}
+Описание: ${safeDesc}
 Цена: ${product.source_price || ''}
+</product_data>
 Страна: ${geo}
 Язык объявления: ${language}
 
