@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ManoMano – {{title}}</title>
+<style>
+:root{--navy:#003B5C;--orange:#FF6200;--ink:#1c1c1c;--muted:#666;--line:#e0e0e0;--bg:#f5f5f5;--card:#fff;--star:#f5a623;--green:#2d7d46;--lblue:#e8f4fb}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Helvetica Neue",Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45}
+img{max-width:100%;display:block}
+a{color:var(--navy);text-decoration:none}
+
+/* Header */
+.hdr{background:var(--navy);color:#fff}
+.hdr-top{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:14px;padding:10px 16px}
+.hdr-logo{font-size:20px;font-weight:800;color:#fff;letter-spacing:-.5px;flex-shrink:0}
+.hdr-logo span{color:var(--orange)}
+.hdr-search{flex:1;display:flex;background:#fff;border-radius:6px;overflow:hidden;max-width:620px}
+.hdr-search input{flex:1;border:0;padding:10px 14px;font-size:14px;outline:none;color:var(--ink)}
+.hdr-search button{background:var(--orange);border:0;color:#fff;padding:0 20px;cursor:pointer;font-size:15px;font-weight:700}
+.hdr-bar{background:#002b44;border-top:1px solid rgba(255,255,255,.1)}
+.hdr-bar ul{max-width:1280px;margin:0 auto;display:flex;list-style:none;padding:0 16px;overflow:hidden}
+.hdr-bar li a{display:block;padding:9px 14px;color:rgba(255,255,255,.85);font-size:13px;font-weight:600}
+
+/* Trust bar */
+.tbar{background:var(--lblue);border-bottom:1px solid #c8e3f5}
+.tbar-in{max-width:1280px;margin:0 auto;padding:7px 16px;display:flex;gap:24px;font-size:12px;color:#0a5078;font-weight:600;flex-wrap:wrap}
+
+/* Breadcrumb */
+.bc{max-width:1280px;margin:12px auto 0;padding:0 16px;font-size:12px;color:var(--muted)}
+
+/* Layout */
+.wrap{max-width:1280px;margin:10px auto 0;padding:0 16px 32px;display:grid;gap:20px;grid-template-columns:1fr}
+@media(min-width:960px){.wrap{grid-template-columns:500px 1fr;align-items:start}}
+
+/* Gallery */
+.gallery{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
+.mm-badge{display:inline-flex;align-items:center;gap:4px;background:#fff3e8;color:var(--orange);font-size:11px;font-weight:700;padding:4px 9px;border-radius:4px;border:1px solid #ffd4a8;margin-bottom:10px}
+.bb-gallery{display:grid;gap:6px;grid-template-columns:repeat(4,1fr)}
+.bb-gallery img:first-child{grid-column:1/-1;aspect-ratio:1/1;object-fit:contain;background:#fafafa;border-radius:6px;cursor:zoom-in}
+.bb-gallery img{aspect-ratio:1;object-fit:contain;border:2px solid var(--line);border-radius:6px;cursor:pointer;background:#fafafa}
+.bb-gallery img:hover{border-color:var(--orange)}
+
+/* Info */
+.info{display:flex;flex-direction:column;gap:14px}
+.brand{font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px}
+h1{font-size:20px;font-weight:700;line-height:1.3}
+.bb-rating{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}
+.bb-stars{color:var(--star)}
+.bb-rating-score{font-weight:700;color:var(--navy)}
+
+/* Price card */
+.price-card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px}
+.price-promo{font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.price{font-size:38px;font-weight:800;color:var(--orange);line-height:1}
+.old{font-size:14px;color:var(--muted);text-decoration:line-through}
+.save{background:#fff3e8;color:var(--orange);font-size:12px;font-weight:700;padding:2px 7px;border-radius:4px;display:inline-block}
+.price-note{font-size:11px;color:var(--muted);margin-top:6px}
+
+/* Delivery */
+.delivery{background:var(--lblue);border:1px solid #c8e3f5;border-radius:8px;padding:12px 14px}
+.delivery strong{font-size:14px;font-weight:700;color:var(--green);display:block;margin-bottom:2px}
+.delivery span{font-size:12px;color:var(--navy)}
+
+/* Bundles */
+.bb-bundles{display:flex;flex-direction:column;gap:8px}
+.product-choice{display:flex;align-items:center;gap:10px;background:var(--card);border:2px solid var(--line);border-radius:8px;padding:11px 14px;cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%}
+.product-choice:hover{border-color:#aaa}
+.product-choice.is-selected{border-color:var(--orange);background:#fff8f3}
+.product-choice__radio{width:17px;height:17px;border-radius:50%;border:2px solid var(--line);flex-shrink:0}
+.product-choice.is-selected .product-choice__radio{border:5px solid var(--orange)}
+.product-choice__name{flex:1;font-size:13px;font-weight:600}
+.product-choice__price{font-size:15px;font-weight:700;color:var(--orange);white-space:nowrap}
+.product-choice__price s{font-size:12px;font-weight:400;color:var(--muted);margin-left:4px}
+
+/* Buy */
+.btn-buy{display:block;width:100%;background:var(--orange);color:#fff;border:0;border-radius:8px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;text-align:center}
+.btn-buy:hover{background:#e05500}
+
+/* Trust grid */
+.trust-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px}
+.trust-cell{display:flex;align-items:flex-start;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.trust-icon{font-size:18px;flex-shrink:0}
+.trust-label{font-weight:700}
+.trust-sub{color:var(--muted)}
+
+/* Sticky */
+.sticky-buy{display:none}
+@media(max-width:959px){.sticky-buy{display:block;position:sticky;bottom:0;padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,var(--bg) 30%)}}
+
+/* Full sections */
+.full{grid-column:1/-1;display:grid;gap:16px}
+@media(min-width:960px){.full{grid-template-columns:1fr 1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:18px}
+section h2{font-size:16px;font-weight:700;color:var(--navy);padding-bottom:10px;border-bottom:2px solid var(--orange);margin-bottom:14px}
+.desc{font-size:14px;color:#333;line-height:1.7;overflow-wrap:anywhere}
+.bb-specs table{width:100%;border-collapse:collapse}
+.bb-specs th,.bb-specs td{padding:8px 10px;border-top:1px solid var(--line);text-align:left;font-size:13px;vertical-align:top}
+.bb-specs th{background:#f8f9fb;color:var(--muted);font-weight:600;width:44%}
+.bb-specs tr:first-child th,.bb-specs tr:first-child td{border-top:0}
+.bb-review{padding:12px 0;border-top:1px solid var(--line)}
+.bb-review:first-of-type{border-top:0}
+.bb-review-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bb-review b{font-size:13px;font-weight:700}
+.bb-review p{font-size:13px;color:#444;margin-top:5px;line-height:1.55}
+
+/* Footer */
+footer{background:var(--navy);color:rgba(255,255,255,.75);font-size:12px;padding:24px 16px;text-align:center;margin-top:32px}
+footer a{color:rgba(255,255,255,.65);margin:0 8px}
+footer strong{color:#fff;display:block;margin-bottom:8px;font-size:16px;font-weight:800}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-top">
+    <div class="hdr-logo">Mano<span>Mano</span></div>
+    <div class="hdr-search">
+      <input type="text" value="{{title}}" readonly>
+      <button>Rechercher</button>
+    </div>
+  </div>
+  <nav class="hdr-bar">
+    <ul>
+      <li><a href="#">Outillage</a></li>
+      <li><a href="#">Quincaillerie</a></li>
+      <li><a href="#">Électricité</a></li>
+      <li><a href="#">Plomberie</a></li>
+      <li><a href="#">Jardin</a></li>
+      <li><a href="#">Maison</a></li>
+      <li><a href="#">Peinture</a></li>
+      <li><a href="#">Sols &amp; Murs</a></li>
+    </ul>
+  </nav>
+</header>
+
+<div class="tbar">
+  <div class="tbar-in">
+    <span>🚚 Livraison offerte dès 25€</span>
+    <span>↩ Retours 30 jours</span>
+    <span>🔒 Paiement sécurisé</span>
+    <span>⭐ +25 millions de produits</span>
+  </div>
+</div>
+
+<div class="bc"><a href="#">Accueil</a> › <a href="#">Outillage</a> › {{title}}</div>
+
+<main class="wrap">
+  <div class="gallery">
+    <div class="mm-badge">🔥 Offre spéciale · Stock limité</div>
+    {{gallery_html}}
+  </div>
+
+  <div class="info">
+    <div class="brand">ManoMano Pro</div>
+    <h1 data-block="title">{{title}}</h1>
+    {{rating_html}}
+
+    <div class="price-card" data-block="price">
+      <div class="price-promo">🏷 Prix promotionnel</div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span class="price">{{price_fmt}}</span>
+        <span class="old">{{old_price_fmt}}</span>
+        {{save_html}}
+      </div>
+      <div class="price-note">TVA incluse · Expédié depuis la France</div>
+    </div>
+
+    <div class="delivery">
+      <strong>✅ Livraison GRATUITE</strong>
+      <span>Livraison estimée : 2–5 jours ouvrés</span>
+    </div>
+
+    {{bundles_html}}
+
+    <button type="button" class="btn-buy" data-buy data-block="buy" onclick="location.href=window.buildKeitaroOfferUrl(false)">
+      Ajouter au panier
+    </button>
+    <div class="sticky-buy">
+      <button type="button" class="btn-buy" onclick="location.href=window.buildKeitaroOfferUrl(false)">Ajouter au panier</button>
+    </div>
+
+    <div class="trust-grid">
+      <div class="trust-cell"><span class="trust-icon">🔒</span><div><div class="trust-label">Paiement sécurisé</div><div class="trust-sub">CB, PayPal</div></div></div>
+      <div class="trust-cell"><span class="trust-icon">↩</span><div><div class="trust-label">Retours 30 jours</div><div class="trust-sub">Satisfait ou remboursé</div></div></div>
+      <div class="trust-cell"><span class="trust-icon">🛡</span><div><div class="trust-label">Garantie 2 ans</div><div class="trust-sub">SAV France</div></div></div>
+      <div class="trust-cell"><span class="trust-icon">🚚</span><div><div class="trust-label">Livraison offerte</div><div class="trust-sub">Dès 25€ d'achat</div></div></div>
+    </div>
+  </div>
+
+  <div class="full">
+    {{description_html}}
+    {{specs_html}}
+    {{reviews_html}}
+  </div>
+</main>
+
+<footer>
+  <strong>ManoMano</strong>
+  <div style="margin-bottom:8px">
+    <a href="#">Aide &amp; Contact</a><a href="#">CGV</a><a href="#">Confidentialité</a><a href="#">Mentions légales</a>
+  </div>
+  © {{year}} ManoMano — La communauté du bricolage et du jardinage
+</footer>
+
+</body>
+</html>
