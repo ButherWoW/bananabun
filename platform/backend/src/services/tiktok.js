@@ -163,6 +163,18 @@ export function getOAuthUrl(appId, redirectUri, state) {
   return `https://ads.tiktok.com/marketing_api/auth?${params}`;
 }
 
+export async function refreshAccessToken(appId, appSecret, refreshToken) {
+  const res = await fetch(`${BASE}/oauth2/refresh_access_token/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app_id: appId, secret: appSecret, refresh_token: refreshToken }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const data = await res.json();
+  if (data.code !== 0) throw new Error(data.message || 'Token refresh failed');
+  return data.data;
+}
+
 export async function exchangeCode(appId, appSecret, code, redirectUri) {
   const res = await fetch(`${BASE}/oauth2/access_token/`, {
     method: 'POST',
