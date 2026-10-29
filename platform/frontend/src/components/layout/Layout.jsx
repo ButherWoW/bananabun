@@ -15,6 +15,10 @@ const NAV_MAIN = [
   { path: '/campaigns', label: 'Залив', icon: '🚀' },
   { path: '/accounts', label: 'Аккаунты', icon: '👤' },
 ];
+const NAV_ADS = [
+  { path: '/tiktok', label: 'TikTok Ads', icon: '🎵' },
+  { path: '/google', label: 'Google Ads', icon: '🔷' },
+];
 const NAV_MORE = [
   { path: '/creatives', label: 'Креативы', icon: '🎨' },
   { path: '/pushes', label: 'Журнал заливов', icon: '📜' },
@@ -24,7 +28,6 @@ const NAV_MORE = [
   { path: '/analytics', label: 'Аналитика', icon: '📈' },
   { path: '/search', label: 'Поиск на Amazon', icon: '🔍' },
   { path: '/2fa', label: 'Коды 2FA', icon: '🔐' },
-  { path: '/tiktok', label: 'TikTok Ads', icon: '🎵' },
 ];
 const USER_MENU = [
   { path: '/admin', label: 'Команда', roles: ['owner', 'lead'] },
@@ -131,6 +134,10 @@ export default function Layout({ children }) {
 
         <div className="px-2 pb-1">
           {NAV_MAIN.map(item => <NavLink key={item.path} item={item} active={location.pathname.startsWith(item.path)} />)}
+          <div className="px-2 pt-3 pb-0.5 flex items-center gap-2">
+            <span className="text-[10px] text-gray-600 uppercase tracking-wider font-medium">Кабинеты</span>
+          </div>
+          {NAV_ADS.map(item => <NavLink key={item.path} item={item} active={location.pathname.startsWith(item.path)} />)}
           <button
             onClick={() => setShowMore(v => !v)}
             className="w-full flex items-center justify-between px-2 py-1.5 mt-1 text-[11px] text-gray-600 hover:text-gray-300 uppercase tracking-wider"
