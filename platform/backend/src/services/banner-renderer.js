@@ -178,11 +178,11 @@ async function loadProductImage(product) {
   for (const src of candidates.slice(0, 3)) {
     try {
       if (/^https?:\/\//.test(src)) return await fetchBuffer(src);
-      // local upload path
-      const local = src.startsWith('/uploads/')
-        ? path.join(UPLOADS_DIR, src.replace('/uploads/', ''))
-        : src;
-      return await fs.readFile(local);
+      // Only allow files inside UPLOADS_DIR — reject any other local path.
+      if (!src.startsWith('/uploads/')) continue;
+      const rel = src.slice('/uploads/'.length);
+      if (rel.includes('..') || path.isAbsolute(rel)) continue;
+      return await fs.readFile(path.join(UPLOADS_DIR, rel));
     } catch { /* try next */ }
   }
   return null;

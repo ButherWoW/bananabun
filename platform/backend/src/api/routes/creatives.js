@@ -71,7 +71,7 @@ export async function startGeneration({ ws, userId, product, body, batchKey }) {
       type: 'image',
       format,
       status: 'pending',
-      metadata: { source: requestedSource, style, language, ...(batchKey ? {auto_batch_key:batchKey,auto_slot:index} : {}), options: { language, landing_price, features, format, headline, logo_key, image: references.length ? references[index % references.length] : undefined } },
+      metadata: { source: requestedSource, style, language, auto_slot: index, ...(batchKey ? {auto_batch_key:batchKey} : {}), options: { language, landing_price, features, format, headline, logo_key, image: references.length ? references[index % references.length] : undefined } },
     }));
   // One SQL statement: a failure must not leave a partially created batch.
   const { rows: records } = await db.query(`INSERT INTO creatives
