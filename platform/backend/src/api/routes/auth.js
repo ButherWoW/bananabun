@@ -16,8 +16,11 @@ export async function authRoutes(app) {
     const existing = await db.findOne('users', { email });
     if (existing) return reply.status(400).send({ error: 'Email уже зарегистрирован.' });
 
-    // Join the first existing workspace, or create one if none exists
-    let ws = (await db.query('SELECT * FROM workspaces ORDER BY created_at LIMIT 1')).rows[0];
+    // Join the existing workspace (single-tenant: all users share one workspace)
+    // If somehow multiple workspaces exist, fail loudly so it's not silently wrong
+    const wsRows = (await db.query('SELECT * FROM workspaces ORDER BY created_at LIMIT 2')).rows;
+    if (wsRows.length > 1) return reply.status(500).send({ error: 'Multiple workspaces detected — contact admin' });
+    let ws = wsRows[0];
     if (!ws) {
       ws = await db.insert('workspaces', {
         id: `ws_${nanoid(20)}`,
