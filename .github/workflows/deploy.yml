@@ -1,0 +1,83 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H 148.230.98.232 >> ~/.ssh/known_hosts
+
+      - name: Sync backend source
+        run: |
+          rsync -az --delete-after \
+            --exclude '._*' --exclude .DS_Store \
+            --exclude node_modules --exclude dist --exclude uploads \
+            --exclude '.env' --exclude '.git' \
+            platform/backend/src/ root@148.230.98.232:/opt/affiliate/backend/src/
+          rsync -az \
+            platform/backend/package.json \
+            platform/backend/package-lock.json \
+            root@148.230.98.232:/opt/affiliate/backend/
+
+      - name: Sync frontend source
+        run: |
+          rsync -az --delete-after \
+            --exclude '._*' --exclude .DS_Store \
+            --exclude node_modules --exclude dist \
+            platform/frontend/src/ root@148.230.98.232:/opt/affiliate/frontend/src/
+          rsync -az \
+            platform/frontend/package.json \
+            platform/frontend/package-lock.json \
+            platform/frontend/vite.config.js \
+            root@148.230.98.232:/opt/affiliate/frontend/
+
+      - name: Install deps, migrate, build, restart
+        run: |
+          ssh root@148.230.98.232 'set -e
+          chown -R affiliate:affiliate /opt/affiliate/backend/src /opt/affiliate/frontend/src \
+            /opt/affiliate/backend/package.json /opt/affiliate/backend/package-lock.json \
+            /opt/affiliate/frontend/package.json /opt/affiliate/frontend/package-lock.json \
+            /opt/affiliate/frontend/vite.config.js
+
+          for d in backend frontend; do
+            cd /opt/affiliate/$d
+            H=$(sha256sum package-lock.json | cut -c1-64)
+            if [ "$(cat .lock-installed 2>/dev/null)" != "$H" ]; then
+              echo "npm ci: $d"
+              if [ $d = backend ]; then
+                sudo -u affiliate npm ci --omit=dev --no-audit --no-fund --loglevel=error
+              else
+                sudo -u affiliate npm ci --no-audit --no-fund --loglevel=error
+              fi
+              echo "$H" > .lock-installed
+            fi
+          done
+
+          cd /opt/affiliate/backend
+          sudo -u affiliate node src/db/migrate.js > /tmp/migrate.log 2>&1 \
+            || { cat /tmp/migrate.log; exit 1; }
+          grep -v skip /tmp/migrate.log
+
+          cd /opt/affiliate/frontend
+          printf "VITE_API_URL=\n" > .env
+          npx vite build --logLevel error
+          echo "frontend built"
+
+          systemctl restart affiliate-backend
+          sleep 3
+          systemctl is-active affiliate-backend
+          curl -s -o /dev/null -w "api %{http_code}\n" http://127.0.0.1:4000/api/agent/status'
