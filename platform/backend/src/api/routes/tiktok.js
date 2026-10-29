@@ -4,8 +4,30 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { adminOnly } from '../../middleware/access.js';
 import { tiktokClient, getOAuthUrl, exchangeCode, refreshAccessToken, TIKTOK_LOCATIONS } from '../../services/tiktok.js';
+import { promises as dns } from 'dns';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function isSsrfBlocked(url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return true;
+    const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (/^(localhost|::1|0\.0\.0\.0|127\.|10\.|192\.168\.|169\.254\.)/.test(h)) return true;
+    if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(h)) return true;
+    if (/^(fc[0-9a-f]{2}|fd[0-9a-f]{2}|fe[89ab][0-9a-f])/i.test(h)) return true;
+    const { address, family } = await dns.lookup(h, { verbatim: true });
+    const a = address.toLowerCase();
+    if (family === 4) {
+      if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0)/.test(a)) return true;
+      if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(a)) return true;
+    } else {
+      if (a === '::1') return true;
+      if (/^(fc[0-9a-f]{2}|fd[0-9a-f]{2}|fe[89ab][0-9a-f])/i.test(a)) return true;
+    }
+    return false;
+  } catch { return true; }
+}
 
 export async function tiktokRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
@@ -203,14 +225,8 @@ export async function tiktokRoutes(app) {
     if (!product) return reply.status(404).send({ error: 'Product not found' });
 
     const allImages = Array.isArray(product.images) ? product.images : [];
-    const images = allImages.filter(url => {
-      try {
-        const u = new URL(String(url));
-        if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
-        const h = u.hostname.toLowerCase();
-        return !h.match(/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|::1|0\.0\.0\.0)/);
-      } catch { return false; }
-    });
+    const ssrfChecks = await Promise.all(allImages.map(url => isSsrfBlocked(url)));
+    const images = allImages.filter((_, i) => !ssrfChecks[i]);
     if (!images.length) return { error: 'No images on product', fallback: true };
 
     const { generateTikTokVideo } = await import('../../services/tiktok-video.js');
