@@ -61,7 +61,6 @@ async function ensureKeitaro(kt, push, params, productName) {
     });
   }
   if (!campaign) {
-    const all = await kt.allCampaigns();
     const alias = makeAlias(productName);
     campaign = await kt.createCampaign({
       name: params.campaign_name,
