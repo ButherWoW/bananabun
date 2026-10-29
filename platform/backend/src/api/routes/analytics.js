@@ -93,9 +93,9 @@ export async function analyticsRoutes(app) {
     // Try to get real data from campaigns
     const { rows } = await db.query(
       `SELECT DATE(created_at) as date, SUM(spend) as spend, SUM(revenue) as revenue, SUM(clicks) as clicks
-       FROM campaigns WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2) AND created_at >= NOW() - INTERVAL '${days} days'
+       FROM campaigns WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2) AND created_at >= NOW() - ($3 * INTERVAL '1 day')
        GROUP BY DATE(created_at) ORDER BY date`,
-      [ws, ownUser(req)]
+      [ws, ownUser(req), days]
     );
 
     if (rows.length > 0) {
