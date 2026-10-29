@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cdiscount – {{title}}</title>
+<style>
+:root{--red:#e2001a;--orange:#ff6000;--ink:#1a1a1a;--muted:#666;--line:#e5e5e5;--bg:#f0f0f0;--card:#fff;--star:#f5a623;--green:#1a7a1a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.4}
+img{max-width:100%;display:block}
+a{color:var(--red);text-decoration:none}
+
+/* Header */
+.hdr{background:var(--red)}
+.hdr-top{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:8px 16px}
+.hdr-logo{font-size:24px;font-weight:900;color:#fff;letter-spacing:-0.5px;flex-shrink:0}
+.hdr-logo em{color:#ff9900;font-style:normal}
+.hdr-search{flex:1;display:flex;background:#fff;border-radius:3px;overflow:hidden;max-width:600px}
+.hdr-search input{flex:1;border:0;padding:9px 12px;font-size:14px;outline:none;color:var(--ink)}
+.hdr-search button{background:var(--orange);border:0;color:#fff;padding:0 16px;cursor:pointer;font-weight:700}
+.hdr-nav{background:#cc0017;border-top:1px solid rgba(255,255,255,.2)}
+.hdr-nav ul{max-width:1200px;margin:0 auto;display:flex;list-style:none;padding:0 16px;overflow:hidden}
+.hdr-nav li a{display:block;padding:7px 13px;color:#fff;font-size:13px;font-weight:700}
+
+/* Breadcrumb */
+.bc{max-width:1200px;margin:10px auto;padding:0 16px;font-size:12px;color:var(--muted)}
+
+/* Layout */
+.wrap{max-width:1200px;margin:0 auto;padding:0 16px 24px;display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:900px){.wrap{grid-template-columns:460px 1fr;align-items:start}}
+
+/* Gallery */
+.gallery{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px}
+.gallery-badges{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:2px}
+.badge-promo{background:#ffd700;color:#333}
+.badge-ship{background:var(--green);color:#fff}
+.bb-gallery{display:grid;gap:6px;grid-template-columns:repeat(4,1fr)}
+.bb-gallery img:first-child{grid-column:1/-1;aspect-ratio:1/1;object-fit:contain;background:#fafafa;border-radius:3px;cursor:zoom-in}
+.bb-gallery img{aspect-ratio:1;object-fit:contain;border:2px solid var(--line);border-radius:3px;cursor:pointer;background:#fafafa}
+.bb-gallery img:hover{border-color:var(--red)}
+
+/* Info */
+.info{display:flex;flex-direction:column;gap:12px}
+h1{font-size:18px;font-weight:700;line-height:1.3}
+.bb-rating{display:flex;align-items:center;gap:6px;font-size:13px}
+.bb-stars{color:var(--star)}
+.bb-rating-score{font-weight:700}
+
+/* Price */
+.price-card{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px}
+.price-label{font-size:11px;color:var(--muted);margin-bottom:2px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.prices{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:4px 0}
+.price{font-size:36px;font-weight:700;color:var(--red);line-height:1}
+.old{color:var(--muted);text-decoration:line-through;font-size:15px}
+.save{background:#fff3cd;color:#856404;border-radius:3px;padding:2px 7px;font-size:13px;font-weight:700}
+.price-note{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* Delivery */
+.delivery{background:#f0f8f0;border:1px solid #b8e0b8;border-radius:4px;padding:10px 12px}
+.delivery strong{color:var(--green);font-size:14px;display:block;margin-bottom:2px}
+.delivery span{font-size:12px;color:var(--muted)}
+
+/* Bundles */
+.choose{font-size:14px;font-weight:700;margin-bottom:6px}
+.bb-bundles{display:flex;flex-direction:column;gap:6px}
+.product-choice{display:flex;align-items:center;gap:10px;background:var(--card);border:2px solid var(--line);border-radius:4px;padding:10px 12px;cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%}
+.product-choice:hover{border-color:#999}
+.product-choice.is-selected{border-color:var(--red);background:#fff8f8}
+.product-choice__radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);flex-shrink:0}
+.product-choice.is-selected .product-choice__radio{border:5px solid var(--red)}
+.product-choice__name{flex:1;font-size:13px;font-weight:600}
+.product-choice__price{font-size:15px;font-weight:700;color:var(--red);white-space:nowrap}
+.product-choice__price s{font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}
+
+/* Buy */
+.btn-buy{display:block;width:100%;background:var(--orange);color:#fff;border:0;border-radius:4px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;text-align:center}
+.btn-buy:hover{background:#e05000}
+
+/* Trust */
+.trust{display:flex;flex-wrap:wrap;gap:8px;font-size:11px;justify-content:center;color:var(--muted)}
+.trust span{display:flex;align-items:center;gap:3px}
+.trust .ok{color:var(--green);font-weight:700}
+
+/* Seller */
+.seller-info{font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:4px;padding:9px 12px}
+
+/* Sticky */
+.sticky-buy{display:none}
+@media(max-width:899px){.sticky-buy{display:block;position:sticky;bottom:0;padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,var(--bg) 30%)}}
+
+/* Full sections */
+.full{grid-column:1/-1;display:grid;gap:12px}
+@media(min-width:900px){.full{grid-template-columns:1fr 1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:16px}
+section h2{font-size:15px;font-weight:700;border-bottom:2px solid var(--red);padding-bottom:8px;margin-bottom:12px}
+.desc{font-size:14px;color:#333;line-height:1.65;overflow-wrap:anywhere}
+.bb-specs table{width:100%;border-collapse:collapse}
+.bb-specs th,.bb-specs td{padding:7px 10px;border-top:1px solid var(--line);font-size:13px;text-align:left;vertical-align:top}
+.bb-specs th{background:#f8f8f8;color:var(--muted);font-weight:600;width:44%}
+.bb-specs tr:first-child th,.bb-specs tr:first-child td{border-top:none}
+.bb-reviews section h2{border-color:var(--star)}
+.bb-review{padding:10px 0;border-top:1px solid var(--line)}
+.bb-review:first-of-type{border-top:none}
+.bb-review-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bb-stars{color:var(--star);font-size:13px}
+.bb-review b{font-size:13px}
+.bb-review p{font-size:13px;color:#444;margin-top:4px;line-height:1.5}
+
+/* Footer */
+footer{background:#cc0017;color:rgba(255,255,255,.8);font-size:12px;padding:20px 16px;text-align:center;margin-top:24px}
+footer a{color:rgba(255,255,255,.75);margin:0 8px}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-top">
+    <div class="hdr-logo">c<em>d</em>iscount</div>
+    <div class="hdr-search">
+      <input type="text" value="{{title}}" readonly>
+      <button>🔍 Rechercher</button>
+    </div>
+  </div>
+  <nav class="hdr-nav">
+    <ul>
+      <li><a href="#">Promos</a></li>
+      <li><a href="#">High-Tech</a></li>
+      <li><a href="#">Électroménager</a></li>
+      <li><a href="#">Maison</a></li>
+      <li><a href="#">Sports &amp; Loisirs</a></li>
+      <li><a href="#">Jardin</a></li>
+      <li><a href="#">Jouets</a></li>
+      <li><a href="#">Mode</a></li>
+    </ul>
+  </nav>
+</header>
+
+<div class="bc"><a href="#">Accueil</a> › <a href="#">Électroménager</a> › {{title}}</div>
+
+<main class="wrap">
+  <div class="gallery">
+    <div class="gallery-badges">
+      <span class="badge badge-promo">PROMO</span>
+      <span class="badge badge-ship">LIVRAISON OFFERTE</span>
+    </div>
+    {{gallery_html}}
+  </div>
+
+  <div class="info">
+    <h1 data-block="title">{{title}}</h1>
+    {{rating_html}}
+
+    <div class="price-card" data-block="price">
+      <div class="price-label">Prix Cdiscount</div>
+      <div class="prices">
+        <span class="price">{{price_fmt}}</span>
+        <span class="old">{{old_price_fmt}}</span>
+        {{save_html}}
+      </div>
+      <div class="price-note">Prix incluant TVA · Vendu et expédié par Cdiscount</div>
+    </div>
+
+    <div class="delivery">
+      <strong>✓ Livraison GRATUITE</strong>
+      <span>Livraison en 2–4 jours ouvrés · Retours gratuits 30 jours</span>
+    </div>
+
+    {{bundles_html}}
+
+    <button type="button" class="btn-buy" data-buy data-block="buy" onclick="location.href=window.buildKeitaroOfferUrl(false)">
+      🛒 Ajouter au panier
+    </button>
+    <div class="sticky-buy">
+      <button type="button" class="btn-buy" onclick="location.href=window.buildKeitaroOfferUrl(false)">🛒 Ajouter au panier</button>
+    </div>
+
+    <div class="trust">
+      <span><span class="ok">✓</span> Paiement sécurisé</span>
+      <span><span class="ok">✓</span> Retours 30 jours</span>
+      <span><span class="ok">✓</span> Satisfait ou remboursé</span>
+      <span><span class="ok">✓</span> SAV France</span>
+    </div>
+
+    <div class="seller-info">Vendu par <strong>Cdiscount</strong> · <span style="color:var(--green)">Vendeur Certifié Cdiscount</span></div>
+  </div>
+
+  <div class="full">
+    {{description_html}}
+    {{specs_html}}
+    {{reviews_html}}
+  </div>
+</main>
+
+<footer>
+  <div style="margin-bottom:8px">
+    <a href="#">Aide</a><a href="#">CGV</a><a href="#">Confidentialité</a><a href="#">Mentions légales</a>
+  </div>
+  © {{year}} Cdiscount — Des prix bas qui ont de la voix
+</footer>
+
+</body>
+</html>
