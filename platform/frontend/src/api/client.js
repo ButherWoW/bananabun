@@ -236,6 +236,9 @@ export const landingTemplates = {
     return api.post('/api/landings/templates/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
   createStore: (data) => api.post('/api/landings/templates/store', data),
+  createCdiscount: (data) => api.post('/api/landings/templates/cdiscount', data),
+  createManomano: (data) => api.post('/api/landings/templates/manomano', data),
+  createEasy: (data) => api.post('/api/landings/templates/easy', data),
   createWhitePage: (name) => api.post('/api/landings/templates/white-page', { name }),
   createFormPage: (data) => api.post('/api/landings/templates/form-page', data),
   check: (data) => api.post('/api/landings/check', data, { timeout: 120000 }),
