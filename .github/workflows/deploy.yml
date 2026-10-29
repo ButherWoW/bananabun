@@ -45,6 +45,49 @@ jobs:
             platform/frontend/vite.config.js \
             root@148.230.98.232:/opt/affiliate/frontend/
 
+      - name: Inject env vars
+        env:
+          TIKTOK_APP_ID: ${{ secrets.TIKTOK_APP_ID }}
+          TIKTOK_APP_SECRET: ${{ secrets.TIKTOK_APP_SECRET }}
+        run: |
+          # Build env patch file on runner
+          cat > /tmp/env.patch << 'EOF'
+          PUBLIC_URL=https://nespizdili.lol
+          UPLOADS_DIR=/opt/affiliate/uploads
+          TIKTOK_REDIRECT_URI=https://nespizdili.lol/api/tiktok/oauth/callback
+          EOF
+          [ -n "$TIKTOK_APP_ID" ]     && echo "TIKTOK_APP_ID=$TIKTOK_APP_ID"         >> /tmp/env.patch
+          [ -n "$TIKTOK_APP_SECRET" ] && echo "TIKTOK_APP_SECRET=$TIKTOK_APP_SECRET" >> /tmp/env.patch
+
+          # Push patch to server
+          rsync -az /tmp/env.patch root@148.230.98.232:/tmp/env.patch
+
+          # Merge into .env on server (add missing keys, update existing)
+          ssh root@148.230.98.232 '
+            ENV_FILE=/opt/affiliate/backend/.env
+            touch "$ENV_FILE"
+            while IFS="=" read -r key rest; do
+              key=$(echo "$key" | xargs)
+              [ -z "$key" ] && continue
+              val="${rest}"
+              if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+                sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+              else
+                echo "${key}=${val}" >> "$ENV_FILE"
+              fi
+            done < /tmp/env.patch
+            rm /tmp/env.patch
+            chown affiliate:affiliate "$ENV_FILE"
+            chmod 600 "$ENV_FILE"
+            echo "env vars updated"
+          '
+
+      - name: Install ffmpeg if missing
+        run: |
+          ssh root@148.230.98.232 'which ffmpeg > /dev/null 2>&1 \
+            && echo "ffmpeg ok: $(ffmpeg -version 2>&1 | head -1)" \
+            || (apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg && echo "ffmpeg installed")'
+
       - name: Install deps, migrate, build, restart
         run: |
           ssh root@148.230.98.232 'set -e
