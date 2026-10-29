@@ -57,7 +57,7 @@ const GRADIENTS = [
 function buildSVG(w, h, slot, data) {
   const {
     title, specs, newPrice, oldPrice, currency, cta, headline,
-    pct, logoUrl,
+    pct,
   } = data;
 
   const [bg1, bg2] = GRADIENTS[slot % GRADIENTS.length];
@@ -65,7 +65,6 @@ function buildSVG(w, h, slot, data) {
 
   // Layout constants
   const pad = Math.round(w * 0.05);
-  const textW = Math.round(w * (isPortrait ? 0.92 : 0.50));
   const titleSize = Math.round(w * 0.052);
   const specSize  = Math.round(w * 0.032);
   const priceSize = Math.round(w * 0.072);

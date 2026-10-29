@@ -1,5 +1,4 @@
 import 'dotenv/config';
-import { createReadStream, existsSync } from 'fs';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import Fastify from 'fastify';
