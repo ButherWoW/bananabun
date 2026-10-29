@@ -80,24 +80,22 @@ export async function accountRoutes(app) {
       ORDER BY fa.created_at DESC
     `, [ws, req.user.role === 'buyer' ? String(req.user.email || '').toLowerCase() : null]);
 
-    // Get BMs + cabinets for each account
-    const result = await Promise.all(accounts.map(async (acc) => {
-      const { rows: bms } = await db.query(`
-        SELECT b.*,
-          json_agg(c.*) FILTER (WHERE c.id IS NOT NULL) as cabinets,
-          json_agg(p.*) FILTER (WHERE p.id IS NOT NULL) as pages
-        FROM fb_bms b
-        LEFT JOIN fb_cabinets c ON c.bm_id = b.id
-        LEFT JOIN fb_pages p ON p.bm_id = b.id
-        WHERE b.fb_account_id = $1
-        GROUP BY b.id
-        ORDER BY b.name
-      `, [acc.id]);
-
-      return { ...acc, bms };
-    }));
-
-    return result;
+    // Batch-load all BMs + cabinets/pages in one query to avoid N+1
+    const accountIds = accounts.map(a => a.id);
+    const { rows: allBms } = accountIds.length ? await db.query(`
+      SELECT b.*,
+        json_agg(c.*) FILTER (WHERE c.id IS NOT NULL) as cabinets,
+        json_agg(p.*) FILTER (WHERE p.id IS NOT NULL) as pages
+      FROM fb_bms b
+      LEFT JOIN fb_cabinets c ON c.bm_id = b.id
+      LEFT JOIN fb_pages p ON p.bm_id = b.id
+      WHERE b.fb_account_id = ANY($1::text[])
+      GROUP BY b.id
+      ORDER BY b.name
+    `, [accountIds]) : { rows: [] };
+    const bmsByAccount = {};
+    for (const bm of allBms) { (bmsByAccount[bm.fb_account_id] = bmsByAccount[bm.fb_account_id] || []).push(bm); }
+    return accounts.map(acc => ({ ...acc, bms: bmsByAccount[acc.id] || [] }));
   });
 
   // AdsPower runs on the buyer's Mac, so the sync is a job for the local agent.
