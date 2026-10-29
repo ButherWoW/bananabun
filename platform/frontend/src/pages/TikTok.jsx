@@ -114,6 +114,20 @@ function PushTab({ accounts }) {
   const [generating, setGenerating] = useState(false);
   const [genMsg, setGenMsg] = useState('');
 
+  const [launching, setLaunching] = useState(false);
+  const [launched, setLaunched] = useState(false);
+  const [launchErr, setLaunchErr] = useState('');
+
+  const launchCampaign = async () => {
+    if (!result?.campaign_id || !result?.advertiser_id) return;
+    setLaunching(true); setLaunchErr('');
+    try {
+      await tiktok.setCampaignStatus(result.campaign_id, result.advertiser_id, 'ENABLE');
+      setLaunched(true);
+    } catch (e) { setLaunchErr(e?.error || e?.message || 'Error'); }
+    finally { setLaunching(false); }
+  };
+
   const push = useMutation({
     mutationFn: () => tiktok.push({
       account_id: form.account_id,
@@ -125,7 +139,7 @@ function PushTab({ accounts }) {
       age_min: parseInt(form.age_min),
       age_max: parseInt(form.age_max),
     }),
-    onSuccess: (r) => { setResult(r); setErr(''); },
+    onSuccess: (r) => { setResult(r); setErr(''); setLaunched(false); setLaunchErr(''); },
     onError: (e) => setErr(e?.error || e?.message || 'Ошибка залива'),
   });
 
@@ -222,8 +236,21 @@ function PushTab({ accounts }) {
       </div>
       {err && <div className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{err}</div>}
       {result && (
-        <div className="text-xs text-green-400 bg-green-500/10 rounded-lg px-3 py-2">
-          ✅ Залив создан! Campaign: <code className="text-green-300">{result.campaign_id}</code>
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 flex flex-col gap-3">
+          <div className="text-xs text-green-400 font-medium">OK</div>
+          <div className="grid grid-cols-2 gap-1 text-xs">
+            <span className="text-gray-500">Campaign:</span><code className="text-green-300">{result.campaign_id}</code>
+            <span className="text-gray-500">AdGroup:</span><code className="text-green-300">{result.adgroup_id}</code>
+          </div>
+          {launched ? (
+            <div className="text-xs text-green-400">Running</div>
+          ) : (
+            <button onClick={launchCampaign} disabled={launching}
+              className="w-full py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white font-semibold text-sm transition-colors disabled:opacity-50">
+              {launching ? 'Starting...' : 'Start campaign'}
+            </button>
+          )}
+          {launchErr && <div className="text-xs text-red-400">{launchErr}</div>}
         </div>
       )}
       <button
