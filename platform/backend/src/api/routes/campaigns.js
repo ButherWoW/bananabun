@@ -92,24 +92,26 @@ export async function campaignRoutes(app) {
        WHERE c.id = $1 AND c.workspace_id = $2`, [String(req.params.id), req.user.ws]);
 
     const ws = await db.findOne('workspaces', { id: req.user.ws });
-    const periods = [];
     let keitaroError = null;
     const PERIOD_ROWS = [['today', 'spend_today', 'Сегодня'], ['yesterday', 'spend_yesterday', 'Вчера'], ['last_3_days', 'spend_3d', '3 дня'],
       ['last_7_days', 'spend_7d', '7 дней'], ['last_30_days', 'spend_30d', '30 дней']];
-    for (const [period, col, label] of PERIOD_ROWS) {
-      if (c[col] === null || c[col] === undefined) continue; // not read yet by the agent
-      let k = {};
-      if (ws?.keitaro_url && ws?.keitaro_api_key) {
+    const activePeriods = PERIOD_ROWS.filter(([, col]) => c[col] !== null && c[col] !== undefined);
+    let kResults = {};
+    if (ws?.keitaro_url && ws?.keitaro_api_key && activePeriods.length) {
+      const kt = keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
+      await Promise.all(activePeriods.map(async ([period]) => {
         try {
-          const data = await keitaroClient(ws.keitaro_url, ws.keitaro_api_key)
-            .stats(period, ['sub_id_2'], ['clicks', 'lp_clicks', 'conversions', 'sales', 'revenue']);
-          k = (data?.rows || []).find(r => String(r.sub_id_2) === c.id) || {};
+          const data = await kt.stats(period, ['sub_id_2'], ['clicks', 'lp_clicks', 'conversions', 'sales', 'revenue']);
+          kResults[period] = (data?.rows || []).find(r => String(r.sub_id_2) === c.id) || {};
         } catch (e) { keitaroError = e.message; }
-      }
-      const spend = Number(c[col]) || 0, revenue = Number(k.revenue) || 0, clicks = Number(k.clicks) || 0;
-      periods.push({ period, label, spend, clicks, lp_clicks: Number(k.lp_clicks) || 0, sales: Number(k.sales) || 0, revenue,
-        profit: revenue - spend, roi: spend ? (revenue - spend) / spend * 100 : null, cpc: clicks ? spend / clicks : null });
+      }));
     }
+    const periods = activePeriods.map(([period, col, label]) => {
+      const k = kResults[period] || {};
+      const spend = Number(c[col]) || 0, revenue = Number(k.revenue) || 0, clicks = Number(k.clicks) || 0;
+      return { period, label, spend, clicks, lp_clicks: Number(k.lp_clicks) || 0, sales: Number(k.sales) || 0, revenue,
+        profit: revenue - spend, roi: spend ? (revenue - spend) / spend * 100 : null, cpc: clicks ? spend / clicks : null };
+    });
 
     const adsets = c.adsets || [];
     const ads = adsets.flatMap(a => a.ads || []);
