@@ -121,6 +121,17 @@ jobs:
           echo "frontend built"
 
           systemctl restart affiliate-backend
-          sleep 3
-          systemctl is-active affiliate-backend
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 2
+            if systemctl is-active --quiet affiliate-backend; then
+              echo "backend started (${i})"
+              break
+            fi
+            echo "waiting... ${i}"
+          done
+          if ! systemctl is-active --quiet affiliate-backend; then
+            echo "=== BACKEND FAILED TO START ==="
+            journalctl -u affiliate-backend -n 50 --no-pager
+            exit 1
+          fi
           curl -s -o /dev/null -w "api %{http_code}\n" http://127.0.0.1:4000/api/agent/status'
