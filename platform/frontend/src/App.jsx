@@ -24,6 +24,7 @@ import AdminPage from './pages/Admin.jsx';
 import AdSettingsPage from './pages/AdSettings.jsx';
 import TwoFaPage from './pages/TwoFa.jsx';
 import TikTokPage from './pages/TikTok.jsx';
+import GooglePage from './pages/Google.jsx';
 import DashboardPage from './pages/Dashboard.jsx';
 
 export default function App() {
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/ad-settings" element={<AdSettingsPage />} />
         <Route path="/2fa" element={<TwoFaPage />} />
         <Route path="/tiktok" element={<TikTokPage />} />
+        <Route path="/google" element={<GooglePage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
       </Routes>
     </Layout>
