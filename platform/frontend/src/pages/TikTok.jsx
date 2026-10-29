@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tiktok } from '../api/client.js';
+import GenerateLandingModal from '../components/GenerateLandingModal.jsx';
 
 function AccountCard({ account, onRemove, onUpdate }) {
   const [editing, setEditing] = useState(false);
@@ -111,6 +112,7 @@ function PushTab({ accounts }) {
   });
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');
+  const [showLandingModal, setShowLandingModal] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genMsg, setGenMsg] = useState('');
 
@@ -182,7 +184,20 @@ function PushTab({ accounts }) {
             className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
         </label>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400 col-span-2">
-          Ссылка на видео
+          URL лендинга
+          <div className="flex gap-2">
+            <input value={form.landing_page_url || ''} onChange={e => set('landing_page_url', e.target.value)}
+              placeholder="https://your-landing.com"
+              className="flex-1 bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            <button type="button" onClick={() => setShowLandingModal(true)} disabled={!form.product_id}
+              className="px-3 py-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-xs font-medium border border-indigo-500/30 transition-colors disabled:opacity-40 whitespace-nowrap"
+              title="Generate landing in Keitaro and paste URL">🌐 Landing
+            </button>
+          </div>
+          {form.landing_page_url && <span className="text-xs text-green-400">URL set</span>}
+        </label>
+        <label className="flex flex-col gap-1.5 text-xs text-gray-400 col-span-2">
+          Link to video
           <div className="flex gap-2">
             <input value={form.video_url} onChange={e => set('video_url', e.target.value)}
               placeholder="https://example.com/video.mp4"
