@@ -1,7 +1,11 @@
 import { db } from '../../db/client.js';
 import { nanoid } from 'nanoid';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { adminOnly } from '../../middleware/access.js';
 import { tiktokClient, getOAuthUrl, exchangeCode, TIKTOK_LOCATIONS } from '../../services/tiktok.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function tiktokRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
@@ -126,6 +130,26 @@ export async function tiktokRoutes(app) {
     } catch (e) {
       return reply.status(502).send({ error: e.message });
     }
+  });
+
+  // Generate video slideshow from product images
+  app.post('/generate-video', auth, async (req, reply) => {
+    const { product_id } = req.body || {};
+    if (!product_id) return reply.status(400).send({ error: 'product_id required' });
+
+    const product = await db.findOne('products', { id: product_id, workspace_id: req.user.ws });
+    if (!product) return reply.status(404).send({ error: 'Product not found' });
+
+    const images = Array.isArray(product.images) ? product.images : [];
+    if (!images.length) return { error: 'No images on product', fallback: true };
+
+    const { generateTikTokVideo } = await import('../../services/tiktok-video.js');
+    const uploadsBase = process.env.UPLOADS_DIR || path.join(__dirname, '../../../../uploads');
+    const videoDir = path.join(uploadsBase, 'tiktok-videos');
+
+    const result = await generateTikTokVideo(images, product.title, videoDir);
+    if (!result) return { error: 'ffmpeg not available or generation failed', fallback: true };
+    return { video_url: result.url };
   });
 
   // Full TikTok push
