@@ -1,4 +1,4 @@
-import { db } from '../../db/client.js';
+﻿import { db } from '../../db/client.js';
 import { faAnalyticsQuery, faAvailable } from '../../services/fa-client.js';
 import { landingFunnel, landingBehavior } from '../../services/lp-analytics.js';
 import { keitaroClient } from '../../services/keitaro.js';
@@ -233,4 +233,77 @@ export async function analyticsRoutes(app) {
     const limit = Math.min(Math.max(Number(body.limit) || 50, 1), 500);
     return { rows: rows.slice(0, limit), total: rows.length, period: { from, to } };
   });
+
+  // Unified dashboard: Keitaro + FB + TikTok totals for a date range.
+  app.get('/dashboard', auth, async (req) => {
+    const { range = 'today' } = req.query;
+    const { ws } = req.user;
+    const now = new Date();
+    const toISO = (d) => d.toISOString().slice(0, 10);
+    let from, to;
+    if (range === 'yesterday') {
+      const y = new Date(now); y.setDate(y.getDate() - 1);
+      from = to = toISO(y);
+    } else if (range === 'last_7_days') {
+      const f = new Date(now); f.setDate(f.getDate() - 6);
+      from = toISO(f); to = toISO(now);
+    } else if (range === 'last_30_days') {
+      const f = new Date(now); f.setDate(f.getDate() - 29);
+      from = toISO(f); to = toISO(now);
+    } else {
+      from = to = toISO(now);
+    }
+
+    const result = {
+      keitaro: { clicks: 0, conversions: 0, revenue: 0, cost: 0 },
+      fb: { spend: 0, clicks: 0, impressions: 0, leads: 0 },
+      tiktok: { spend: 0, clicks: 0, impressions: 0, conversions: 0 },
+      totals: { spend: 0, revenue: 0, profit: 0, roi: null },
+      period: { from, to, range },
+    };
+
+    try {
+      const wsData = await db.findOne('workspaces', { id: ws });
+      if (wsData?.keitaro_url && wsData?.keitaro_api_key) {
+        const client = keitaroClient(wsData.keitaro_url, wsData.keitaro_api_key);
+        const scope = await buyerScope(req);
+        const rawData = await client.stats({ from, to }, [], RAW);
+        let rows = rawData?.rows || [];
+        if (scope) rows = rows.filter(r => inScope(scope, r.campaign, r.campaign_group));
+        const tot = rows.reduce((acc, r) => { for (const m of RAW) acc[m] += Number(r[m]) || 0; return acc; }, Object.fromEntries(RAW.map(m => [m, 0])));
+        result.keitaro = { clicks: tot.clicks, conversions: tot.sales, revenue: tot.revenue, cost: tot.cost };
+      }
+    } catch { /* Keitaro unavailable */ }
+
+    try {
+      const { rows: fbRows } = await db.query(
+        `SELECT COALESCE(SUM(spend),0) as spend, COALESCE(SUM(clicks),0) as clicks,
+                COALESCE(SUM(impressions),0) as impressions, COALESCE(SUM(leads),0) as leads
+         FROM campaigns WHERE workspace_id=$1 AND ($2::text IS NULL OR created_by=$2)
+           AND DATE(created_at) BETWEEN $3 AND $4`,
+        [ws, ownUser(req), from, to]
+      );
+      const fb = fbRows[0] || {};
+      result.fb = { spend: Number(fb.spend)||0, clicks: Number(fb.clicks)||0, impressions: Number(fb.impressions)||0, leads: Number(fb.leads)||0 };
+    } catch { /* FB data unavailable */ }
+
+    try {
+      const { rows: ttRows } = await db.query(
+        `SELECT COALESCE(SUM((params->>'spend')::numeric),0) as spend
+         FROM pushes WHERE workspace_id=$1 AND status='active'
+           AND (params->>'platform'='tiktok' OR params->>'tiktok'='true')
+           AND DATE(created_at) BETWEEN $2 AND $3`,
+        [ws, from, to]
+      );
+      result.tiktok.spend = Number(ttRows[0]?.spend) || 0;
+    } catch { /* TikTok data unavailable */ }
+
+    const totalSpend = result.fb.spend + result.tiktok.spend + result.keitaro.cost;
+    const revenue = result.keitaro.revenue;
+    const profit = revenue - totalSpend;
+    result.totals = { spend: totalSpend, revenue, profit, roi: totalSpend > 0 ? profit / totalSpend * 100 : null };
+
+    return result;
+  });
 }
+
