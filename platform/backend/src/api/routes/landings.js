@@ -120,6 +120,24 @@ app.post('/templates/cdiscount', adminOnly(app), async (req, reply) => {
       created_by: req.user.id,
     });
   });
+  app.post('/templates/easy', adminOnly(app), async (req, reply) => {
+    const { readFile } = await import('fs/promises');
+    const { OWN_GEOS } = await import('../../services/landing-i18n.js');
+    const html = await readFile(new URL('../../services/landing-assets/easy.html', import.meta.url), 'utf8');
+    return db.insert('landing_templates', {
+      id: lt_,
+      workspace_id: req.user.ws,
+      name: String(req.body?.name || 'Easy').slice(0, 120),
+      html,
+      geo: '',
+      type: 'store',
+      store: 'Easy',
+      state: 'ready',
+      versions: JSON.stringify(OWN_GEOS.map(g => ({ geo: g }))),
+      created_by: req.user.id,
+    });
+  });
+
   app.post('/templates/white-page', auth, async (req, reply) => {
     const rawName = String(req.body?.name || 'White Page').slice(0, 120);
     const name = rawName.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
