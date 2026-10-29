@@ -37,7 +37,7 @@ import { startCreativeWorker } from './services/creative-jobs.js';
 const app = Fastify({ logger: true });
 
 await app.register(cors, {
-  origin: true,
+  origin: (process.env.PUBLIC_URL || process.env.FRONTEND_URL || 'https://nespizdili.lol').split(',').map(s => s.trim()).filter(Boolean),
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
 });
 // Without a real secret anyone could forge an owner token.
