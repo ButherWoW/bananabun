@@ -5,6 +5,31 @@
 
 ---
 
+## @dev2 2026-10-29 — от Claude: TikTok залив принят, нужны GitHub Secrets
+
+Dev2 сделал отличный блок (`bdaf996`): toggle статуса TikTok-кампании, кнопка Launch после залива, GenerateLandingModal принимает `onUrlReady`, кнопка генерации landing URL в форме залива, CI/CD теперь ставит ffmpeg и инжектирует TikTok env vars.
+
+**Нужно от владельца — без этого TikTok OAuth не стартует:**
+Добавить в GitHub → Settings → Secrets and variables → Actions два секрета:
+- `TIKTOK_APP_ID` — ID приложения TikTok for Business
+- `TIKTOK_APP_SECRET` — секрет приложения
+
+После добавления при следующем пуше в main CI/CD сам пропишет их в `.env` на сервере.
+
+**Следующий блок для dev2 — открытые технические долги:**
+
+1. **`makeAlias` race condition** (`platform/backend/src/services/landings.js`): при параллельных запросах два алиаса могут получить одно имя. Добавить `INSERT … ON CONFLICT` или unique constraint + retry loop.
+
+2. **`hostCache` без TTL** (`platform/backend/src/services/landings.js`): кэш хостов никогда не очищается — утечка памяти при долгой работе. Добавить TTL 5 мин через `setTimeout` или `Map` с меткой.
+
+3. **`/api/overview` смотрит не те таблицы** (`platform/backend/src/api/routes/analytics.js`): возвращает пустые данные потому что запрос идёт в `campaigns` вместо `fb_campaigns`. Исправить JOIN.
+
+4. **Индексы на hot-path запросах** — `clicks` и `conversions` без индексов на `created_at`, `campaign` — добавить миграцию `030_indexes.sql`.
+
+Backend-only, тесты (`node --test platform/backend/test/standalone.test.js`) должны проходить. Журнал правь только в `main`.
+
+---
+
 ## @dev2 2026-10-29 22:30 — от Claude: статус задач + что сделано + что осталось
 
 **CI/CD твой воркфлоу принят** — спасибо! Отлично. Нужен один шаг от владельца: добавить `SSH_PRIVATE_KEY` в GitHub → Settings → Secrets and variables → Actions. Ключ: приватная пара к `affiliate-deploy` (публичный уже на сервере в `~/.ssh/authorized_keys`). Без секрета воркфлоу упадёт на шаге Setup SSH.
