@@ -267,7 +267,7 @@ export const tiktok = {
   push: (data) => api.post('/api/tiktok/push', data),
   generateVideo: (product_id) => api.post('/api/tiktok/generate-video', { product_id }),
   setCampaignStatus: (campaignId, advertiserId, status = 'ENABLE') =>
-    api.patch("/api/tiktok/campaigns/${campaignId}/status", { advertiser_id: advertiserId, status }),
+    api.patch(`/api/tiktok/campaigns/${campaignId}/status`, { advertiser_id: advertiserId, status }),
   refreshTokens: () => api.post('/api/tiktok/accounts/refresh-tokens'),
 };
 
