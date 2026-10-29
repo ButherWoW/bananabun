@@ -38,14 +38,11 @@ function translit(s) {
 
 // Alias from the product name (letters/digits only) + "-promo"; unique across the tracker.
 // Aliases are never changed after creation.
-function makeAlias(productName, taken) {
+function makeAlias(productName) {
   const words = translit(productName).split(/[^a-z0-9]+/).filter(w => w.length > 1).slice(0, 3);
   const base = (words.map((w, i) => (i === 0 ? w.slice(0, 5) : w.slice(0, 3))).join('') || 'offer').slice(0, 12);
-  for (let n = 0; n < 100; n++) {
-    const alias = `${base}${n ? n + 1 : ''}-promo`;
-    if (!taken.has(alias)) return alias;
-  }
-  throw new Error('Не удалось подобрать свободный alias в Keitaro');
+  return `${base}-${Math.random().toString(36).slice(2, 6)}-promo`;
+}
 }
 
 function shares(ids) {
@@ -66,7 +63,7 @@ async function ensureKeitaro(kt, push, params, productName) {
   }
   if (!campaign) {
     const all = await kt.allCampaigns();
-    const alias = makeAlias(productName, new Set(all.map(c => c.alias)));
+    const alias = makeAlias(productName);
     campaign = await kt.createCampaign({
       name: params.campaign_name,
       alias,
