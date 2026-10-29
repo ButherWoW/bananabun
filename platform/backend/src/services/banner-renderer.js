@@ -161,10 +161,18 @@ function buildSVG(w, h, slot, data) {
 /**
  * Download a URL to buffer, with timeout.
  */
+const ALLOWED_IMAGE_HOSTS = /^([\w-]+\.)?(amazon\.com|ssl-images-amazon\.com|media-amazon\.com|walmart\.com|walmartimages\.com|target\.com|scene7\.com|bestbuycdn\.com|etsy\.com|etsystatic\.com|i\.etsystatic\.com)(:\d+)?$/i;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 async function fetchBuffer(url, timeoutMs = 15000) {
+  let host;
+  try { host = new URL(url).hostname; } catch { throw new Error(`Invalid image URL`); }
+  if (!ALLOWED_IMAGE_HOSTS.test(host)) throw new Error(`Image host not allowed: ${host}`);
   const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  return Buffer.from(await res.arrayBuffer());
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > MAX_IMAGE_BYTES) throw new Error(`Image too large: ${buf.length} bytes`);
+  return buf;
 }
 
 /**
@@ -228,16 +236,15 @@ export async function renderBanner(product, format = '1x1', options = {}, slot =
     title, specs, newPrice, oldPrice, currency, cta,
     headline: headline || null, pct,
   });
-  composites.push({ input: Buffer.from(svgData), left: 0, top: 0, blend: 'over' });
-
-  // 2. Product image — right half in landscape, top in portrait
+  // 2. Product image — right half in landscape, bottom half in portrait (under text)
   const imgBuf = await loadProductImage(product);
   if (imgBuf) {
     try {
       const imgW = isPortrait ? Math.round(w * 0.85) : Math.round(w * 0.58);
       const imgH = isPortrait ? Math.round(h * 0.45) : Math.round(h * 0.82);
       const left = isPortrait ? Math.round((w - imgW) / 2) : w - imgW;
-      const top  = isPortrait ? Math.round(h * 0.10) : Math.round((h - imgH) / 2);
+      // Portrait: push photo to lower half so it doesn't overlap title/specs
+      const top  = isPortrait ? Math.round(h * 0.52) : Math.round((h - imgH) / 2);
 
       const resized = await sharp(imgBuf)
         .resize(imgW, imgH, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -247,6 +254,9 @@ export async function renderBanner(product, format = '1x1', options = {}, slot =
       composites.push({ input: resized, left, top, blend: 'over' });
     } catch { /* skip if image broken */ }
   }
+
+  // SVG text overlay goes last — always on top of product photo
+  composites.push({ input: Buffer.from(svgData), left: 0, top: 0, blend: 'over' });
 
   const logo = await loadLogo(options);
   if (logo) {

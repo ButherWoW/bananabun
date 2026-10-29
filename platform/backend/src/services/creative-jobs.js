@@ -9,10 +9,21 @@ import { renderBanner } from './banner-renderer.js';
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 async function pruneFluxCache(maxAgeMs = 30 * 24 * 3600 * 1000) {
   const now = Date.now();
+  const candidates = [];
   for (const f of await fs.readdir(UPLOADS_DIR).catch(() => [])) {
     if (!/^(cr_flux_cache_|thumb_cr_flux_).*\.jpg$/.test(f)) continue;
     const st = await fs.stat(path.join(UPLOADS_DIR, f)).catch(() => null);
-    if (st && now - st.mtimeMs > maxAgeMs) await fs.unlink(path.join(UPLOADS_DIR, f)).catch(() => {});
+    if (st && now - st.mtimeMs > maxAgeMs) candidates.push(f);
+  }
+  if (!candidates.length) return;
+  // Only delete files not referenced by any done creative.
+  const { rows } = await db.query(
+    `SELECT file_url, thumbnail_url FROM creatives WHERE status = 'done'
+     AND (file_url = ANY($1) OR thumbnail_url = ANY($1))`,
+    [candidates.map(f => `/uploads/${f}`)]);
+  const inUse = new Set(rows.flatMap(r => [r.file_url, r.thumbnail_url]));
+  for (const f of candidates) {
+    if (!inUse.has(`/uploads/${f}`)) await fs.unlink(path.join(UPLOADS_DIR, f)).catch(() => {});
   }
 }
 
