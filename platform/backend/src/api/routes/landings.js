@@ -125,7 +125,7 @@ app.post('/templates/cdiscount', adminOnly(app), async (req, reply) => {
     const { OWN_GEOS } = await import('../../services/landing-i18n.js');
     const html = await readFile(new URL('../../services/landing-assets/easy.html', import.meta.url), 'utf8');
     return db.insert('landing_templates', {
-      id: `lt_${nanoid(20)},
+      id: `lt_${nanoid(20)}`,
       workspace_id: req.user.ws,
       name: String(req.body?.name || 'Easy').slice(0, 120),
       html,
