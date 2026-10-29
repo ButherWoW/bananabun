@@ -6,6 +6,8 @@ import { enqueueAgentJob } from './agent.js';
 import { logFbEvent } from '../../services/fb-campaigns.js';
 import { faAvailable, faCampaignHistory, faGetCampaignAds, faSetBudget, faDuplicate, faRename, faSetTargeting, faBulkEdit, faApplyAdSettings } from '../../services/fa-client.js';
 
+const _ktCache = new Map();
+
 export async function campaignRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
 
@@ -103,9 +105,13 @@ export async function campaignRoutes(app) {
       async function runKt() {
         while (queue.length) {
           const [period] = queue.shift();
+          const cacheKey = `${ws.keitaro_url}:${c.id}:${period}`;
+          const cached = _ktCache.get(cacheKey);
+          if (cached && Date.now() - cached.ts < 60_000) { kResults[period] = cached.data; continue; }
           try {
             const data = await kt.stats(period, ['sub_id_2'], ['clicks', 'lp_clicks', 'conversions', 'sales', 'revenue']);
             kResults[period] = (data?.rows || []).find(r => String(r.sub_id_2) === c.id) || {};
+            _ktCache.set(cacheKey, { ts: Date.now(), data: kResults[period] });
           } catch (e) { keitaroError = e.message; }
         }
       }
