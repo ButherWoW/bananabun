@@ -43,7 +43,6 @@ function makeAlias(productName) {
   const base = (words.map((w, i) => (i === 0 ? w.slice(0, 5) : w.slice(0, 3))).join('') || 'offer').slice(0, 12);
   return `${base}-${Math.random().toString(36).slice(2, 6)}-promo`;
 }
-}
 
 function shares(ids) {
   const base = Math.floor(100 / ids.length);
