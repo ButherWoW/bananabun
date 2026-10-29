@@ -346,6 +346,7 @@ function handleSubmit(e) {
   app.post('/generate', auth, async (req, reply) => {
     const {
       product_id, group_id, name, type = 'cdiscount',
+      template_id, geo = 'FR',
       // Optional campaign overrides (fall back to workspace defaults)
       domain_id: reqDomainId, offer_ids: reqOfferIds, white_landing_id: reqWhiteId,
     } = req.body || {};
@@ -364,7 +365,15 @@ function handleSubmit(e) {
       const { keitaroClient } = await import('../../services/keitaro.js');
 
       let zipBuffer;
-      if (type === 'angry') {
+      if (template_id) {
+        // Template-based: real Amazon/Walmart reviews, specs, images from compileLanding
+        const { compileLanding } = await import('../../services/landing-compiler.js');
+        const compiled = await compileLanding(template_id, product_id, String(geo || 'FR').toUpperCase(), req.user.ws);
+        const { default: JSZip } = await import('jszip');
+        const zip = new JSZip();
+        zip.file('index.html', Buffer.from(compiled.html, 'utf8'));
+        zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+      } else if (type === 'angry') {
         const { buildAngryZip } = await import('../../services/angry-landing.js');
         zipBuffer = await buildAngryZip({ product });
       } else {
