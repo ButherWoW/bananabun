@@ -446,8 +446,8 @@ function handleSubmit(e) {
       function makeAlias(productName, taken) {
         const words = translit(productName).split(/[^a-z0-9]+/).filter(w => w.length > 1).slice(0, 3);
         const base = (words.map((w, i) => (i === 0 ? w.slice(0, 5) : w.slice(0, 3))).join('') || 'lnd').slice(0, 12);
-        for (let n = 0; n < 100; n++) {
-          const alias = `${base}${n ? n + 1 : ''}-lnd`;
+        for (let n = 0; n < 20; n++) {
+          const alias = `${base}-${Math.random().toString(36).slice(2, 6)}-lnd`;
           if (!taken.has(alias)) return alias;
         }
         throw new Error('Не удалось подобрать alias для кампании Keitaro');
