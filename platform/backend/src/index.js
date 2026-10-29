@@ -30,6 +30,7 @@ import { adminRoutes } from './api/routes/admin.js';
 import { landingRoutes } from './api/routes/landings.js';
 import { adSettingsRoutes } from './api/routes/adSettings.js';
 import { trackRoutes } from './api/routes/track.js';
+import { tiktokRoutes } from './api/routes/tiktok.js';
 import { startScrapeRecovery } from './services/scrape-jobs.js';
 import { db, pool } from './db/client.js';
 import { startCreativeWorker } from './services/creative-jobs.js';
@@ -81,6 +82,7 @@ app.register(adminRoutes, { prefix: '/api/admin' });
 app.register(landingRoutes, { prefix: '/api/landings' });
 app.register(adSettingsRoutes, { prefix: '/api/ad-settings' });
 app.register(trackRoutes, { prefix: '/api/t' });
+app.register(tiktokRoutes, { prefix: '/api/tiktok' });
 
 app.get('/health', () => ({ ok: true, ts: new Date() }));
 
