@@ -17,6 +17,8 @@ if (import.meta.env.MODE === 'demo') {
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // A null body goes out as form-urlencoded, which the server refuses (415); send an empty JSON object instead.
+  if (config.data === null && ['post', 'put', 'patch'].includes(config.method)) config.data = {};
   return config;
 });
 
@@ -142,7 +144,7 @@ export const accounts = {
   updateAssets: (id, data) => api.put(`/api/accounts/${id}/assets`, data),
   update: (id, data) => api.patch(`/api/accounts/${id}`, data),
   checkProfile: (id) => api.post(`/api/accounts/${id}/check-profile`),
-  twoFa: (id) => api.post(`/api/accounts/${id}/2fa`, null, { timeout: 30000 }),
+  twoFa: (id) => api.post(`/api/accounts/${id}/2fa`, {}, { timeout: 30000 }),
 };
 
 export const agent = {
