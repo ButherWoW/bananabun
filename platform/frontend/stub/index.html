@@ -31,11 +31,12 @@
   body::after { z-index: -1;
     background:
       linear-gradient(180deg, rgba(4,6,8,.86) 0%, rgba(4,6,8,.72) 20%, rgba(4,6,8,.3) 38%, rgba(4,6,8,.3) 72%, rgba(4,6,8,.7) 100%),
-      radial-gradient(ellipse 45% 70% at 50% 60%, rgba(4,6,8,.55), transparent 75%); }
+      radial-gradient(ellipse 45% 70% at 50% 60%, rgba(4,6,8,.55), transparent 75%),
+      radial-gradient(ellipse 55% 20% at 50% 50%, rgba(4,6,8,.6), transparent 80%); /* behind the phrase and "Начать" */ }
   @media (max-aspect-ratio: 4/5) {
     body::before { background-image: url("/_stub/bg-mobile.jpg"); background-position: 45% 30%;
       background-image: image-set(url("/_stub/bg-mobile.webp") type("image/webp"), url("/_stub/bg-mobile.jpg") type("image/jpeg")); }
-    body::after { background: linear-gradient(180deg, rgba(4,6,8,.8) 0%, rgba(4,6,8,.5) 30%, rgba(4,6,8,.55) 100%); }
+    body::after { background: radial-gradient(ellipse 90% 22% at 50% 50%, rgba(4,6,8,.55), transparent 80%), linear-gradient(180deg, rgba(4,6,8,.8) 0%, rgba(4,6,8,.5) 30%, rgba(4,6,8,.55) 100%); }
   }
 
   /* Phrase: Tiffany shimmer running through the letters */
@@ -133,16 +134,34 @@
   button:focus-visible { outline: 3px solid var(--tiffany); outline-offset: 5px; }
   .hint { margin: -2px 0 0; text-align: center; font: 400 12px/1 "Allerta Stencil", Arial, sans-serif; letter-spacing: .14em; color: #4f565c; text-shadow: 0 1px 0 rgba(255,255,255,.6); }
 
+  /* "Начать": the keypad stays hidden until this is pressed */
+  button.start {
+    aspect-ratio: auto; width: auto; max-width: none; height: auto; padding: 18px 54px; border-radius: 999px;
+    font: 900 clamp(20px, 3.4vw, 28px)/1 Inter, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase;
+    color: #04211f; text-shadow: 0 1px 0 rgba(255,255,255,.45);
+    background: linear-gradient(180deg, var(--tiffany-hi) 0%, var(--tiffany) 55%, var(--tiffany-lo) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -3px 0 rgba(0,0,0,.25), 0 0 0 2px rgba(4,33,31,.6), 0 10px 30px rgba(0,0,0,.6), 0 0 34px rgba(10,186,181,.55);
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+  button.start::before { content: none; }
+  button.start:hover { filter: brightness(1.08); }
+  button.start:active { transform: translateY(2px) scale(.98); }
+  @keyframes pulse { 50% { box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -3px 0 rgba(0,0,0,.25), 0 0 0 2px rgba(4,33,31,.6), 0 10px 30px rgba(0,0,0,.6), 0 0 54px rgba(10,186,181,.85); } }
+  .pad.appear { animation: appear .45s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes appear { from { opacity: 0; transform: translateY(24px) scale(.94); } to { opacity: 1; transform: none; } }
+
   .shake { animation: shake .35s; }
   @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
   @media (max-width: 380px) { .pad { padding: 28px; } .face { padding: 18px 14px 20px; } .keys { gap: 14px; } button { font-size: 34px; } }
-  @media (prefers-reduced-motion: reduce) { h1 { animation: none; background-position: 50% 0; } .shake { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { h1 { animation: none; background-position: 50% 0; } .shake, .pad.appear, button.start { animation: none; } }
 </style>
 </head>
 <body>
 <h1>Идите на&nbsp;хуй Я&nbsp;вас не звал !</h1>
 
-<div class="pad" id="pad" role="group" aria-label="Кодовый замок">
+<button class="start" id="start" type="button">Начать</button>
+
+<div class="pad" id="pad" role="group" aria-label="Кодовый замок" hidden>
   <span class="screw tl"></span><span class="screw tr"></span><span class="screw bl"></span><span class="screw br"></span>
   <div class="face">
     <div class="bezel"><div class="lcd" id="lcd" aria-live="polite">----</div><div class="leds"><span class="led red" id="red"></span><span class="led green" id="green"></span></div></div>
@@ -221,7 +240,13 @@
     code += k; show('*'.repeat(code.length));
   }
   pad.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) press(b.dataset.k); });
+  const start = document.getElementById('start');
+  start.addEventListener('click', () => {
+    sound.key(); start.hidden = true; pad.hidden = false; pad.classList.add('appear');
+    pad.querySelector('[data-k="1"]').focus({ preventScroll: true });
+  });
   document.addEventListener('keydown', (e) => {
+    if (pad.hidden) return; // the keypad answers the keyboard only after "Начать"
     const k = /^[0-9]$/.test(e.key) ? e.key : e.key === 'Enter' ? 'enter' : (e.key === 'Escape' || e.key === 'Backspace' || e.key === '*') ? 'cancel' : e.key === '#' ? 'enter' : null;
     if (!k) return;
     e.preventDefault();
