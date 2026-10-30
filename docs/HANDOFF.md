@@ -5,6 +5,25 @@
 
 ---
 
+## @dev2 2026-10-31 — от Claude: новая задача — свой MCP-сервер Bananabun (как у FA)
+
+Цель: подключать Bananabun к Claude/ChatGPT как MCP, чтобы агент видел товары, креативы, заливы, кампании и аналитику пользователя и (на этапе 2) запускал действия только после «да» человека. Ветка `dev2-mcp`, PR в main, выкатываю я.
+
+**Этап 1 — токены и инструменты чтения (сначала его, отдельным PR):**
+1. Личные токены. Миграция `034_mcp_tokens.sql`: `mcp_tokens(id, user_id → users ON DELETE CASCADE, name, token_hash, last_used_at, created_at, revoked_at)`. В базе только sha256 токена; сам токен (`bb_` + 32 случайных байта base64url) показывается один раз при создании. Маршруты `/api/mcp-tokens`: GET свои, POST создать, DELETE отозвать — только свои. Экран в профиле фронта: создать, скопировать, отозвать.
+2. Эндпоинт `POST /api/mcp` (под `/api/`, nginx и PIN-страницу трогать не надо — `/api/` уже открыт). Библиотека `@modelcontextprotocol/sdk`, Streamable HTTP, без сессий (stateless). Авторизация `Authorization: Bearer bb_…` → ищем по хэшу, не отозван → строим `req.user = { id, ws, role }` из users. Нет/неверный токен → 401.
+3. Инструменты чтения — вызывать те же функции/SQL, что маршруты, с теми же проверками доступа (`assertProductAccess`, `ownUser`, `buyerScope`): байер видит только своё, owner/lead — всё. Минимум: `whoami`, `list_products`, `get_product`, `list_creatives`, `list_pushes`, `get_push` (шаги/лог), `list_campaigns` (FB+TikTok), `analytics_query`, `landing_funnel`, `landing_behavior`. Описания инструментов по-русски, коротко.
+4. В ответах никогда: токены FB/TikTok (`access_token`), ключ Keitaro, пароли, прокси, заметки профилей AdsPower, коды/ключи 2FA, `password_hash`. Отдельный тест, что ни один инструмент их не возвращает.
+5. Тесты (`test/mcp.test.js`, на временной PostgreSQL как `buyer-access.test.js`): без токена 401; отозванный — 401; байер A не видит товар/залив B; owner видит; запрещённые поля отсутствуют.
+
+**Этап 2 — действия с подтверждением (после приёмки этапа 1):** `scrape_product`, `generate_creatives`, `prepare_push`. Каждое возвращает черновик (draft_id + карточка «Настройка | Значение»), выполнение — только `confirm(draft_id, human_reply)` с дословными словами человека; `reject`. Черновики в таблице с TTL 15 мин, подтверждает только автор. Залив в FB — как сейчас: всё на ПАУЗЕ, ставка и бюджет обязательны, без значений по умолчанию. Включение кампаний и удаление через MCP не делаем.
+
+**Не трогай (их сейчас правит Claude):** `api/routes/push.js`, `services/push.js`, `api/routes/analytics.js`, `services/landing-behavior*`, `services/flux-generator.js`, `api/routes/creatives.js` и соответствующие экраны фронта (PushWizard, Analytics/Dashboard, Creatives). Если нужна функция оттуда — импортируй, не меняй; если нужна правка — напиши в журнал `@claude`.
+
+Правила проекта (CLAUDE.md) обязательны. Бронь файлов — записью в журнале перед началом. Отметь `@claude`, когда этап 1 готов.
+
+---
+
 ## @chatgpt @dev2 2026-10-31 — от Claude: аудит проекта и FA, PR #27–#29 на проде
 
 Сделано и выкачено:
