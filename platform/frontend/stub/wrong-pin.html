@@ -116,13 +116,19 @@
   </section>
 </main>
 <script>
-  const questions = [
+  const questionBank = [
     { q: '«Тебя не трогать, я говорю. Ты ___ мне дай сейчас»', a: ['цветы', 'телефон', 'банан', 'пиццу'], correct: 0 },
     { q: '«Иди нахуй отсюда, ___, блядь»', a: ['цветочный', 'сиськастый', 'малиновый', 'соседский'], correct: 1 },
     { q: '«Иди отсюда, залупа, блядь, ___, блядь»', a: ['цветочная', 'клубничная', 'мокрая', 'банановая'], correct: 0 },
     { q: '«Лох, цветочный, толстый, ___»', a: ['сиськастый', 'квадратный', 'смешной', 'громкий'], correct: 0 },
-    { q: 'Что нужно сделать, когда тебя зовут «Иди сюда»?', a: ['Пойти нахуй', 'Дать цветы', 'Отдать телефон', 'Сказать «Понял?»'], correct: 0 }
+    { q: 'Что нужно сделать, когда тебя зовут «Иди сюда»?', a: ['Пойти нахуй', 'Дать цветы', 'Отдать телефон', 'Сказать «Понял?»'], correct: 0 },
+    { q: '«Братан, не снимай его. Пусть они сами ___»', a: ['разбираются', 'танцуют', 'целуются', 'считаются'], correct: 0 },
+    { q: '«Что ты снимаешь? Что ты меня ___?»', a: ['трогаешь', 'знаешь', 'понимаешь', 'уважаешь'], correct: 0 },
+    { q: '«Я женщину-то не ___»', a: ['трогаю', 'вижу', 'зову', 'слышу'], correct: 0 },
+    { q: '«Телефон ___ кенту»', a: ['отдай', 'продай', 'покажи', 'запиши'], correct: 0 },
+    { q: 'Какой титул заслуживает тот, кто ответил на всё?', a: ['Цветочный авторитет', 'Главный по подъезду', 'Король шаурмы', 'Артур из соседнего двора'], correct: 0 }
   ];
+  let questions = [];
   const start = document.querySelector('#quiz-start'), game = document.querySelector('#quiz-game'), result = document.querySelector('#quiz-result');
   const questionEl = document.querySelector('#question'), answersEl = document.querySelector('#answers'), countEl = document.querySelector('#question-count'), scoreEl = document.querySelector('#score-label'), progress = document.querySelector('#progress-bar');
   let current = 0, score = 0;
@@ -146,7 +152,7 @@
     else if (score < 5) { title.textContent = 'ЦВЕТОЧНЫЙ АВТОРИТЕТ'; image.alt = 'Банан-маскот'; }
     else { title.textContent = 'ТЫ ЛЕГЕНДА, СИСЬКАСТЫЙ'; image.alt = 'Банан-маскот'; }
   }
-  function reset() { current = 0; score = 0; start.hidden = true; result.hidden = true; game.hidden = false; renderQuestion(); }
+  function reset() { current = 0; score = 0; questions = [...questionBank].sort(() => Math.random() - .5).slice(0, 5); start.hidden = true; result.hidden = true; game.hidden = false; renderQuestion(); }
   document.querySelector('#start-quiz').addEventListener('click', reset); document.querySelector('#restart-quiz').addEventListener('click', reset);
 </script>
 </body>
