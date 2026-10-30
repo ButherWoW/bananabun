@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
 import sharp from 'sharp';
+import { localImageData } from './creative-assets.js';
 
 const FAL_BASE = 'https://fal.run';
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
@@ -124,10 +125,26 @@ function asImages(raw) {
   try { return JSON.parse(raw) || []; } catch { return []; }
 }
 
+// fal.ai fetches image_url itself: our own files go as data URIs (they are not reachable by a relative path),
+// and only https addresses are passed through. Older rows store {url} objects instead of strings.
+async function productPhotoForFal(images) {
+  for (const item of asImages(images)) {
+    const src = typeof item === 'string' ? item : item?.url;
+    if (typeof src !== 'string') continue;
+    if (src.startsWith('/uploads/')) {
+      const data = await localImageData(src).catch(() => null);
+      if (data) return { src, image_url: data };
+    } else if (/^https:\/\//i.test(src)) {
+      return { src, image_url: src };
+    }
+  }
+  return null;
+}
+
 async function compositeLogoOnImage(imgBuf, logoKey) {
-  const logoRelPath = logoKey.replace(/^\/uploads\//, '');
-  const logoBuf = await fs.readFile(path.join(UPLOADS_DIR, logoRelPath)).catch(() => null);
-  if (!logoBuf) return imgBuf;
+  const dataUri = await localImageData(logoKey).catch(() => null);
+  if (!dataUri) return imgBuf;
+  const logoBuf = Buffer.from(dataUri.slice(dataUri.indexOf(',') + 1), 'base64');
   const { width } = await sharp(imgBuf).metadata();
   const logoSize = Math.round((width || 1024) * 0.18);
   const margin = Math.round((width || 1024) * 0.03);
@@ -138,22 +155,36 @@ async function compositeLogoOnImage(imgBuf, logoKey) {
     .toBuffer();
 }
 
+async function callFal(key, model, body) {
+  const res = await fetch(`${FAL_BASE}/${model}`, {
+    method: 'POST',
+    headers: { 'Authorization': `Key ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`fal.ai ${res.status}: ${errText.slice(0, 300)}`);
+  }
+  const imageUrl = (await res.json()).images?.[0]?.url;
+  if (!imageUrl) throw new Error('fal.ai не вернул изображение');
+  return imageUrl;
+}
+
 export async function generateFluxCreative(product, logoKey, format = '1x1', options = {}, slot = 0) {
   const key = process.env.FAL_API_KEY;
   if (!key) throw new Error('FAL_API_KEY не настроен');
 
-  const productImages = asImages(product.images);
-  const productPhotoUrl = productImages[0] || null;
-  const useRemix = !!productPhotoUrl;
+  const photo = await productPhotoForFal(product.images);
 
   const prompt = buildPrompt(product, slot, options);
   const fmt = String(format).replace(':', 'x');
   const aspectRatio = FORMAT_TO_ASPECT[fmt] || '1:1';
 
   const cacheKey = crypto.createHash('sha256').update(JSON.stringify({
-    model: useRemix ? REMIX_MODEL : FAL_MODEL, prompt, aspectRatio, slot,
+    model: photo ? REMIX_MODEL : FAL_MODEL, prompt, aspectRatio, slot,
     productId: product.id || product.sku || product.title,
-    productPhoto: useRemix ? productPhotoUrl : null,
+    productPhoto: photo?.src || null,
     logoKey: logoKey || null,
   })).digest('hex');
   const cachedFilename = `cr_flux_cache_${cacheKey}.jpg`;
@@ -163,38 +194,25 @@ export async function generateFluxCreative(product, logoKey, format = '1x1', opt
     return { url: `/uploads/${cachedFilename}`, thumbnail: `/uploads/${cachedFilename}`, style: 'flux', language: options.language || 'fr', prompt, slot, cached: true };
   } catch { /* cache miss */ }
 
-  let falBody;
-  let falModel;
-  if (useRemix) {
-    falModel = REMIX_MODEL;
-    falBody = { prompt, image_url: productPhotoUrl, aspect_ratio: aspectRatio, strength: 0.65, style: 'design', enable_safety_checker: false };
-  } else if (IS_FLUX) {
-    falModel = FAL_MODEL;
-    const FLUX_SIZE = {
-      '1:1': { width: 1024, height: 1024 }, '4:5': { width: 1024, height: 1280 }, '9:16': { width: 720, height: 1280 },
-      '3:2': { width: 1536, height: 1024 }, '2:3': { width: 1024, height: 1536 }, '16:9': { width: 1280, height: 720 },
-    };
-    falBody = { prompt, image_size: FLUX_SIZE[aspectRatio] || 'square_hd', num_images: 1, enable_safety_checker: false };
+  const FLUX_SIZE = {
+    '1:1': { width: 1024, height: 1024 }, '4:5': { width: 1024, height: 1280 }, '9:16': { width: 720, height: 1280 },
+    '3:2': { width: 1536, height: 1024 }, '2:3': { width: 1024, height: 1536 }, '16:9': { width: 1280, height: 720 },
+  };
+  const textToImage = () => callFal(key, FAL_MODEL, IS_FLUX
+    ? { prompt, image_size: FLUX_SIZE[aspectRatio] || 'square_hd', num_images: 1, enable_safety_checker: false }
+    : { prompt, aspect_ratio: aspectRatio, style_type: 'DESIGN', magic_prompt_option: 'OFF', negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text' });
+
+  let imageUrl;
+  if (photo) {
+    try {
+      imageUrl = await callFal(key, REMIX_MODEL, { prompt, image_url: photo.image_url, aspect_ratio: aspectRatio, strength: 0.65, style: 'design', enable_safety_checker: false });
+    } catch (e) {
+      console.error('[flux] remix failed, falling back to text-to-image:', e.message);
+      imageUrl = await textToImage();
+    }
   } else {
-    falModel = FAL_MODEL;
-    falBody = { prompt, aspect_ratio: aspectRatio, style_type: 'DESIGN', magic_prompt_option: 'OFF', negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text' };
+    imageUrl = await textToImage();
   }
-
-  const falRes = await fetch(`${FAL_BASE}/${falModel}`, {
-    method: 'POST',
-    headers: { 'Authorization': `Key ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(falBody),
-    signal: AbortSignal.timeout(120_000),
-  });
-
-  if (!falRes.ok) {
-    const errText = await falRes.text().catch(() => '');
-    throw new Error(`fal.ai ${falRes.status}: ${errText.slice(0, 300)}`);
-  }
-
-  const data = await falRes.json();
-  const imageUrl = data.images?.[0]?.url;
-  if (!imageUrl) throw new Error('fal.ai не вернул изображение');
 
   const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(60_000) });
   if (!imgRes.ok) throw new Error(`Ошибка загрузки изображения с fal.ai: ${imgRes.status}`);
