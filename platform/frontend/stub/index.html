@@ -5,15 +5,132 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>nespizdili.lol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Inter:wght@800;900&display=swap">
 <style>
-  :root { color-scheme: dark; }
-  html, body { height: 100%; margin: 0; }
-  body { display: grid; place-items: center; background: #0b0d10; color: #e9eef2;
-         font: 700 clamp(28px, 6vw, 64px)/1.15 system-ui, -apple-system, "Segoe UI", sans-serif;
-         text-align: center; padding: 0 16px; }
+  :root {
+    color-scheme: dark;
+    --tiffany: #0abab5; --tiffany-hi: #81f2ec; --tiffany-lo: #067a76;
+    --steel-1: #f2f4f6; --steel-2: #b9bfc6; --steel-3: #8e959d; --steel-4: #5f666e;
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; gap: 36px; align-content: center;
+    min-height: 100vh; padding: 32px max(16px, env(safe-area-inset-left, 0px)) 32px max(16px, env(safe-area-inset-right, 0px));
+    background: radial-gradient(ellipse at top, #0f1a1c 0%, #07090b 60%);
+    color: #e9eef2; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  /* Phrase: Tiffany shimmer running through the letters */
+  h1 {
+    margin: 0; text-align: center; text-wrap: balance;
+    font-weight: 900; font-size: clamp(30px, 7vw, 76px); line-height: 1.05; letter-spacing: -0.02em;
+    background: linear-gradient(100deg, var(--tiffany-lo) 0%, var(--tiffany) 25%, var(--tiffany-hi) 45%, #ffffff 50%, var(--tiffany-hi) 55%, var(--tiffany) 75%, var(--tiffany-lo) 100%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: shimmer 3.2s linear infinite;
+    filter: drop-shadow(0 0 18px rgba(10, 186, 181, 0.35));
+  }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+
+  /* Brushed-steel keypad */
+  .pad {
+    width: min(360px, 100%); padding: 26px 26px 30px; border-radius: 26px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.05) 1px 3px),
+      linear-gradient(160deg, var(--steel-1), var(--steel-2) 45%, var(--steel-3) 100%);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.8), inset 0 -3px 6px rgba(0,0,0,.35), 0 18px 40px rgba(0,0,0,.6);
+    display: grid; gap: 18px;
+  }
+  .lcd {
+    height: 74px; border-radius: 6px; display: grid; place-items: center; overflow: hidden;
+    background: linear-gradient(180deg, #6f7cff, #5664f2);
+    box-shadow: inset 0 3px 8px rgba(0,0,0,.45), 0 0 0 3px #7c838b, 0 0 0 4px #c9ced3;
+    font-family: VT323, "Courier New", monospace; font-size: 46px; letter-spacing: .08em; color: #13163d;
+    text-shadow: 2px 2px 0 rgba(19,22,61,.18); white-space: nowrap;
+  }
+  .lcd.small { font-size: 30px; letter-spacing: .04em; }
+  .leds { display: flex; justify-content: center; gap: 96px; }
+  .led { width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 -3px 5px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.6); }
+  .led.red { background: radial-gradient(circle at 35% 30%, #ffb3b3, #c51d1d 60%, #6d0a0a); opacity: .45; }
+  .led.green { background: radial-gradient(circle at 35% 30%, #c8ffc8, #22b33a 60%, #0b5a16); opacity: .45; }
+  .led.on { opacity: 1; box-shadow: inset 0 -3px 5px rgba(0,0,0,.3), 0 0 16px currentColor; }
+  .led.red.on { color: #ff3b3b; } .led.green.on { color: #3bff6a; }
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 22px; }
+  button {
+    font: 600 26px/1 "Arial Rounded MT Bold", Arial, sans-serif; color: #9aa1a8; height: 48px; border-radius: 8px; border: 0; cursor: pointer;
+    background: linear-gradient(180deg, #e9ecef, #b6bcc3);
+    box-shadow: inset 0 1px 0 #fff, inset 0 -2px 3px rgba(0,0,0,.25), 0 3px 0 #7c838b, 0 5px 8px rgba(0,0,0,.35);
+    text-shadow: 0 1px 0 #fff; transition: transform .05s, box-shadow .05s;
+  }
+  button:active, button.pressed { transform: translateY(3px); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 2px rgba(0,0,0,.25), 0 0 0 #7c838b, 0 2px 3px rgba(0,0,0,.3); }
+  button:focus-visible { outline: 3px solid var(--tiffany); outline-offset: 2px; }
+  .cancel { font-size: 17px; color: #4a1010; background: linear-gradient(180deg, #c98080, #8e3a3a); text-shadow: 0 1px 0 rgba(255,255,255,.35); }
+  .enter  { font-size: 17px; color: #0d3a0d; background: linear-gradient(180deg, #8fd68f, #3e8e3e); text-shadow: 0 1px 0 rgba(255,255,255,.35); }
+  .shake { animation: shake .35s; }
+  @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+  @media (prefers-reduced-motion: reduce) { h1 { animation: none; background-position: 50% 0; } .shake { animation: none; } }
 </style>
 </head>
 <body>
-<h1>а хули ты тут забыл</h1>
+<h1>Идите нахуй Я&nbsp;вас не звал !</h1>
+
+<div class="pad" id="pad" role="group" aria-label="Кодовый замок">
+  <div class="lcd" id="lcd" aria-live="polite">----</div>
+  <div class="leds"><span class="led red" id="red"></span><span class="led green" id="green"></span></div>
+  <div class="keys">
+    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+    <button data-k="cancel" class="cancel">CANCEL</button><button data-k="0">0</button><button data-k="enter" class="enter">ENTER</button>
+  </div>
+</div>
+
+<script>
+  // Codes are stored as SHA-256 hashes only. This is a doorway, not a lock: the login pages behind it keep their own passwords.
+  const DOORS = {
+    '12b408838e33f12bf8886792e6d44de0d9623e2bbf833b70f9f2e13fdf802706': '/umbrella/login',
+    '0985b889a1fe4f4e1fb925061ac6fb2247f10875f5fcbe63eec2ab55ed68970e': '/banana/login',
+  };
+  const lcd = document.getElementById('lcd'), red = document.getElementById('red'), green = document.getElementById('green'), pad = document.getElementById('pad');
+  let code = '', busy = false;
+  const show = (text, small = false) => { lcd.textContent = text; lcd.classList.toggle('small', small); };
+  const reset = () => { code = ''; red.classList.remove('on'); green.classList.remove('on'); show('----'); };
+  async function sha256(s) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  async function press(k) {
+    if (busy) return;
+    if (k === 'cancel') return reset();
+    if (k === 'enter') {
+      if (!code) return;
+      busy = true;
+      const door = DOORS[await sha256(code)];
+      if (door) {
+        green.classList.add('on'); show('OK');
+        setTimeout(() => { window.location.href = door; }, 450);
+      } else {
+        red.classList.add('on'); show('ТВОЙ РОТ ЕБАЛ', true);
+        pad.classList.remove('shake'); void pad.offsetWidth; pad.classList.add('shake');
+        setTimeout(() => { busy = false; reset(); }, 1600);
+      }
+      return;
+    }
+    if (code.length >= 8) return;
+    if (!code) { red.classList.remove('on'); }
+    code += k; show('*'.repeat(code.length));
+  }
+  pad.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) press(b.dataset.k); });
+  document.addEventListener('keydown', (e) => {
+    const k = /^[0-9]$/.test(e.key) ? e.key : e.key === 'Enter' ? 'enter' : (e.key === 'Escape' || e.key === 'Backspace') ? 'cancel' : null;
+    if (!k) return;
+    e.preventDefault();
+    const b = pad.querySelector(`[data-k="${k}"]`);
+    if (b) { b.classList.add('pressed'); setTimeout(() => b.classList.remove('pressed'), 90); }
+    press(k);
+  });
+</script>
 </body>
 </html>
