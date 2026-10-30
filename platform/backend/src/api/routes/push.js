@@ -225,15 +225,40 @@ export async function pushRoutes(app) {
   // Retry failed push
   // Only a failed push of this workspace (a buyer's own) is retried, and only once at a time:
   // retrying a done or running push would create duplicate paid campaigns.
+  // The Mac agent keeps what it created for a push (push/<id>/state.json) and on a rerun of the same push adds only
+  // what is missing. That is safe only when the agent itself reported the previous attempt; a job still with the
+  // agent, or one the server gave up on without an answer, may be creating objects right now — so no retry then.
   app.post('/:id/retry', auth, async (req, reply) => {
+    const { rows: [p] } = await db.query(
+      `SELECT p.id, p.status, p.fb_campaign_id, p.fb_adset_ids, p.fb_ad_ids, j.status AS job_status, j.result AS job_result
+         FROM pushes p LEFT JOIN agent_jobs j ON j.id = p.agent_job_id AND j.workspace_id = p.workspace_id
+        WHERE p.id=$1 AND p.workspace_id=$2 AND ($3::text IS NULL OR p.created_by = $3)`,
+      [req.params.id, req.user.ws, ownOnly(req)]);
+    if (!p || p.status !== 'failed') return reply.status(409).send({ error: 'Повторить можно только упавший залив' });
+    const created = {
+      campaign_id: p.fb_campaign_id || null,
+      adset_ids: Array.isArray(p.fb_adset_ids) ? p.fb_adset_ids : [],
+      ad_ids: Array.isArray(p.fb_ad_ids) ? p.fb_ad_ids : [],
+    };
+    if (p.job_status === 'pending' || p.job_status === 'taken') {
+      return reply.status(409).send({ error: 'Задача этого залива ещё у агента на Mac — дождитесь её итога, повтор создал бы второй набор', created });
+    }
+    const reaped = p.job_status === 'failed' && (p.job_result?.reaped || /^Агент не выполнил задачу/.test(p.job_result?.error || ''));
+    if (reaped) {
+      return reply.status(409).send({
+        error: 'Агент не сообщил итог этого залива — в кабинете уже могут быть созданные кампания, адсеты или объявления. Проверьте кабинет; если там пусто, запустите новый залив',
+        created,
+      });
+    }
     const { rows } = await db.query(
       `UPDATE pushes SET status='pending', error=NULL, started_at=NULL, finished_at=NULL
-        WHERE id=$1 AND workspace_id=$2 AND status='failed' AND ($3::text IS NULL OR created_by = $3) RETURNING id`,
-      [req.params.id, req.user.ws, ownOnly(req)]
-    );
+        WHERE id=$1 AND workspace_id=$2 AND status='failed' RETURNING id`,
+      [p.id, req.user.ws]);
     if (!rows.length) return reply.status(409).send({ error: 'Повторить можно только упавший залив' });
-    runPush(rows[0].id).catch(console.error);
-    return { ok: true };
+    await db.query(`UPDATE pushes SET log = log || $1::jsonb WHERE id = $2`,
+      [JSON.stringify([{ ts: new Date().toISOString(), step: 'retry', resume: created }]), p.id]);
+    runPush(p.id).catch(console.error);
+    return { ok: true, resume: created };
   });
 
   // Compile landing HTML from local template + product data

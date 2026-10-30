@@ -302,6 +302,74 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     assert.equal((await req('PATCH','/api/campaigns/cmpa','a',{ fb_campaign_id:'fbc_b' })).statusCode,200);
     assert.equal((await db.findOne('campaigns',{ id:'cmpa' })).fb_campaign_id,null);
   });
+  await t.test('FB push retry continues only after the agent reported; a reaped or running job is not retried', async () => {
+    const job = async (status, result) => (await db.query(
+      `INSERT INTO agent_jobs(workspace_id,type,payload,status,result) VALUES ('w1','push','{}'::jsonb,$1,$2::jsonb) RETURNING id`,
+      [status, result ? JSON.stringify(result) : null])).rows[0].id;
+    const push = async (id, jobId, fb = {}) => db.insert('pushes', { id, workspace_id:'w1', product_id:'pa', params:{}, status:'failed', created_by:'a',
+      agent_job_id: jobId, log: JSON.stringify([]), fb_campaign_id: fb.campaign_id || null, fb_adset_ids: JSON.stringify(fb.adset_ids || []), fb_ad_ids: JSON.stringify(fb.ad_ids || []) });
+    await push('pr_answered', await job('failed', { ok:false, error:'Graph 500', data:{ campaign_id:'fb1', adset_ids:['as1'], ad_ids:[] } }), { campaign_id:'fb1', adset_ids:['as1'] });
+    await push('pr_reaped', await job('failed', { ok:false, error:'Агент не выполнил задачу: взята больше 2 ч назад или ждала больше 6 ч', data:null, reaped:true }));
+    await push('pr_running', await job('taken'));
+
+    assert.equal((await req('POST','/api/push/pr_answered/retry','b')).statusCode,409,'another buyer cannot retry it');
+    const ok = await req('POST','/api/push/pr_answered/retry','a');
+    assert.equal(ok.statusCode,200,ok.body);
+    assert.deepEqual(ok.json().resume,{ campaign_id:'fb1', adset_ids:['as1'], ad_ids:[] });
+    const log = (await db.findOne('pushes',{ id:'pr_answered' })).log;
+    assert.ok(log.some(e => e.step === 'retry' && e.resume.campaign_id === 'fb1'), 'the retry records what already exists');
+
+    const reaped = await req('POST','/api/push/pr_reaped/retry','a');
+    assert.equal(reaped.statusCode,409,reaped.body);
+    assert.match(reaped.json().error,/Проверьте кабинет/);
+    assert.ok(reaped.json().created);
+    assert.equal((await db.findOne('pushes',{ id:'pr_reaped' })).status,'failed');
+
+    const running = await req('POST','/api/push/pr_running/retry','a');
+    assert.equal(running.statusCode,409,running.body);
+    assert.match(running.json().error,/ещё у агента/);
+  });
+  await t.test('dashboard counts each expense once and gives a buyer only their own TikTok and FB spend', async () => {
+    await db.query("UPDATE workspaces SET keitaro_url='https://kt.test.invalid', keitaro_api_key='test' WHERE id='w1'");
+    await db.query("UPDATE users SET keitaro_tag='alice' WHERE id='a'");
+    await db.query(`INSERT INTO fb_campaigns(id,workspace_id,fb_account_id,spend_7d) VALUES
+      ('9001','w1','fba',40),('9002','w1','fbb',70),('9003','w1','fba',NULL)`);
+    const blocked = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).startsWith('https://kt.test.invalid/')) {
+        const rows = [
+          { sub_id_2:'9001', campaign:'[alice] Linked', campaign_group:'', clicks:10, leads:2, sales:1, lp_clicks:0, cost:40, revenue:100 },
+          { sub_id_2:'9003', campaign:'[alice] Unread', campaign_group:'', clicks:5, leads:0, sales:0, lp_clicks:0, cost:15, revenue:0 },
+          { sub_id_2:'', campaign:'[alice] Native', campaign_group:'', clicks:3, leads:0, sales:1, lp_clicks:0, cost:5, revenue:10 },
+          { sub_id_2:'9002', campaign:'[bob] Linked', campaign_group:'', clicks:20, leads:1, sales:0, lp_clicks:0, cost:70, revenue:50 },
+        ];
+        return { ok:true, json: async () => ({ rows }), text: async () => '' };
+      }
+      assert.match(String(url), /tiktok/);
+      return { ok:true, json: async () => ({ code:0, data:{ list:[
+        { dimensions:{ campaign_id:'c1' }, metrics:{ spend:'3', clicks:'1', impressions:'9', conversion:'0' } },
+        { dimensions:{ campaign_id:'cx' }, metrics:{ spend:'50', clicks:'4', impressions:'90', conversion:'1' } },
+      ] } }) };
+    };
+    try {
+      const mine = await get('/api/analytics/dashboard?range=last_7_days','a');
+      assert.equal(mine.fb.spend,40,'FB spend from the cabinets of the buyer\'s own profiles');
+      assert.equal(mine.fb.spend_unknown,1);
+      assert.equal(mine.keitaro.cost_counted,20,'linked FB campaign cost is not added again; unread FB spend falls back to the tracker');
+      assert.equal(mine.tiktok.spend,3,'only campaigns of the buyer\'s own TikTok pushes');
+      assert.equal(mine.totals.spend,63);
+      assert.equal(mine.totals.revenue,110);
+
+      const all = await get('/api/analytics/dashboard?range=last_7_days','owner');
+      assert.equal(all.fb.spend,110);
+      assert.equal(all.keitaro.cost,130);
+      assert.equal(all.keitaro.cost_counted,20);
+      assert.equal(all.tiktok.spend,53);
+      assert.equal(all.totals.spend,183);
+    } finally {
+      globalThis.fetch = blocked;
+    }
+  });
   await t.test('an email differing only in case cannot be registered twice', async () => {
     const invite = await req('POST','/api/team/invite','owner',{ email:'A@Test.Invalid',name:'Copy',password:'secret1',role:'buyer' });
     assert.equal(invite.statusCode,400,invite.body);
