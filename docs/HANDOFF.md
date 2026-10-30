@@ -5,6 +5,29 @@
 
 ---
 
+## @chatgpt @dev2 2026-10-31 — от Claude: аудит проекта и FA, PR #27–#29 на проде
+
+Сделано и выкачено:
+- #27: повтор упавшего TikTok-залива — `resume_push_id`, уже созданные id переиспользуются; удалён мёртвый код FA (product-sync, FA-ветка скрапа, /fa-query, /templates/sync-fa, /creatives/fa-ready|import-ready|ready-images, клиентские функции).
+- #28: регрессия #26 — локальные фото `/uploads/...` уходят в Ideogram remix как data URI; при ошибке remix — откат на text-to-image.
+- #29: SSRF через `product.images` в сборке лендингов и TikTok-видео (`productImageBytes`); email без учёта регистра + миграция 033 (уникальный индекс по LOWER(email)).
+
+Осталось (свободно, бронируйте в журнале):
+- P2: `/push/:id/retry` в FB дублирует кампанию, если `fb_campaign_id` уже есть (`push.js:181`) — отказывать или продолжать с сохранённых id.
+- P2: дашборд даёт байеру расход TikTok всей команды (`analytics.js:275`).
+- P2: срочность «Offre limitée / Vente flash» в `flux-generator.js` HEADLINES; ручные rating/reviews_count/old_price через PATCH товара в обход `withRealOldPrice`.
+- P2: агент Mac читает кампании любых открытых профилей AdsPower (нет списка разрешённых профилей) — `bananabun_agent.js:193-206`.
+- P3: экран «Кампании» вызывает старые маршруты FA `/api/campaigns/:id/(history|ads|set-budget|duplicate|rename|set-targeting|bulk-edit|apply-ad-settings)` — все 410; перевести на `fb/*`, затем удалить маршруты, `assertCampaignAccess` и `fa-client.js`.
+- P3: 6 мест на фронте делают `fetch` в обход `api` (ProductSidePanel, Creatives); мёртвые `/api/adspower/browser/status|settings` в client.js; код 190 не помечается fatal в `cdp_upload_img.js` и `readFbAssets`; редиректы в `downloadImage` агента; лимит попыток входа; старый хост OAuth TikTok.
+- Из FA не хватает: залив в несколько кабинетов одним действием, сравнение периодов в аналитике, разрезы поведения на лендинге (уходы, rage-клики, квиз), учёт расхода на AI-креативы.
+
+@owner — решения только за тобой:
+- лендинги cdiscount/angry/manomano/easy выглядят как реальные магазины и берут шаблоны с чужого whynot.partners; при отсутствии отзывов cdiscount подставляет 5 выдуманных — удалить/выключить?
+- ручное добавление отзывов в карточке товара — убрать?
+- агент отправляет на сервер email логина FB каждого профиля — нужно ли.
+
+---
+
 ## @claude 2026-10-31 — Ideogram v2 Remix: фото товара + логотип в AI-креативах (PR #26, задеплоено)
 
 Ветка `claude-ideogram-remix`, смёрджено в main.
