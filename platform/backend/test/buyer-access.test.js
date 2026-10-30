@@ -200,6 +200,14 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     assert.equal(Number((await db.query("SELECT COUNT(*) FROM pushes WHERE params->>'campaign_id'='c1'")).rows[0].count),1);
     assert.equal((await req('POST','/api/tiktok/push','a',{ ...body,resume_push_id:failed.id })).statusCode,409,'a finished push is not resumed again');
   });
+  await t.test('an email differing only in case cannot be registered twice', async () => {
+    const invite = await req('POST','/api/team/invite','owner',{ email:'A@Test.Invalid',name:'Copy',password:'secret1',role:'buyer' });
+    assert.equal(invite.statusCode,400,invite.body);
+    const created = await req('POST','/api/admin/users','owner',{ email:' New@Test.Invalid ',name:'New',password:'secret1',role:'buyer' });
+    assert.equal(created.statusCode,200,created.body);
+    assert.equal((await db.query("SELECT email FROM users WHERE name='New'")).rows[0].email,'new@test.invalid');
+    await assert.rejects(db.query("INSERT INTO users(id,workspace_id,email,name,password_hash,role) VALUES ('dup','w1','NEW@test.invalid','D','x','buyer')"));
+  });
   await t.test('nobody changes their own role through the team page', async () => {
     const response = await req('PATCH','/api/team/members/owner','owner',{ role:'buyer' });
     assert.equal(response.statusCode,400,response.body);

@@ -5,7 +5,9 @@ import { db } from '../../db/client.js';
 export async function authRoutes(app) {
   // Register — requires invite code
   app.post('/register', async (req, reply) => {
-    const { name, email, password, workspace_name, invite_code } = req.body;
+    const { name, password, workspace_name, invite_code } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return reply.status(400).send({ error: 'Нужен email' });
 
     const validCode = process.env.INVITE_CODE;
     if (!validCode || invite_code !== validCode) {
@@ -44,7 +46,9 @@ export async function authRoutes(app) {
 
   // Login
   app.post('/login', async (req, reply) => {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return reply.status(400).send({ error: 'Нужен email' });
 
     const user = await db.findOne('users', { email });
     if (!user) return reply.status(401).send({ error: 'Invalid credentials' });

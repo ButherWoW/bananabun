@@ -4,11 +4,12 @@ import fs from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid';
 import os from 'os';
-import { safeDownload } from './safe-fetch.js';
+import { productImageBytes } from './creative-assets.js';
 
-// Product photos come from scraped shops: every hop is checked, size and time are capped (safe-fetch.js).
+// Own photos are read from disk; remote ones go through the SSRF-safe loader (creative-assets.js).
 async function downloadImage(url, dest) {
-  const { body } = await safeDownload(url, { maxBytes: 15 * 1024 * 1024, timeoutMs: 15000 });
+  const body = await productImageBytes(url);
+  if (!body) throw new Error('Неподдерживаемый адрес фото');
   await fs.promises.writeFile(dest, body);
   return dest;
 }

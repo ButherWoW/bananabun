@@ -25,7 +25,9 @@ export async function adminRoutes(app) {
 
   // Create user (owner or lead)
   app.post('/users', authLead, async (req, reply) => {
-    const { name, email, password, role = 'buyer' } = req.body;
+    const { name, password, role = 'buyer' } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return reply.status(400).send({ error: 'Нужен email' });
     if (!name || !email || !password) return reply.status(400).send({ error: 'name, email, password обязательны' });
 
     // Lead can only create buyers

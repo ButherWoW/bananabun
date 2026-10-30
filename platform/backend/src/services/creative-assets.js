@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { safeDownload } from './safe-fetch.js';
 
 const LIMIT = 12 * 1024 * 1024;
 export function rasterType(bytes) {
@@ -24,4 +25,21 @@ export async function localImageData(url) {
   if ((await fs.stat(resolved)).size > LIMIT) throw Object.assign(new Error('Нужна картинка до 12 МБ'), { statusCode: 400 });
   bytes = await fs.readFile(resolved);
   return `data:image/${rasterType(bytes)};base64,${bytes.toString('base64')}`;
+}
+
+// Product photo bytes for anything we package (landings): own files from disk, remote ones through the
+// SSRF-safe loader, and only real raster images either way.
+export async function productImageBytes(src) {
+  if (typeof src !== 'string' || !src) return null;
+  let bytes;
+  if (src.startsWith('/uploads/')) {
+    const data = await localImageData(src);
+    bytes = Buffer.from(data.slice(data.indexOf(',') + 1), 'base64');
+  } else if (/^https?:\/\//i.test(src)) {
+    bytes = (await safeDownload(src, { maxBytes: LIMIT })).body;
+  } else {
+    return null;
+  }
+  rasterType(bytes);
+  return bytes;
 }
