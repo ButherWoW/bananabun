@@ -1,9 +1,9 @@
 // Generates a Cdiscount-style landing ZIP from a product.
 // Static assets are fetched from the base template on the Keitaro server.
 // Product images are downloaded and packed as s1.jpg, s2.jpg, ...
+import { productImageBytes } from './creative-assets.js';
 
 const TEMPLATE_BASE_URL = process.env.CDISCOUNT_TEMPLATE_URL || 'https://whynot.partners/lander/dima-klein-knect-fr';
-const BASE_URL = (process.env.BASE_URL || 'https://nespizdili.lol').replace(/\/$/, '');
 
 const STATIC_ASSETS = [
   'assets/keitaro.js', 'assets/script.js', 'assets/styles.css',
@@ -30,14 +30,6 @@ async function fetchBuf(url, ms = 12000) {
   const res = await fetch(url, { signal: AbortSignal.timeout(ms) });
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
   return Buffer.from(await res.arrayBuffer());
-}
-
-// Convert local /uploads/... path to absolute URL
-function toAbsoluteUrl(src) {
-  if (!src) return null;
-  if (/^https?:\/\//.test(src)) return src;
-  if (src.startsWith('/')) return `${BASE_URL}${src}`;
-  return null;
 }
 
 // Build specs block HTML to replace Klein meta-pairs
@@ -209,17 +201,15 @@ export async function buildCdiscountZip({ product, templateBaseUrl = TEMPLATE_BA
 
   const templateHtml = (await fetchBuf(`${templateBaseUrl}/index.html`)).toString('utf8');
 
-  // Convert local /uploads/... paths to absolute URLs
   const imageUrls = asArray(product.images)
     .map(img => {
-      const src = typeof img === 'string' ? img : img?.url || img?.src || '';
-      return toAbsoluteUrl(src);
+      return typeof img === 'string' ? img : img?.url || img?.src || '';
     })
     .filter(Boolean).slice(0, 8);
 
   const downloaded = (await Promise.all(
     imageUrls.map(async (url, i) => {
-      try { return { i, buf: await fetchBuf(url) }; }
+      try { const buf = await productImageBytes(url); return buf ? { i, buf } : null; }
       catch (e) { console.warn(`[cdiscount] skip image ${i + 1}: ${e.message}`); return null; }
     })
   )).filter(Boolean);

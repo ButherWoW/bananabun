@@ -16,7 +16,9 @@ export async function teamRoutes(app) {
   });
 
   app.post('/invite', adminOnly(app), async (req, reply) => {
-    const { email, name, role, password } = req.body;
+    const { name, role, password } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return reply.status(400).send({ error: 'Нужен email' });
     if (!password || password.length < 6) return reply.status(400).send({ error: 'Пароль — минимум 6 символов' });
     const VALID_ROLES = ['owner', 'lead', 'buyer'];
     if (role && !VALID_ROLES.includes(role)) return reply.status(400).send({ error: 'Недопустимая роль' });

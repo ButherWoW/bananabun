@@ -13,3 +13,11 @@ test('downloads refuse non-http schemes and private hosts before connecting', as
     await assert.rejects(safeDownload(url, { timeoutMs: 2000 }), url);
   }
 });
+
+test('product photos for landings and videos refuse internal addresses and paths outside uploads', async () => {
+  const { productImageBytes } = await import('../src/services/creative-assets.js');
+  await assert.rejects(productImageBytes('http://127.0.0.1:4000/api/health'));
+  await assert.rejects(productImageBytes('http://169.254.169.254/latest/meta-data'));
+  await assert.rejects(productImageBytes('/uploads/../../etc/passwd.jpg'));
+  assert.equal(await productImageBytes('file:///etc/passwd'), null);
+});

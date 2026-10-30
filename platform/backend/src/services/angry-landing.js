@@ -1,5 +1,6 @@
 // Generates an Angry-style Cdiscount landing ZIP (with survey gate).
 // Uses the "Template 2" Angry landing as the base; swaps product data only.
+import { productImageBytes } from './creative-assets.js';
 
 const TEMPLATE_BASE_URL = process.env.ANGRY_TEMPLATE_URL
   || 'https://whynot.partners/lander/angry--tefal-ingenio-emotion-13-pi--ces-----template-2';
@@ -77,7 +78,7 @@ export async function buildAngryZip({ product, templateBaseUrl = TEMPLATE_BASE_U
 
   const downloaded = (await Promise.all(
     imageUrls.map(async (url, i) => {
-      try { return { i, buf: await fetchBuf(url) }; }
+      try { const buf = await productImageBytes(url); return buf ? { i, buf } : null; }
       catch (e) { console.warn(`[angry] skip image ${i + 1}: ${e.message}`); return null; }
     })
   )).filter(Boolean);
