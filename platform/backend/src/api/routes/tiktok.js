@@ -7,6 +7,9 @@ import { tiktokClient, getOAuthUrl, exchangeCode, refreshAccessToken, TIKTOK_LOC
 import { readFile } from 'fs/promises';
 import { safeDownload } from '../../services/safe-fetch.js';
 
+// The panel lives under /banana/; the API (and the OAuth callback registered in TikTok) stays at the root /api/.
+const PUBLIC_BASE = (process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS_DIR) : path.join(__dirname, '..', '..', '..', 'uploads');
@@ -88,7 +91,7 @@ export async function tiktokRoutes(app) {
   // OAuth URL
   app.get('/oauth/url', adminOnly(app), async (req, reply) => {
     const appId = process.env.TIKTOK_APP_ID;
-    const redirectUri = process.env.TIKTOK_REDIRECT_URI || `${process.env.PUBLIC_URL || 'https://srv2100328.hstgr.cloud'}/api/tiktok/oauth/callback`;
+    const redirectUri = process.env.TIKTOK_REDIRECT_URI || `${PUBLIC_BASE}/api/tiktok/oauth/callback`;
     if (!appId) return reply.status(503).send({ error: 'TIKTOK_APP_ID not configured' });
     const nonce = nanoid(32);
     await db.query('INSERT INTO tiktok_oauth_states (nonce, workspace_id) VALUES ($1, $2)', [nonce, req.user.ws]);
@@ -108,7 +111,7 @@ export async function tiktokRoutes(app) {
     await db.query('DELETE FROM tiktok_oauth_states WHERE nonce = $1', [nonce]);
     const appId = process.env.TIKTOK_APP_ID;
     const appSecret = process.env.TIKTOK_APP_SECRET;
-    const redirectUri = process.env.TIKTOK_REDIRECT_URI || `${process.env.PUBLIC_URL || 'https://srv2100328.hstgr.cloud'}/api/tiktok/oauth/callback`;
+    const redirectUri = process.env.TIKTOK_REDIRECT_URI || `${PUBLIC_BASE}/api/tiktok/oauth/callback`;
     try {
       const tokens = await exchangeCode(appId, appSecret, code, redirectUri);
       const { access_token, refresh_token, access_token_expires_in = 86400, advertiser_ids = [] } = tokens;
@@ -136,11 +139,11 @@ export async function tiktokRoutes(app) {
           created++;
         }
       }
-      const frontendBase = process.env.FRONTEND_URL || 'https://srv2100328.hstgr.cloud';
+      const frontendBase = process.env.FRONTEND_URL || `${PUBLIC_BASE}/banana`;
       return reply.redirect(`${frontendBase}/tiktok?connected=${created}`);
     } catch (e) {
       req.log.error(e, 'TikTok OAuth failed');
-      return reply.redirect('/?error=tiktok_oauth_failed');
+      return reply.redirect(`${process.env.FRONTEND_URL || `${PUBLIC_BASE}/banana`}/tiktok?error=tiktok_oauth_failed`);
     }
   });
 

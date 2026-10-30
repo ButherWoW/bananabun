@@ -50,13 +50,14 @@ const CTAS = {
   pt: ['Comprar agora', 'Ver oferta', 'Pedir', 'Aproveitar', 'Descobrir'],
 };
 
-const HEADLINES = {
-  fr: ['Offre limitée', 'Promotion exclusive', 'Prix imbattable', 'Super affaire', 'Vente flash'],
-  es: ['Oferta limitada', 'Promoción exclusiva', 'Precio imbatible', 'Gran oferta', 'Venta flash'],
-  en: ['Limited offer', 'Exclusive deal', 'Unbeatable price', 'Great deal', 'Flash sale'],
-  de: ['Begrenzte Zeit', 'Exklusives Angebot', 'Unschlagbarer Preis', 'Top-Angebot', 'Flash-Sale'],
-  it: ['Offerta limitata', 'Promozione esclusiva', 'Prezzo imbattibile', 'Affare top', 'Svendita flash'],
-  pt: ['Oferta limitada', 'Promoção exclusiva', 'Preço imbatível', 'Ótima oferta', 'Liquidação'],
+// Neutral headlines: no invented urgency (limited time, flash sale) or claims the product data cannot back up.
+export const HEADLINES = {
+  fr: ['Bon plan', 'À découvrir', 'Fait pour vous', 'Le bon choix', 'À petit prix'],
+  es: ['Buena compra', 'Descúbrelo', 'Hecho para ti', 'La buena elección', 'A buen precio'],
+  en: ['Good buy', 'Discover it', 'Made for you', 'A smart choice', 'Great value'],
+  de: ['Gute Wahl', 'Entdecken', 'Für dich gemacht', 'Clevere Wahl', 'Guter Preis'],
+  it: ['Buon acquisto', 'Scoprilo', 'Fatto per te', 'La scelta giusta', 'Buon prezzo'],
+  pt: ['Boa compra', 'Descubra', 'Feito para você', 'A escolha certa', 'Bom preço'],
 };
 
 function discountPct(oldPrice, newPrice) {

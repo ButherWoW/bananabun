@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { products as productsApi, keitaro as keitaroApi, presets as presetsApi, scrape as scrapeApi, landings as landingsApi } from '../api/client.js';
+import { api, products as productsApi, keitaro as keitaroApi, presets as presetsApi, scrape as scrapeApi, landings as landingsApi } from '../api/client.js';
 import clsx from 'clsx';
 import { Link } from 'react-router-dom';
 import { toast } from './Toaster.jsx';
@@ -26,11 +26,6 @@ function RetryButton({ productId, qc }) {
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.BASE_URL.replace(/\/$/, '');
-
-// Raw fetch calls below: a refused request must show its reason instead of passing silently.
-async function failText(r, fallback) {
-  try { const d = await r.json(); return d?.error || d?.message || fallback; } catch { return fallback; }
-}
 
 const TABS = ['Карточка', 'Комплекты', 'Галерея', 'Отзывы', '✨ Похожие'];
 
@@ -264,19 +259,10 @@ function CardTab({ product, qc }) {
     if (!text.trim()) return;
     setTranslating(t => ({ ...t, [field]: true }));
     try {
-      const r = await fetch(`${API_BASE}/api/products/${product.id}/translate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('token'),
-        },
-        body: JSON.stringify({ field, text, target: 'ru' }),
-      });
-      if (!r.ok) { toast(await failText(r, 'Не удалось перевести')); return; }
-      const d = await r.json();
+      const d = await api.post(`/api/products/${product.id}/translate`, { field, text, target: 'ru' });
       // View-only: the translation must never replace the text that goes to the landing.
       if (d.translated) setTranslations(t => ({ ...t, [field]: d.translated }));
-    } catch { toast('Не удалось перевести'); }
+    } catch (e) { toast(e?.error || 'Не удалось перевести'); }
     finally { setTranslating(t => ({ ...t, [field]: false })); }
   }
 
@@ -597,9 +583,10 @@ function BundlesTab({ product, qc }) {
               <input
                 type="text"
                 value={b.old_price}
-                onChange={e => updateBundle(i, 'old_price', e.target.value)}
-                className="w-full bg-[color:var(--c0d0f1e)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500"
-                placeholder={product?.source_price || '199.99'}
+                readOnly
+                title="Считается сама: реальная цена магазина × число платных штук"
+                className="w-full bg-[color:var(--c0d0f1e)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-1.5 text-sm text-gray-400 cursor-not-allowed focus:outline-none"
+                placeholder="считается при сохранении"
               />
             </div>
             {/* Price */}
@@ -681,16 +668,10 @@ function GalleryTab({ product, qc }) {
     try {
       const form = new FormData();
       Array.from(files).forEach(f => form.append('images', f));
-      const r = await fetch(`${API_BASE}/api/products/${product.id}/images`, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
-        body: form,
-      });
-      if (r.ok) {
-        qc.invalidateQueries(['product', product.id]);
-        qc.invalidateQueries(['products']);
-      } else toast(await failText(r, 'Не удалось загрузить фото'));
-    } catch { toast('Не удалось загрузить фото'); }
+      await api.post(`/api/products/${product.id}/images`, form);
+      qc.invalidateQueries(['product', product.id]);
+      qc.invalidateQueries(['products']);
+    } catch (e) { toast(e?.error || 'Не удалось загрузить фото'); }
     setUploading(false);
   }
 
@@ -749,41 +730,25 @@ function ReviewsTab({ product, qc }) {
   const [newReview, setNewReview] = useState({ author: '', rating: null, text: '' });
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/products/${product.id}/reviews`, {
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
-    })
-      .then(r => r.ok ? r.json() : [])
+    api.get(`/api/products/${product.id}/reviews`)
       .then(d => setReviews(Array.isArray(d) ? d : []))
-      .catch(() => setReviews([]));
+      .catch(e => { setReviews([]); toast(e?.error || 'Не удалось загрузить отзывы'); });
   }, [product?.id]);
 
   async function addReview() {
     if (!newReview.text.trim()) return;
     try {
-      const r = await fetch(`${API_BASE}/api/products/${product.id}/reviews`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('token'),
-        },
-        body: JSON.stringify(newReview),
-      });
-      if (r.ok) {
-        const d = await r.json();
-        setReviews(prev => [...prev, d]);
-        setNewReview({ author: '', rating: null, text: '' });
-        setAdding(false);
-        qc.invalidateQueries(['products']);
-      } else toast(await failText(r, 'Не удалось добавить отзыв'));
-    } catch { toast('Не удалось добавить отзыв'); }
+      const d = await api.post(`/api/products/${product.id}/reviews`, newReview);
+      setReviews(prev => [...prev, d]);
+      setNewReview({ author: '', rating: null, text: '' });
+      setAdding(false);
+      qc.invalidateQueries(['products']);
+    } catch (e) { toast(e?.error || 'Не удалось добавить отзыв'); }
   }
 
   async function deleteReview(id) {
-    const r = await fetch(`${API_BASE}/api/products/${product.id}/reviews/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
-    }).catch(() => null);
-    if (!r?.ok) { toast(r ? await failText(r, 'Не удалось удалить отзыв') : 'Не удалось удалить отзыв'); return; }
+    try { await api.delete(`/api/products/${product.id}/reviews/${id}`); }
+    catch (e) { toast(e?.error || 'Не удалось удалить отзыв'); return; }
     setReviews(prev => prev.filter(r => r.id !== id));
     qc.invalidateQueries(['products']);
   }
@@ -796,14 +761,9 @@ function ReviewsTab({ product, qc }) {
           <button
             onClick={async () => {
               try {
-                const r = await fetch(`${API_BASE}/api/products/${product.id}/reviews/scrape`, {
-                  method: 'POST',
-                  headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
-                });
-                if (!r.ok) { toast(await failText(r, 'Не удалось загрузить отзывы')); return; }
-                const d = await r.json();
-                if (d.length) setReviews(prev => [...prev, ...d]);
-              } catch { toast('Не удалось загрузить отзывы'); }
+                const d = await api.post(`/api/products/${product.id}/reviews/scrape`);
+                if (Array.isArray(d) && d.length) setReviews(prev => [...prev, ...d]);
+              } catch (e) { toast(e?.error || 'Не удалось загрузить отзывы'); }
             }}
             className="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 border border-emerald-600/30 rounded-lg"
           >
