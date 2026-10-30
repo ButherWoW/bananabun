@@ -2,12 +2,8 @@ import { adminOnly } from '../../middleware/access.js';
 import { db } from '../../db/client.js';
 import { keitaroClient } from '../../services/keitaro.js';
 
-// FA-style names carry the buyer in the 3rd bracket: [hash][date][izya(723604)][…]; older ones: [Buyer] Product.
-export function campaignBuyerTag(name = '') {
-  const segs = [...(String(name).match(/^(\[[^\]]*\])+/)?.[0] || '').matchAll(/\[([^\]]*)\]/g)].map(m => m[1]);
-  const raw = segs.length >= 6 ? segs[2] : segs[0];
-  return (raw || '').replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-}
+import { campaignBuyerTag, buyerNamer, BUYER_SHARE_PCT, TRACKER_CURRENCY } from '../../services/buyers.js';
+export { campaignBuyerTag };
 
 // A buyer's campaign: its name tag or its Keitaro campaign group matches one of the buyer's tags.
 export function inScope(scope, name, groupName) {
@@ -34,10 +30,8 @@ async function buyerOwnsCampaign(client, scope, id) {
 // Real spend from the FB cabinets read by the agent, instead of Keitaro's estimated cost.
 // Keitaro campaign → FB campaigns through sub_id_2; only periods we store FB spend for.
 const FB_SPEND_COL = { today: 'spend_today', yesterday: 'spend_yesterday', last_3_days: 'spend_3d', last_7_days: 'spend_7d', last_30_days: 'spend_30d' };
-async function withFbSpend(client, ws, range, rows) {
-  const col = FB_SPEND_COL[range];
-  for (const r of rows) r.spend_source = 'keitaro';
-  if (!col || !rows.length) return;
+// Keitaro campaign id → the FB campaign ids (sub_id_2) its traffic came from in this period.
+async function campaignFbIds(client, range) {
   const map = await client.stats(range, ['campaign_id', 'sub_id_2'], ['clicks']).catch(() => null);
   const fbIds = new Map();
   for (const m of map?.rows || []) {
@@ -47,6 +41,13 @@ async function withFbSpend(client, ws, range, rows) {
     if (!fbIds.has(k)) fbIds.set(k, new Set());
     fbIds.get(k).add(fb);
   }
+  return fbIds;
+}
+
+async function withFbSpend(fbIds, ws, range, rows) {
+  const col = FB_SPEND_COL[range];
+  for (const r of rows) r.spend_source = 'keitaro';
+  if (!col || !rows.length) return;
   const all = [...new Set([...fbIds.values()].flatMap(s => [...s]))];
   if (!all.length) return;
   const { rows: fb } = await db.query(
@@ -55,7 +56,7 @@ async function withFbSpend(client, ws, range, rows) {
   // An FB campaign seen under two Keitaro campaigns can't be split between them.
   const owners = new Map();
   for (const [k, set] of fbIds) for (const id of set) owners.set(id, (owners.get(id) || 0) + 1);
-  const trackerCurrency = (process.env.KEITARO_CURRENCY || 'USD').toUpperCase();
+  const trackerCurrency = TRACKER_CURRENCY;
   for (const r of rows) {
     const ids = [...(fbIds.get(String(r.campaign_id)) || [])];
     const known = ids.map(id => byId.get(id)).filter(Boolean);
@@ -92,12 +93,18 @@ export async function keitaroRoutes(app) {
     const client = await getClient(req.user.ws);
     const r = from && to ? { from, to } : range;
     const scope = await buyerScope(req);
-    const data = await client.stats(r, ['campaign_id', 'campaign', ...(scope ? ['campaign_group'] : [])],
-      ['clicks', 'lp_clicks', 'conversions', 'sales', 'leads', 'revenue', 'cost', 'profit', 'roi']);
+    const [data, fbIds] = await Promise.all([
+      client.stats(r, ['campaign_id', 'campaign', 'campaign_group'],
+        ['clicks', 'lp_clicks', 'conversions', 'sales', 'leads', 'revenue', 'cost', 'profit', 'roi']),
+      campaignFbIds(client, r),
+    ]);
     let rows = data?.rows || [];
     if (scope) rows = rows.filter(row => inScope(scope, row.campaign, row.campaign_group));
-    await withFbSpend(client, req.user.ws, from && to ? null : range, rows);
-    return { rows, total: rows.length };
+    await withFbSpend(fbIds, req.user.ws, from && to ? null : range, rows);
+    // Same buyer rule as «Статистика по байерам» (services/buyers.js).
+    const who = await buyerNamer(req.user.ws, rows, (row) => fbIds.get(String(row.campaign_id)) || []);
+    for (const row of rows) row.buyer = who(row);
+    return { rows, total: rows.length, currency: TRACKER_CURRENCY, buyer_share_pct: BUYER_SHARE_PCT };
   });
 
   // GET stats by day (for charts)
