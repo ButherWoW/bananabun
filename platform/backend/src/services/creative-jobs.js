@@ -53,7 +53,7 @@ export async function runCreativeJobs({ render = generateCreative, limit = 2 } =
       const source = record.metadata?.source;
       const slot = typeof record.metadata?.auto_slot === 'number' ? record.metadata.auto_slot : 0;
       const result = source === 'flux'
-        ? await generateFluxCreative(product, null, record.format, options, slot)
+        ? await generateFluxCreative(product, options.logo_key || null, record.format, options, slot)
         : source === 'banner'
           ? await renderBanner(product, record.format, options, slot)
           : await render(product, null, record.format, options);

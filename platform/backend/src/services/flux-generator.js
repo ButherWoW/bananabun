@@ -2,11 +2,13 @@ import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
+import sharp from 'sharp';
 
 const FAL_BASE = 'https://fal.run';
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 export const FAL_MODEL = process.env.FAL_MODEL || 'fal-ai/ideogram/v2';
 const IS_FLUX = /\/flux\//i.test(FAL_MODEL);
+const REMIX_MODEL = 'fal-ai/ideogram/v2/remix';
 
 // Ideogram v2 uses aspect_ratio strings; FLUX uses named sizes
 const FORMAT_TO_ASPECT = {
@@ -117,16 +119,41 @@ export function fluxEnabled() {
   return !!process.env.FAL_API_KEY;
 }
 
+function asImages(raw) {
+  if (Array.isArray(raw)) return raw;
+  try { return JSON.parse(raw) || []; } catch { return []; }
+}
+
+async function compositeLogoOnImage(imgBuf, logoKey) {
+  const logoRelPath = logoKey.replace(/^\/uploads\//, '');
+  const logoBuf = await fs.readFile(path.join(UPLOADS_DIR, logoRelPath)).catch(() => null);
+  if (!logoBuf) return imgBuf;
+  const { width } = await sharp(imgBuf).metadata();
+  const logoSize = Math.round((width || 1024) * 0.18);
+  const margin = Math.round((width || 1024) * 0.03);
+  const resized = await sharp(logoBuf).resize(logoSize, logoSize, { fit: 'inside', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+  return sharp(imgBuf)
+    .composite([{ input: resized, top: margin, left: margin, blend: 'over' }])
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
+
 export async function generateFluxCreative(product, logoKey, format = '1x1', options = {}, slot = 0) {
   const key = process.env.FAL_API_KEY;
   if (!key) throw new Error('FAL_API_KEY не настроен');
 
+  const productImages = asImages(product.images);
+  const productPhotoUrl = productImages[0] || null;
+  const useRemix = !!productPhotoUrl;
+
   const prompt = buildPrompt(product, slot, options);
   const fmt = String(format).replace(':', 'x');
   const aspectRatio = FORMAT_TO_ASPECT[fmt] || '1:1';
+
   const cacheKey = crypto.createHash('sha256').update(JSON.stringify({
-    model: FAL_MODEL, prompt, aspectRatio, slot,
+    model: useRemix ? REMIX_MODEL : FAL_MODEL, prompt, aspectRatio, slot,
     productId: product.id || product.sku || product.title,
+    productPhoto: useRemix ? productPhotoUrl : null,
     logoKey: logoKey || null,
   })).digest('hex');
   const cachedFilename = `cr_flux_cache_${cacheKey}.jpg`;
@@ -136,16 +163,24 @@ export async function generateFluxCreative(product, logoKey, format = '1x1', opt
     return { url: `/uploads/${cachedFilename}`, thumbnail: `/uploads/${cachedFilename}`, style: 'flux', language: options.language || 'fr', prompt, slot, cached: true };
   } catch { /* cache miss */ }
 
-  // FLUX takes exact pixel sizes (multiples of 16), so every format gets its real proportions, not the nearest preset.
-  const FLUX_SIZE = {
-    '1:1': { width: 1024, height: 1024 }, '4:5': { width: 1024, height: 1280 }, '9:16': { width: 720, height: 1280 },
-    '3:2': { width: 1536, height: 1024 }, '2:3': { width: 1024, height: 1536 }, '16:9': { width: 1280, height: 720 },
-  };
-  const falBody = IS_FLUX
-    ? { prompt, image_size: FLUX_SIZE[aspectRatio] || 'square_hd', num_images: 1, enable_safety_checker: false }
-    : { prompt, aspect_ratio: aspectRatio, style_type: 'DESIGN', magic_prompt_option: 'OFF', negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text' };
+  let falBody;
+  let falModel;
+  if (useRemix) {
+    falModel = REMIX_MODEL;
+    falBody = { prompt, image_url: productPhotoUrl, aspect_ratio: aspectRatio, strength: 0.65, style: 'design', enable_safety_checker: false };
+  } else if (IS_FLUX) {
+    falModel = FAL_MODEL;
+    const FLUX_SIZE = {
+      '1:1': { width: 1024, height: 1024 }, '4:5': { width: 1024, height: 1280 }, '9:16': { width: 720, height: 1280 },
+      '3:2': { width: 1536, height: 1024 }, '2:3': { width: 1024, height: 1536 }, '16:9': { width: 1280, height: 720 },
+    };
+    falBody = { prompt, image_size: FLUX_SIZE[aspectRatio] || 'square_hd', num_images: 1, enable_safety_checker: false };
+  } else {
+    falModel = FAL_MODEL;
+    falBody = { prompt, aspect_ratio: aspectRatio, style_type: 'DESIGN', magic_prompt_option: 'OFF', negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text' };
+  }
 
-  const falRes = await fetch(`${FAL_BASE}/${FAL_MODEL}`, {
+  const falRes = await fetch(`${FAL_BASE}/${falModel}`, {
     method: 'POST',
     headers: { 'Authorization': `Key ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(falBody),
@@ -163,7 +198,9 @@ export async function generateFluxCreative(product, logoKey, format = '1x1', opt
 
   const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(60_000) });
   if (!imgRes.ok) throw new Error(`Ошибка загрузки изображения с fal.ai: ${imgRes.status}`);
-  const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+  let imgBuf = Buffer.from(await imgRes.arrayBuffer());
+
+  if (logoKey) imgBuf = await compositeLogoOnImage(imgBuf, logoKey);
 
   await fs.mkdir(UPLOADS_DIR, { recursive: true });
   const filename = `cr_flux_${nanoid(16)}.jpg`;
