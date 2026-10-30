@@ -141,7 +141,13 @@ jobs:
             journalctl -u affiliate-backend -n 50 --no-pager
             exit 1
           fi
-          curl -s -o /dev/null -w "api %{http_code}\n" http://127.0.0.1:4000/api/agent/status'
+          # The service is "active" before it listens: wait for the port instead of failing on the first try.
+          for i in $(seq 1 30); do
+            c=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/api/agent/status || true)
+            [ "$c" != "000" ] && { echo "api $c"; break; }
+            sleep 1
+          done
+          [ "$c" != "000" ] || { echo "backend not listening on :4000"; journalctl -u affiliate-backend -n 50 --no-pager; exit 1; }'
 
       - name: Wire nginx — stub on /, panel under /banana/ (backup, include once, test, rollback)
         run: |
