@@ -187,14 +187,15 @@
 </div>
 
 <script>
-  // Codes are stored as SHA-256 hashes only. This is a doorway, not a lock: the login pages behind it keep their own passwords.
-  const DOORS = {
-    '12b408838e33f12bf8886792e6d44de0d9623e2bbf833b70f9f2e13fdf802706': '/umbrella/login',
-    '0985b889a1fe4f4e1fb925061ac6fb2247f10875f5fcbe63eec2ab55ed68970e': '/banana/login',
-    // Public read-only demos (fake data, nothing is saved).
-    'cf23dc33d6aba13592a72190564ed18b2c0dae295f681ee0fddc4862f01225cf': '/umbrella/demo',
-    '81a83544cf93c245178cbc1620030f1123f435af867c79d87135983c52ab39d9': '/banana/demo/',
-  };
+  // The PIN is checked by the server (POST /_gate/unlock, platform/backend/src/api/routes/gate.js): a right one sets a pass
+  // cookie and names the page to open. The page itself knows neither the PINs nor where they lead.
+  async function unlock(pin) {
+    try {
+      const res = await fetch('/_gate/unlock', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin }), credentials: 'same-origin' });
+      if (res.ok) return { to: (await res.json()).to };
+      return { status: res.status };
+    } catch { return { status: 0 }; }
+  }
   const lcd = document.getElementById('lcd'), red = document.getElementById('red'), green = document.getElementById('green'), pad = document.getElementById('pad');
   let code = '', busy = false;
 
@@ -223,10 +224,6 @@
   };
   const show = (text, small = false) => { lcd.textContent = text; lcd.classList.toggle('small', small); lcd.classList.toggle('err', small); };
   const reset = () => { code = ''; red.classList.remove('on'); green.classList.remove('on'); show('----'); };
-  async function sha256(s) {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  }
   async function press(k) {
     if (busy) return;
     if (k === 'cancel') { sound.key(); return reset(); }
@@ -234,10 +231,14 @@
       sound.key();
       if (!code) return;
       busy = true;
-      const door = DOORS[await sha256(code)];
-      if (door) {
+      const { to, status } = await unlock(code);
+      if (to) {
         green.classList.add('on'); show('OK'); sound.ok();
-        setTimeout(() => { window.location.href = door; }, 700);
+        setTimeout(() => { window.location.href = to; }, 700);
+      } else if (status !== 401) {
+        // 429: too many wrong PINs from here (locked for an hour); anything else: the server did not answer.
+        red.classList.add('on'); show(status === 429 ? 'БЛОК. ЖДИ ЧАС' : 'НЕТ СВЯЗИ', true); sound.error();
+        code = ''; setTimeout(() => { busy = false; }, 1500);
       } else {
         red.classList.add('on'); show('ТВОЙ РОТ ЕБАЛ', true); sound.error();
         pad.classList.remove('shake'); void pad.offsetWidth; pad.classList.add('shake');

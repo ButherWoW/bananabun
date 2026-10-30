@@ -21,6 +21,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H 148.230.98.232 >> ~/.ssh/known_hosts
 
+      - name: PIN doors are configured
+        env:
+          GATE_PINS: ${{ secrets.GATE_PINS }}
+        run: |
+          # Without them every page behind the stub's PIN pad would stay closed for everyone (see routes/gate.js).
+          [ -n "$GATE_PINS" ] || { echo "GitHub secret GATE_PINS is missing"; exit 1; }
+
       - name: Syntax check backend JS
         run: |
           find platform/backend/src -name '*.js' -print0 | xargs -0 node --check
@@ -58,6 +65,7 @@ jobs:
         env:
           TIKTOK_APP_ID: ${{ secrets.TIKTOK_APP_ID }}
           TIKTOK_APP_SECRET: ${{ secrets.TIKTOK_APP_SECRET }}
+          GATE_PINS: ${{ secrets.GATE_PINS }}
         run: |
           # Build env patch file on runner
           cat > /tmp/env.patch << 'EOF'
@@ -68,6 +76,7 @@ jobs:
           EOF
           [ -n "$TIKTOK_APP_ID" ]     && echo "TIKTOK_APP_ID=$TIKTOK_APP_ID"         >> /tmp/env.patch
           [ -n "$TIKTOK_APP_SECRET" ] && echo "TIKTOK_APP_SECRET=$TIKTOK_APP_SECRET" >> /tmp/env.patch
+          echo "GATE_PINS=$GATE_PINS" >> /tmp/env.patch
 
           # Push patch to server
           rsync -az /tmp/env.patch root@148.230.98.232:/tmp/env.patch
@@ -87,6 +96,8 @@ jobs:
               fi
             done < /tmp/env.patch
             rm /tmp/env.patch
+            # Key for the PIN pass cookies: made once on the server, never leaves it.
+            grep -q "^GATE_SECRET=" "$ENV_FILE" || echo "GATE_SECRET=$(openssl rand -hex 32)" >> "$ENV_FILE"
             chown affiliate:affiliate "$ENV_FILE"
             chmod 600 "$ENV_FILE"
             echo "env vars updated"
@@ -176,26 +187,41 @@ jobs:
             fi
             rm -f /tmp/banana-site.bak
             sleep 1
-            code() { curl -s -o /dev/null -w "%{http_code}" -H "Host: nespizdili.lol" "https://127.0.0.1$1" -k; }
+            # Pages behind the PIN need a pass: short ones made on the server from GATE_SECRET (src/gate-pass.js).
+            PASS="$(cd /opt/affiliate/backend && sudo -u affiliate node src/gate-pass.js bl); $(cd /opt/affiliate/backend && sudo -u affiliate node src/gate-pass.js bd)"
+            code() { curl -s -o /dev/null -w "%{http_code}" -b "$PASS" -H "Host: nespizdili.lol" "https://127.0.0.1$1" -k; }
+            bare() { curl -s -o /dev/null -w "%{http_code}" -H "Host: nespizdili.lol" "https://127.0.0.1$1" -k; }
+            echo "without a pass: /banana/login $(bare /banana/login)  /banana/demo/ $(bare /banana/demo/)  /login $(bare /login)  /assets/x.js $(bare /assets/x.js)"
+            for p in /banana/login /banana/products /banana/demo/ /banana/demo/campaigns /login /assets/x.js; do
+              [ "$(bare $p)" = "404" ] || { echo "$p opens without the PIN"; exit 1; }
+            done
             echo "/ $(code /)  /banana/ $(code /banana/)  /banana/products $(code /banana/products)  /banana/api/agent/status $(code /banana/api/agent/status)  /api/agent/status $(code /api/agent/status)"
             [ "$(code /banana/api/agent/status)" = "$(code /api/agent/status)" ] || { echo "/banana/api differs from /api"; exit 1; }
             ROOT=$(curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/)
             echo "$ROOT" | grep -q "<html" && ! echo "$ROOT" | grep -q "/banana/assets/" || { echo "stub not served on /"; exit 1; }
-            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/assets/" || { echo "panel not served under /banana/"; exit 1; }
-            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/login | grep -q "<title>Banana Platform</title>" || { echo "panel index.html is stale"; exit 1; }
+            curl -sk -b "$PASS" -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/assets/" || { echo "panel not served under /banana/"; exit 1; }
+            curl -sk -b "$PASS" -H "Host: nespizdili.lol" https://127.0.0.1/banana/login | grep -q "<title>Banana Platform</title>" || { echo "panel index.html is stale"; exit 1; }
             curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/wrong-pin | grep -q "wrong-pin.webp" || { echo "/wrong-pin not served"; exit 1; }
             [ "$(code /_stub/bg-desktop.webp)" = "200" ] && [ "$(code /_stub/bg-mobile.jpg)" = "200" ] || { echo "stub background not served under /_stub/"; exit 1; }
             echo "/banana/demo/ $(code /banana/demo/)  /banana/demo/campaigns $(code /banana/demo/campaigns)"
             [ "$(code /banana/demo/)" = "200" ] && [ "$(code /banana/demo/campaigns)" = "200" ] || { echo "demo not served under /banana/demo/"; exit 1; }
-            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/demo/ | grep -q "/banana/demo/assets/" || { echo "/banana/demo/ is not the demo build"; exit 1; }
-            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/demo/assets/" && { echo "panel serves the demo build"; exit 1; } || true'
+            curl -sk -b "$PASS" -H "Host: nespizdili.lol" https://127.0.0.1/banana/demo/ | grep -q "/banana/demo/assets/" || { echo "/banana/demo/ is not the demo build"; exit 1; }
+            curl -sk -b "$PASS" -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/demo/assets/" && { echo "panel serves the demo build"; exit 1; } || true'
 
-      - name: Check the public demo from outside
+      - name: Check the PIN door and the demo from outside
+        env:
+          GATE_PINS: ${{ secrets.GATE_PINS }}
         run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://nespizdili.lol/banana/demo/)
+          [ "$code" = "404" ] || { echo "/banana/demo/ answers $code without the PIN"; exit 1; }
+          # The real way in: the demo PIN typed on the stub (a right PIN is never counted as an attempt).
+          PIN=$(echo "$GATE_PINS" | tr ',' '\n' | sed -n 's/^ *\([0-9]*\):bd *$/\1/p' | head -1)
+          [ -n "$PIN" ] || { echo "GATE_PINS has no bd door"; exit 1; }
           for i in 1 2 3 4 5; do
-            code=$(curl -s -o /tmp/demo.html -w "%{http_code}" https://nespizdili.lol/banana/demo/ || true)
-            [ "$code" = "200" ] && grep -q "/banana/demo/assets/" /tmp/demo.html && { echo "demo ok"; exit 0; }
+            to=$(curl -s -c /tmp/jar -H 'content-type: application/json' -d "{\"pin\":\"$PIN\"}" https://nespizdili.lol/_gate/unlock || true)
+            code=$(curl -s -b /tmp/jar -o /tmp/demo.html -w "%{http_code}" https://nespizdili.lol/banana/demo/ || true)
+            echo "$to" | grep -q '"/banana/demo/"' && [ "$code" = "200" ] && grep -q "/banana/demo/assets/" /tmp/demo.html && { echo "PIN door and demo ok"; exit 0; }
             echo "demo: $code, retry $i"; sleep 3
           done
-          echo "https://nespizdili.lol/banana/demo/ is not the demo build"; exit 1
+          echo "the demo PIN does not open https://nespizdili.lol/banana/demo/"; exit 1
 
