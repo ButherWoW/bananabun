@@ -147,9 +147,10 @@ export async function analyticsRoutes(app) {
   });
 
   app.get('/landing-behavior', auth, async (req, reply) => {
-    const { from, to, campaign, top } = req.query;
+    const { from, to, campaign, template, top } = req.query;
     if (!DAY.test(from || '') || !DAY.test(to || '')) return reply.status(400).send({ error: 'from и to — даты YYYY-MM-DD' });
-    return landingBehavior(req.user, { from, to, campaigns: campaignList(campaign), top: Math.min(Number(top) || 8, 30) });
+    const templates = template ? String(template).split(',').map(x => x.trim()).filter(x => /^[A-Za-z0-9_-]{1,40}$/.test(x)) : null;
+    return landingBehavior(req.user, { from, to, campaigns: campaignList(campaign), templates: templates?.length ? templates : null, top: Math.min(Number(top) || 8, 30) });
   });
 
   // Keitaro rows with the extra keys needed for buyer attribution and the buyer's own scope.
