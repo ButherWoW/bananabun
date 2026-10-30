@@ -11,7 +11,6 @@ process.env.CF_ACCESS_CLIENT_ID = 'test-id';
 process.env.CF_ACCESS_CLIENT_SECRET = 'test-secret';
 const dir = await mkdtemp(join(tmpdir(), 'bananabun-own-'));
 process.env.UPLOADS_DIR = dir;
-const fa = await import('../src/services/fa-client.js');
 const { currentEngine } = await import('../src/services/engine.js');
 const { creativePlan } = await import('../src/services/creative-plan.js');
 const { creativeRoutes, startGeneration } = await import('../src/api/routes/creatives.js');
@@ -41,12 +40,7 @@ globalThis.fetch = async () => { calls++; throw new Error('Unexpected external r
 
 test('old FA configuration cannot enable external requests or paid actions', async () => {
   assert.equal(currentEngine(), 'own');
-  assert.equal(fa.faAvailable(), false);
-  assert.equal(fa.faImagesAvailable(), false);
-  for (const [name, fn] of Object.entries(fa)) {
-    if (name === 'faAvailable' || name === 'faImagesAvailable') continue;
-    await assert.rejects(fn({}), { code: 'FA_DISABLED', statusCode: 410 });
-  }
+  await assert.rejects(import('../src/services/fa-client.js'), { code: 'ERR_MODULE_NOT_FOUND' });
   assert.equal(calls, 0);
 });
 test('quantity 8 creates eight plans; boundaries and unsupported input are rejected', () => {

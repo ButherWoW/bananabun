@@ -108,40 +108,6 @@ const PUSH_STATUS = {
   error: ['Ошибка', 'text-red-400'],
 };
 
-function HistoryPanel({ campaignId }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['campaign-history', campaignId],
-    queryFn: () => campaignsApi.history(campaignId),
-    retry: 1,
-    staleTime: 300000,
-  });
-
-  if (isLoading) return (
-    <tr><td colSpan={11} className="px-10 py-3 bg-[color:var(--c070916)]">
-      <span className="text-xs text-gray-600 animate-pulse">Загрузка истории...</span>
-    </td></tr>
-  );
-  if (error || !data?.events?.length) return (
-    <tr><td colSpan={11} className="px-10 py-3 bg-[color:var(--c070916)]">
-      <span className="text-xs text-gray-600">История недоступна</span>
-    </td></tr>
-  );
-  return data.events.slice(0, 10).map((e, i) => (
-    <tr key={i} className="bg-[color:var(--c070916)] border-b border-[color:var(--c141628)]">
-      <td className="px-4 py-2" />
-      <td colSpan={3} className="px-2 py-2">
-        <div className="flex items-center gap-2 pl-6">
-          <span className="text-xs text-gray-500 font-mono">{e.at ? new Date(e.at).toLocaleDateString('ru-RU') : ''}</span>
-          <span className="text-xs text-gray-400">{e.action || e.type || e.event || JSON.stringify(e).slice(0, 60)}</span>
-        </div>
-      </td>
-      <td colSpan={8} className="px-4 py-2 text-xs text-gray-600 text-right">
-        {e.user || e.author || ''}
-      </td>
-    </tr>
-  ));
-}
-
 const MODERATION_COLOR = { approved: 'text-emerald-400/80', review: 'text-yellow-400', rejected: 'text-red-400', issues: 'text-orange-400' };
 
 // Adsets and ads of our own FB list: every edit goes to the profile through the Mac agent.
@@ -384,153 +350,6 @@ function FbHistoryPanel({ campaignId }) {
       )}
     </td></tr>
   );
-}
-
-function AdsetsPanel({ campaignId }) {
-  const [renaming, setRenaming] = useState(null);
-  const [budgetEdit, setBudgetEdit] = useState(null);
-  const queryClient = useQueryClient();
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['campaign-ads', campaignId],
-    queryFn: () => campaignsApi.ads(campaignId),
-    retry: 1,
-    staleTime: 120000,
-  });
-
-  const renameMutation = useMutation({
-    mutationFn: ({ adsetId, name }) => campaignsApi.renameAdset(campaignId, { adset_id: adsetId, name }),
-    onSuccess: () => {
-      setRenaming(null);
-      queryClient.invalidateQueries({ queryKey: ['campaign-ads', campaignId] });
-    },
-  });
-
-  const budgetMutation = useMutation({
-    mutationFn: ({ adsetId, budget }) => campaignsApi.setBudget(campaignId, { adset_id: adsetId, budget: Number(budget) }),
-    onSuccess: () => {
-      setBudgetEdit(null);
-      queryClient.invalidateQueries({ queryKey: ['campaign-ads', campaignId] });
-    },
-  });
-
-  if (isLoading) return (
-    <tr><td colSpan={11} className="px-10 py-3 bg-[color:var(--c070916)]">
-      <span className="text-xs text-gray-600 animate-pulse">Загрузка адсетов...</span>
-    </td></tr>
-  );
-  if (error || !data) return (
-    <tr><td colSpan={11} className="px-10 py-3 bg-[color:var(--c070916)]">
-      <span className="text-xs text-gray-600">Данные Facebook недоступны</span>
-    </td></tr>
-  );
-
-  const adsets = Array.isArray(data) ? data : (data.adsets || data.data || []);
-  if (!adsets.length) return (
-    <tr><td colSpan={11} className="px-10 py-3 bg-[color:var(--c070916)]">
-      <span className="text-xs text-gray-600">Адсетов нет</span>
-    </td></tr>
-  );
-
-  return adsets.map((as, i) => {
-    const ads = Array.isArray(as.ads) ? as.ads : [];
-    const spend = Number(as.spend || as.amount_spent || 0);
-    const impressions = Number(as.impressions || 0);
-    const clicks = Number(as.clicks || 0);
-    const leads = Number(as.leads || as.actions?.find?.(a => a.action_type === 'lead')?.value || 0);
-    const isRenaming = renaming?.adsetId === as.id;
-    const isBudgetEdit = budgetEdit?.adsetId === as.id;
-    return (
-      <React.Fragment key={as.id || i}>
-        <tr className="bg-[color:var(--c070916)] border-b border-[color:var(--c141628)]">
-          <td className="px-4 py-2" />
-          <td colSpan={2} className="px-2 py-2">
-            <div className="flex items-center gap-2 pl-6">
-              <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0',
-                as.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-yellow-500'
-              )} />
-              {isRenaming ? (
-                <form onSubmit={(e) => { e.preventDefault(); renameMutation.mutate({ adsetId: as.id, name: renaming.name }); }}
-                      className="flex gap-1 flex-1">
-                  <input autoFocus value={renaming.name}
-                    onChange={e => setRenaming(r => ({ ...r, name: e.target.value }))}
-                    className="flex-1 min-w-0 bg-[color:var(--c0e1221)] border border-indigo-500/40 rounded px-2 py-0.5 text-xs text-white"
-                  />
-                  <button type="submit" disabled={renameMutation.isPending}
-                    className="text-[10px] px-1.5 py-0.5 bg-indigo-600/40 text-indigo-300 rounded flex-shrink-0">
-                    {renameMutation.isPending ? '…' : '✓'}
-                  </button>
-                  <button type="button" onClick={() => setRenaming(null)} className="text-[10px] px-1 text-gray-500 flex-shrink-0">✕</button>
-                </form>
-              ) : (
-                <>
-                  <span className="text-xs text-gray-300 font-medium truncate max-w-[180px]">{as.name || `Adset ${as.id}`}</span>
-                  {ads.length > 0 && <span className="text-[10px] text-gray-600">{ads.length} объяв.</span>}
-                  {as.id && (
-                    <button onClick={() => setRenaming({ adsetId: as.id, name: as.name || '' })}
-                      className="text-[10px] text-gray-700 hover:text-gray-400 flex-shrink-0 ml-0.5" title="Переименовать">✎</button>
-                  )}
-                </>
-              )}
-            </div>
-          </td>
-          <td className="px-4 py-2 text-right text-xs text-gray-400">{spend > 0 ? `${spend.toFixed(2)}€` : '—'}</td>
-          <td className="px-4 py-2 text-right text-xs text-gray-600">{impressions > 0 ? impressions.toLocaleString() : '—'}</td>
-          <td className="px-4 py-2 text-right text-xs text-gray-600">{clicks > 0 ? clicks : '—'}</td>
-          <td className="px-4 py-2 text-right text-xs text-blue-400">{leads > 0 ? leads : '—'}</td>
-          <td colSpan={5} className="px-4 py-2 text-right">
-            {isBudgetEdit ? (
-              <form onSubmit={(e) => { e.preventDefault(); budgetMutation.mutate({ adsetId: as.id, budget: budgetEdit.budget }); }}
-                    className="flex gap-1 justify-end">
-                <input autoFocus type="number" min="1" value={budgetEdit.budget}
-                  onChange={e => setBudgetEdit(b => ({ ...b, budget: e.target.value }))}
-                  className="w-20 bg-[color:var(--c0e1221)] border border-indigo-500/40 rounded px-2 py-0.5 text-xs text-white text-right"
-                />
-                <button type="submit" disabled={budgetMutation.isPending}
-                  className="text-[10px] px-1.5 py-0.5 bg-indigo-600/40 text-indigo-300 rounded">
-                  {budgetMutation.isPending ? '…' : '✓'}
-                </button>
-                <button type="button" onClick={() => setBudgetEdit(null)} className="text-[10px] px-1 text-gray-500">✕</button>
-              </form>
-            ) : (
-              <div className="flex items-center gap-1.5 justify-end">
-                {as.id && (
-                  <button onClick={() => setBudgetEdit({ adsetId: as.id, budget: as.budget || as.daily_budget || '' })}
-                    className="text-[10px] text-gray-700 hover:text-emerald-400 transition-colors" title="Бюджет">💰</button>
-                )}
-                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded',
-                  as.status === 'ACTIVE' ? 'bg-emerald-900/40 text-emerald-400' : 'bg-gray-800 text-gray-500'
-                )}>
-                  {as.status === 'ACTIVE' ? 'вкл' : (as.status || 'выкл').toLowerCase()}
-                </span>
-              </div>
-            )}
-          </td>
-        </tr>
-        {ads.map((ad, j) => (
-          <tr key={ad.id || j} className="bg-[color:var(--c060813)] border-b border-[color:var(--c0f1225)]">
-            <td className="px-4 py-1.5" />
-            <td colSpan={2} className="px-2 py-1.5">
-              <div className="flex items-center gap-2 pl-12">
-                <span className={clsx('w-1 h-1 rounded-full flex-shrink-0',
-                  ad.status === 'ACTIVE' ? 'bg-emerald-600' : 'bg-gray-700'
-                )} />
-                <span className="text-[11px] text-gray-500 truncate max-w-[180px]">{ad.name || `Ad ${ad.id}`}</span>
-              </div>
-            </td>
-            <td className="px-4 py-1.5 text-right text-[11px] text-gray-600">{Number(ad.spend || 0) > 0 ? `${Number(ad.spend).toFixed(2)}€` : ''}</td>
-            <td colSpan={8} className="px-4 py-1.5 text-right">
-              <span className={clsx('text-[10px] px-1 py-0.5 rounded',
-                ad.status === 'ACTIVE' ? 'bg-emerald-900/30 text-emerald-500' : 'bg-gray-800/60 text-gray-600'
-              )}>
-                {ad.status === 'ACTIVE' ? 'вкл' : (ad.status || 'выкл').toLowerCase()}
-              </span>
-            </td>
-          </tr>
-        ))}
-      </React.Fragment>
-    );
-  });
 }
 
 function StreamRows({ campaignId }) {
@@ -826,49 +645,27 @@ export default function CampaignsPage() {
 
   const [hints, setHints] = useState({});
 
+  // Latest line of our own campaign history (pushes and edits); only campaigns of our FB list have one.
   const loadHint = async (campaignId) => {
     if (hints[campaignId] !== undefined) return;
+    if (allCampaigns.find(c => c.id === campaignId)?.source !== 'fb') { setHints(h => ({ ...h, [campaignId]: null })); return; }
     setHints(h => ({ ...h, [campaignId]: 'loading' }));
     try {
-      const data = await campaignsApi.history(campaignId);
-      const events = Array.isArray(data) ? data : (data.events || data.history || []);
-      const latest = events[0];
-      setHints(h => ({ ...h, [campaignId]: latest?.event || latest?.action || latest?.description || 'Нет данных' }));
+      const data = await campaignsApi.fbHistory(campaignId);
+      setHints(h => ({ ...h, [campaignId]: data?.events?.[0]?.text || null }));
     } catch {
       setHints(h => ({ ...h, [campaignId]: null }));
     }
   };
 
-  const [editingBudget, setEditingBudget] = useState(null);
-  const [budgetInput, setBudgetInput] = useState('');
   const [renamingId, setRenamingId] = useState(null);
   const [renameInput, setRenameInput] = useState('');
-  const [targetingId, setTargetingId] = useState(null);
-  const [targetingForm, setTargetingForm] = useState({ age_min: 25, age_max: 65, genders: 'all', countries: '' });
-  const [applyPresetId, setApplyPresetId] = useState(null);
-  const [selectedPreset, setSelectedPreset] = useState('');
 
-  const setBudgetMutation = useMutation({
-    mutationFn: ({ id, budget }) => campaignsApi.setBudget(id, budget),
-    onSuccess: () => {
-      setEditingBudget(null);
-      qc.invalidateQueries(['campaigns']);
-    },
-  });
-
-  const duplicateMutation = useMutation({
-    mutationFn: (id) => campaignsApi.duplicate(id),
-    onSuccess: () => qc.invalidateQueries(['campaigns']),
-  });
-
+  // Renaming goes to the campaign in Facebook through the profile; only rows of our FB list have one.
   const renameMutation = useMutation({
     mutationFn: async ({ id, name }) => {
-      const row = allCampaigns.find(c => c.id === id);
-      if (row?.source === 'fb') {
-        await waitAgentJob((await campaignsApi.fbEdit(id, { name })).job_id);
-        return qc.invalidateQueries({ queryKey: ['campaigns', 'fb'] });
-      }
-      return campaignsApi.rename(id, name);
+      await waitAgentJob((await campaignsApi.fbEdit(id, { name })).job_id);
+      return qc.invalidateQueries({ queryKey: ['campaigns', 'fb'] });
     },
     onSuccess: () => {
       setRenamingId(null);
@@ -876,37 +673,20 @@ export default function CampaignsPage() {
     },
   });
 
-  const setTargetingMutation = useMutation({
-    mutationFn: ({ id, targeting }) => campaignsApi.setTargeting(id, targeting),
-    onSuccess: () => { setTargetingId(null); qc.invalidateQueries(['campaigns']); },
-  });
-
-  // Our FB rows go to the profiles through the agent (one job per profile); the rest keeps the old route.
+  // Budgets live in Facebook: they change through the profiles (one agent job per profile), our FB list only.
   const bulkEditMutation = useMutation({
     mutationFn: async ({ ids, action, value }) => {
       const byId = new Map(allCampaigns.map(c => [c.id, c]));
-      if (ids.every(id => byId.get(id)?.source === 'fb')) {
-        if (!window.confirm(`Бюджет адсетов ${value > 0 ? '+' : ''}${value} % у ${ids.length} кампаний?`)) return;
-        const { job_ids } = await campaignsApi.fbBulk({ ids, action, value });
-        await Promise.all(job_ids.map(id => waitAgentJob(id, { timeoutMs: 600000 })));
-        qc.invalidateQueries({ queryKey: ['campaigns', 'fb'] });
-        return;
+      if (!ids.every(id => byId.get(id)?.source === 'fb')) {
+        throw new Error('Бюджет меняется только у кампаний из Facebook — нажмите «Обновить из Facebook» и выберите их там');
       }
-      return campaignsApi.bulkEdit(ids, action, value);
+      if (!window.confirm(`Бюджет адсетов ${value > 0 ? '+' : ''}${value} % у ${ids.length} кампаний?`)) return;
+      const { job_ids } = await campaignsApi.fbBulk({ ids, action, value });
+      await Promise.all(job_ids.map(id => waitAgentJob(id, { timeoutMs: 600000 })));
+      qc.invalidateQueries({ queryKey: ['campaigns', 'fb'] });
     },
     // A failure is shown by the global mutation toast (main.jsx).
     onSuccess: () => { setSelectedIds(new Set()); qc.invalidateQueries(['campaigns']); },
-  });
-
-  const applyAdSettingsMutation = useMutation({
-    mutationFn: ({ id, preset }) => campaignsApi.applyAdSettings(id, preset),
-    onSuccess: () => { setApplyPresetId(null); setSelectedPreset(''); },
-  });
-
-  const { data: adPresetsList = [] } = useQuery({
-    queryKey: ['ad-settings'],
-    queryFn: adSettingsApi.list,
-    staleTime: 60000,
   });
 
   const bulkStatusMutation = useMutation({
@@ -1181,11 +961,13 @@ export default function CampaignsPage() {
                             <div className="text-sm text-gray-200 font-medium truncate max-w-[260px]" title={c.name}>{c.display || c.name}</div>
                             {c.geo && <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold', geoColor(c.geo))}>{c.geo.toUpperCase()}</span>}
                             {c.group && <span className={clsx('text-[10px] px-1.5 py-0.5 rounded', buyerColor(c.group))}>{c.group}</span>}
-                            <button
-                              onClick={e => { e.stopPropagation(); setRenameInput(c.name); setRenamingId(c.id); }}
-                              className="opacity-0 group-hover/name:opacity-100 text-gray-600 hover:text-gray-400 text-[10px] transition-opacity"
-                              title="Переименовать"
-                            >✏</button>
+                            {c.source === 'fb' && (
+                              <button
+                                onClick={e => { e.stopPropagation(); setRenameInput(c.name); setRenamingId(c.id); }}
+                                className="opacity-0 group-hover/name:opacity-100 text-gray-600 hover:text-gray-400 text-[10px] transition-opacity"
+                                title="Переименовать в Facebook"
+                              >✏</button>
+                            )}
                           </div>
                         )}
                         <div className="flex items-center gap-1.5 mt-0.5"
@@ -1297,9 +1079,9 @@ export default function CampaignsPage() {
                     <tr className="bg-[color:var(--c070916)]">
                       <td colSpan={4 + visibleCols.size} className="px-10 py-1">
                         <div className="flex gap-2 mt-1">
-                          {(c.source === 'fb' ? ['summary', 'adsets', 'landing', 'history'] : ['streams', 'adsets', 'history']).map(t => {
+                          {(c.source === 'fb' ? ['summary', 'adsets', 'landing', 'history'] : ['streams']).map(t => {
                             const fbTab = ['summary', 'adsets', 'landing', 'history'].includes(expandTab) ? expandTab : 'summary';
-                            const active = c.source === 'fb' ? fbTab === t : expandTab === t;
+                            const active = c.source === 'fb' ? fbTab === t : true;
                             return (
                               <button key={t} onClick={() => setExpandTab(t)}
                                 className={clsx('text-xs px-2.5 py-1 rounded transition-colors',
@@ -1309,6 +1091,9 @@ export default function CampaignsPage() {
                               </button>
                             );
                           })}
+                          {c.source !== 'fb' && (
+                            <span className="text-[11px] text-gray-600 self-center">Состав, правки и история FB — после «Обновить из Facebook»</span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1317,7 +1102,7 @@ export default function CampaignsPage() {
                         : expandTab === 'adsets' ? <FbAdsetsPanel campaign={c} />
                         : expandTab === 'landing' ? <FbLandingPanel campaignId={c.id} />
                         : <FbSummaryPanel campaignId={c.id} />)
-                      : expandTab === 'streams' ? <StreamRows campaignId={c.id} /> : expandTab === 'adsets' ? <AdsetsPanel campaignId={c.id} /> : <HistoryPanel campaignId={c.id} />}
+                      : <StreamRows campaignId={c.id} />}
                   </>
                 )}
               </React.Fragment>
@@ -1551,93 +1336,6 @@ export default function CampaignsPage() {
         <PushWizard initialPreset={wizardPreset || undefined} onClose={() => setWizardPreset(undefined)} />
       )}
 
-      {applyPresetId && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setApplyPresetId(null)}>
-          <div className="bg-[color:var(--c0e1221)] border border-[color:var(--c2d3148)] rounded-xl p-6 w-80 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
-              <div className="text-sm font-semibold text-white">Применить пресет</div>
-              <button onClick={() => setApplyPresetId(null)} className="text-gray-600 hover:text-white">✕</button>
-            </div>
-            <div className="flex flex-col gap-4">
-              <select
-                value={selectedPreset}
-                onChange={e => setSelectedPreset(e.target.value)}
-                className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="">Выбери пресет...</option>
-                {adPresetsList.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              {selectedPreset && adPresetsList.find(p => p.id === selectedPreset) && (() => {
-                const p = adPresetsList.find(x => x.id === selectedPreset);
-                return (
-                  <div className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-lg p-3 text-xs text-gray-400 grid grid-cols-2 gap-1">
-                    <span>Бюджет: <b className="text-white">{p.budget}€</b></span>
-                    <span>Ставка: <b className="text-white">{p.bid_amount}€</b></span>
-                    <span>Возраст: <b className="text-white">{p.age_min}–{p.age_max}</b></span>
-                    <span>Адсеты: <b className="text-white">×{p.adsets_count}</b></span>
-                  </div>
-                );
-              })()}
-              <button
-                onClick={() => applyAdSettingsMutation.mutate({ id: applyPresetId, preset: selectedPreset })}
-                disabled={!selectedPreset || applyAdSettingsMutation.isPending}
-                className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors"
-              >
-                {applyAdSettingsMutation.isPending ? 'Применяю...' : 'Применить'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {targetingId && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setTargetingId(null)}>
-          <div className="bg-[color:var(--c0e1221)] border border-[color:var(--c2d3148)] rounded-xl p-6 w-80 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
-              <div className="text-sm font-semibold text-white">Таргетинг кампании</div>
-              <button onClick={() => setTargetingId(null)} className="text-gray-600 hover:text-white">✕</button>
-            </div>
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-gray-500 uppercase tracking-wide">Возраст от</label>
-                  <input type="number" value={targetingForm.age_min} onChange={e => setTargetingForm(f => ({ ...f, age_min: Number(e.target.value) }))}
-                    className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" min={18} max={65} />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-gray-500 uppercase tracking-wide">Возраст до</label>
-                  <input type="number" value={targetingForm.age_max} onChange={e => setTargetingForm(f => ({ ...f, age_max: Number(e.target.value) }))}
-                    className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" min={18} max={65} />
-                </div>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-gray-500 uppercase tracking-wide">Пол</label>
-                <select value={targetingForm.genders} onChange={e => setTargetingForm(f => ({ ...f, genders: e.target.value }))}
-                  className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
-                  <option value="all">Все</option>
-                  <option value="male">Мужчины</option>
-                  <option value="female">Женщины</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-gray-500 uppercase tracking-wide">Страны (через запятую)</label>
-                <input type="text" value={targetingForm.countries} onChange={e => setTargetingForm(f => ({ ...f, countries: e.target.value }))}
-                  placeholder="FR, BE, CH"
-                  className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 placeholder-gray-600" />
-              </div>
-              <button
-                onClick={() => setTargetingMutation.mutate({ id: targetingId, targeting: { ...targetingForm, countries: targetingForm.countries.split(',').map(s => s.trim()).filter(Boolean) } })}
-                disabled={setTargetingMutation.isPending}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors"
-              >
-                {setTargetingMutation.isPending ? 'Применяю...' : 'Применить таргетинг'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

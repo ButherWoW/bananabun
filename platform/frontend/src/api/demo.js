@@ -588,8 +588,6 @@ const GET = [
     { at: iso(2 * DAY), text: 'Дубль адсета «35–65 женщины»', result: 'failed', error: 'Лимит адсетов кабинета (демо)', user_name: 'Demo Buyer 1' },
     { at: fbSummary(id).created_time, text: 'Залита платформой', result: 'done', error: null, user_name: 'Demo Owner' },
   ] })],
-  [/^\/api\/campaigns\/([^/]+)\/history$/, () => ({ events: [{ at: iso(DAY), event: 'Залита платформой', user: 'Demo Owner' }] })],
-  [/^\/api\/campaigns\/([^/]+)\/ads$/, () => ({ adsets: [] })],
   [/^\/api\/search\/history$/, () => [
     { queries: ['lampe solaire jardin', 'guirlande solaire'], marketplace: 'fr', results_count: 48 },
     { queries: ['organiseur tiroir bambou'], marketplace: 'fr', results_count: 31 },

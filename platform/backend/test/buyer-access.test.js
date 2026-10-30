@@ -58,6 +58,9 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     INSERT INTO fb_accounts(id,workspace_id,ap_profile_id) VALUES ('fba','w1','apa'),('fbb','w1','apb');
     INSERT INTO fb_cabinets(id,workspace_id,fb_account_id,external_id,name) VALUES
       ('cab_a1','w1','fba','act_111','A1'),('cab_a2','w1','fba','act_222','A2'),('cab_b','w1','fbb','act_333','B');
+    INSERT INTO fb_campaigns(id,workspace_id,fb_account_id,act_id,name,status,currency,adsets) VALUES
+      ('fbc_a','w1','fba','act_111','A camp','PAUSED','EUR','[{"id":"as_a","name":"A #1","daily_budget":1000,"ads":[{"id":"ad_a","name":"A ad"}]}]'),
+      ('fbc_b','w1','fbb','act_333','B camp','PAUSED','EUR','[{"id":"as_b","name":"B #1","daily_budget":1000,"ads":[{"id":"ad_b","name":"B ad"}]}]');
   `);
   const users = Object.fromEntries((await db.query('SELECT id,workspace_id AS ws,role,email FROM users')).rows.map(u => [u.id, u]));
   app.decorate('authenticate', async (req, reply) => {
@@ -68,7 +71,7 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     ['products','productRoutes','products'], ['creatives','creativeRoutes','creatives'], ['push','pushRoutes','push'],
     ['folders','folderRoutes','folders'], ['presets','presetRoutes','presets'], ['landings','landingRoutes','landings'],
     ['search','searchRoutes','search'], ['adSettings','adSettingsRoutes','ad-settings'], ['adpresets','adPresetRoutes','ad-presets'], ['analytics','analyticsRoutes','analytics'],
-    ['tiktok','tiktokRoutes','tiktok'], ['team','teamRoutes','team'], ['admin','adminRoutes','admin'],
+    ['tiktok','tiktokRoutes','tiktok'], ['team','teamRoutes','team'], ['admin','adminRoutes','admin'], ['campaigns','campaignRoutes','campaigns'],
   ]) app.register((await import(`../src/api/routes/${name}.js`))[exported], { prefix: `/api/${prefix}` });
   await app.ready();
   const req = (method, path, user = 'a', payload) => app.inject({ method, url: path, headers: { 'x-test-user': user }, payload });
@@ -268,6 +271,36 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     assert.equal(row.status,'done');
     assert.equal(Number((await db.query("SELECT COUNT(*) FROM pushes WHERE params->>'campaign_id'='c1'")).rows[0].count),1);
     assert.equal((await req('POST','/api/tiktok/push','a',{ ...body,resume_push_id:failed.id })).statusCode,409,'a finished push is not resumed again');
+  });
+  await t.test('FB campaigns: edits go through our own routes, a buyer cannot touch another buyer\'s campaign', async () => {
+    for (const [method, path, payload] of [
+      ['POST','/api/campaigns/fb/fbc_b/edit',{ status:'PAUSED' }],
+      ['POST','/api/campaigns/fb/fbc_b/edit',{ adset_id:'as_b',daily_budget:20 }],
+      ['POST','/api/campaigns/fb/fbc_b/duplicate',{ level:'adset',row_id:'as_b' }],
+      ['POST','/api/campaigns/fb/fbc_b/apply-preset',{ adset_id:'as_b',preset_id:'asa' }],
+      ['POST','/api/campaigns/fb/bulk',{ ids:['fbc_a','fbc_b'],action:'budget_pct',value:20 }],
+      ['POST','/api/campaigns/fb/archive',{ ids:['fbc_b'] }],
+      ['GET','/api/campaigns/fb/fbc_b/history'],
+    ]) await denied(method,path,payload);
+    const jobsBefore = Number((await db.query("SELECT COUNT(*) FROM agent_jobs WHERE type='fb_edit'")).rows[0].count);
+    assert.equal(jobsBefore,0,'a refused edit queues nothing for the agent');
+    const own = await req('POST','/api/campaigns/fb/fbc_a/edit','a',{ adset_id:'as_a',daily_budget:15 });
+    assert.equal(own.statusCode,200,own.body);
+    const job = (await db.query("SELECT payload FROM agent_jobs WHERE type='fb_edit'")).rows[0];
+    assert.deepEqual(job.payload.ops,[{ id:'as_a',daily_budget:1500 }]);
+    assert.equal((await req('POST','/api/campaigns/fb/fbc_a/edit','a',{ status:'ACTIVE' })).statusCode,400,'switching on needs confirm');
+    assert.equal((await get('/api/campaigns/fb/fbc_a/history')).events.length,1);
+    assert.equal((await req('POST','/api/campaigns/fb/fbc_b/edit','owner',{ name:'Renamed' })).statusCode,200,'owner edits any campaign of the team');
+    await db.query("DELETE FROM agent_jobs WHERE type='fb_edit'");
+  });
+  await t.test('old FA campaign routes are gone and a campaign cannot be linked to someone else\'s FB id', async () => {
+    for (const [method, path] of [['GET','/api/campaigns/fbc_a/history'],['GET','/api/campaigns/fbc_a/ads'],['POST','/api/campaigns/fbc_a/set-budget'],
+      ['POST','/api/campaigns/fbc_a/rename-adset'],['POST','/api/campaigns/fbc_a/duplicate'],['POST','/api/campaigns/fbc_a/rename'],
+      ['POST','/api/campaigns/fbc_a/set-targeting'],['POST','/api/campaigns/fbc_a/apply-ad-settings'],['POST','/api/campaigns/bulk-edit']]) {
+      assert.equal((await req(method,path,'owner',{})).statusCode,404,path);
+    }
+    assert.equal((await req('PATCH','/api/campaigns/cmpa','a',{ fb_campaign_id:'fbc_b' })).statusCode,200);
+    assert.equal((await db.findOne('campaigns',{ id:'cmpa' })).fb_campaign_id,null);
   });
   await t.test('an email differing only in case cannot be registered twice', async () => {
     const invite = await req('POST','/api/team/invite','owner',{ email:'A@Test.Invalid',name:'Copy',password:'secret1',role:'buyer' });
