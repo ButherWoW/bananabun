@@ -6,6 +6,7 @@ import ProductSidePanel, { NewProductPanel } from '../components/ProductSidePane
 import GenerateCreativesModal from '../components/GenerateCreativesModal.jsx';
 import GenerateLandingModal from '../components/GenerateLandingModal.jsx';
 import clsx from 'clsx';
+import Hint from '../components/Hint.jsx';
 
 const PLATFORMS = [
   { name: 'Amazon', source: 'amazon' },
@@ -61,7 +62,7 @@ function NewBundlePresetForm({ onCancel, onSaved }) {
           <input value={name} onChange={e => setName(e.target.value)} placeholder="1 / 2+1 · EUR" className={inputCls} autoFocus />
         </div>
         <div>
-          <label className="block text-[11px] text-gray-500 mb-1">Валюта</label>
+          <label className="block text-[11px] text-gray-500 mb-1">Валюта<Hint k="p.currency" /></label>
           <select value={currency} onChange={e => setCurrency(e.target.value)} className={inputCls}>
             {['EUR', 'USD', 'GBP', 'PLN', 'CHF'].map(c => <option key={c}>{c}</option>)}
           </select>
@@ -72,15 +73,15 @@ function NewBundlePresetForm({ onCancel, onSaved }) {
         <div key={i} className="flex flex-col gap-2 border-t border-[color:var(--c1e2540)] pt-3 first-of-type:border-0">
           <div className="grid grid-cols-[1fr_1fr_1fr_32px] gap-2 items-end">
             <div>
-              <label className="block text-[11px] text-gray-500 mb-1">Старая цена</label>
+              <label className="block text-[11px] text-gray-500 mb-1">Старая цена<Hint k="p.oldPrice" /></label>
               <input value={r.old_price} onChange={e => setRow(i, 'old_price', e.target.value)} placeholder="нет скидки" className={inputCls} inputMode="decimal" />
             </div>
             <div>
-              <label className="block text-[11px] text-gray-500 mb-1">Новая цена</label>
+              <label className="block text-[11px] text-gray-500 mb-1">Новая цена<Hint k="p.newPrice" /></label>
               <input value={r.price} onChange={e => setRow(i, 'price', e.target.value)} placeholder="19.99" className={inputCls} inputMode="decimal" />
             </div>
             <div>
-              <label className="block text-[11px] text-gray-500 mb-1">Количество</label>
+              <label className="block text-[11px] text-gray-500 mb-1">Количество<Hint k="p.qty" /></label>
               <input value={r.qty} onChange={e => setRow(i, 'qty', e.target.value)} placeholder="3 или 2+1" className={inputCls} />
             </div>
             <button
@@ -152,7 +153,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
           <p className="text-sm text-gray-400 mb-5">Вставь ссылку на сайт с товаром.</p>
 
           <div className="mb-5">
-            <div className="text-xs text-gray-400 mb-2">Разбор работает с площадками:</div>
+            <div className="text-xs text-gray-400 mb-2">Разбор работает с площадками:<Hint k="p.platforms" /></div>
             <div className="flex flex-wrap gap-2">
               {PLATFORMS.map(p => {
                 const ready = supportedSources.includes(p.source);
@@ -168,7 +169,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
           </div>
 
           <div className="mb-5">
-            <label className="block text-xs text-gray-400 mb-2">Ссылки</label>
+            <label className="block text-xs text-gray-400 mb-2">Ссылки<Hint k="p.links" /></label>
             <div className="flex flex-col gap-2">
               {urls.map((url, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -196,7 +197,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
 
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-gray-400">Пресет комплектов</label>
+              <label className="text-xs text-gray-400">Пресет комплектов<Hint k="p.bundlePreset" /></label>
               {!showNewBundle && (
                 <button
                   type="button"
@@ -225,7 +226,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
 
           <div className="mb-7">
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-gray-400">Пресет креативов</label>
+              <label className="text-xs text-gray-400">Пресет креативов<Hint k="p.creativePreset" /></label>
               <button className="text-xs text-gray-500 hover:text-gray-300 border border-dashed border-[color:var(--c2d3148)] hover:border-[color:var(--c3d4168)] px-2.5 py-1 rounded-lg transition-colors">+ Новый пресет</button>
             </div>
             <select
@@ -502,7 +503,7 @@ function BulkEditModal({ count, onClose, onApply, isPending }) {
         </div>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Статус (пусто = не менять)</label>
+            <label className="block text-xs text-gray-500 mb-1">Статус (пусто = не менять)<Hint k="p.bulkStatus" /></label>
             <select
               value={status}
               onChange={e => setStatus(e.target.value)}
@@ -516,7 +517,7 @@ function BulkEditModal({ count, onClose, onApply, isPending }) {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Теги через запятую (пусто = не менять)</label>
+            <label className="block text-xs text-gray-500 mb-1">Теги через запятую (пусто = не менять)<Hint k="p.bulkTags" /></label>
             <input
               value={tags}
               onChange={e => setTags(e.target.value)}

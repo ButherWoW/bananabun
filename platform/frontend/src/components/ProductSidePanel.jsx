@@ -4,6 +4,7 @@ import { products as productsApi, keitaro as keitaroApi, presets as presetsApi, 
 import clsx from 'clsx';
 import { Link } from 'react-router-dom';
 import { toast } from './Toaster.jsx';
+import Hint from './Hint.jsx';
 
 function RetryButton({ productId, qc }) {
   const mut = useMutation({
@@ -157,7 +158,7 @@ function SpecsEditor({ specs, onChange }) {
   const set = (i, key, val) => onChange(specs.map((s, idx) => idx === i ? { ...s, [key]: val } : s));
   return (
     <div>
-      <label className="block text-xs text-gray-400 font-medium mb-1.5">Характеристики</label>
+      <label className="block text-xs text-gray-400 font-medium mb-1.5">Характеристики<Hint k="pp.specs" /></label>
       <div className="flex flex-col gap-2">
         {specs.map((s, i) => (
           <div key={i} className="grid grid-cols-[1fr_1.4fr_28px] gap-2">
@@ -207,11 +208,11 @@ export function NewProductPanel({ folderId, onClose, onCreated }) {
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           <div>
-            <label className="block text-xs text-gray-400 font-medium mb-1.5">Заголовок на ленде</label>
+            <label className="block text-xs text-gray-400 font-medium mb-1.5">Заголовок на ленде<Hint k="pp.title" /></label>
             <textarea value={title} onChange={e => setTitle(e.target.value)} rows={3} autoFocus className={fieldCls + ' resize-none'} />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 font-medium mb-1.5">Описание</label>
+            <label className="block text-xs text-gray-400 font-medium mb-1.5">Описание<Hint k="pp.description" /></label>
             <textarea value={description} onChange={e => setDescription(e.target.value)} rows={6} className={fieldCls + ' resize-none'} />
           </div>
           <SpecsEditor specs={specs} onChange={setSpecs} />
@@ -296,7 +297,7 @@ function CardTab({ product, qc }) {
       {/* Title */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-gray-400 font-medium">Заголовок</label>
+          <label className="text-xs text-gray-400 font-medium">Заголовок<Hint k="pp.title" /></label>
           <button
             onClick={() => translate('title', title)}
             disabled={translating.title}
@@ -321,7 +322,7 @@ function CardTab({ product, qc }) {
       {/* Description */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-gray-400 font-medium">Описание</label>
+          <label className="text-xs text-gray-400 font-medium">Описание<Hint k="pp.description" /></label>
           <button
             onClick={() => translate('description', description)}
             disabled={translating.description}
@@ -567,7 +568,7 @@ function BundlesTab({ product, qc }) {
           <div className="grid grid-cols-2 gap-3">
             {/* Qty */}
             <div>
-              <label className="text-[10px] text-gray-500 mb-1 block">Кол-во / формат</label>
+              <label className="text-[10px] text-gray-500 mb-1 block">Кол-во / формат<Hint k="pp.bundleQty" /></label>
               <div className="flex gap-1 flex-wrap mb-1">
                 {QTY_PRESETS.map(q => (
                   <button
@@ -592,7 +593,7 @@ function BundlesTab({ product, qc }) {
             </div>
             {/* Old price */}
             <div>
-              <label className="text-[10px] text-gray-500 mb-1 block">Цена Amazon (зачёркнутая)</label>
+              <label className="text-[10px] text-gray-500 mb-1 block">Цена Amazon (зачёркнутая)<Hint k="pp.oldPrice" /></label>
               <input
                 type="text"
                 value={b.old_price}
@@ -603,7 +604,7 @@ function BundlesTab({ product, qc }) {
             </div>
             {/* Price */}
             <div>
-              <label className="text-[10px] text-gray-500 mb-1 block">Цена продажи (€)</label>
+              <label className="text-[10px] text-gray-500 mb-1 block">Цена продажи (€)<Hint k="pp.price" /></label>
               <input
                 type="text"
                 value={b.price}
@@ -614,7 +615,7 @@ function BundlesTab({ product, qc }) {
             </div>
             {/* Offer */}
             <div>
-              <label className="text-[10px] text-gray-500 mb-1 block">Оффер Keitaro</label>
+              <label className="text-[10px] text-gray-500 mb-1 block">Оффер Keitaro<Hint k="pp.offer" /></label>
               {ktOffers.length > 0 ? (
                 <select
                   value={b.offer_id}
@@ -843,7 +844,7 @@ function ReviewsTab({ product, qc }) {
             </div>
           </div>
           <div>
-            <label className="text-[10px] text-gray-500 mb-1 block">Текст</label>
+            <label className="text-[10px] text-gray-500 mb-1 block">Текст<Hint k="pp.reviews" /></label>
             <textarea
               value={newReview.text}
               onChange={e => setNewReview(r => ({ ...r, text: e.target.value }))}

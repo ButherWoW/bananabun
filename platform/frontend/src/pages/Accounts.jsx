@@ -4,6 +4,7 @@ import { accounts as accountsApi, agent as agentApi, waitAgentJob } from '../api
 import { useRole } from '../hooks/useRole.js';
 import clsx from 'clsx';
 import { AccountTwoFa } from '../components/TwoFaCode.jsx';
+import Hint from '../components/Hint.jsx';
 
 
 function StatusDot({ status }) {
@@ -116,7 +117,7 @@ function AccountRow({ account, onOpen, onEditBM }) {
         <div className="px-6 py-3 bg-[color:var(--c0a0d1f)] border-t border-[color:var(--c1e2240)] flex flex-col gap-2" onClick={e => e.stopPropagation()}>
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-[10px] text-gray-500 mb-1">Business Manager ID</label>
+              <label className="block text-[10px] text-gray-500 mb-1">Business Manager ID<Hint k="ac.bm" /></label>
               <input
                 value={bmId}
                 onChange={e => setBmId(e.target.value)}
@@ -125,7 +126,7 @@ function AccountRow({ account, onOpen, onEditBM }) {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-[10px] text-gray-500 mb-1">Pixel IDs (через запятую)</label>
+              <label className="block text-[10px] text-gray-500 mb-1">Pixel IDs (через запятую)<Hint k="ac.pixels" /></label>
               <input
                 value={pixelIds}
                 onChange={e => setPixelIds(e.target.value)}

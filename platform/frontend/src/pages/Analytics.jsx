@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { analytics, keitaro as keitaroApi } from '../api/client.js';
+import Hint from '../components/Hint.jsx';
 
 const RANGES = [
   { label: 'Сегодня', value: 'today' },
@@ -142,12 +143,12 @@ function LandingFunnelSection({ from, to }) {
           <thead>
             <tr className="text-gray-500 border-b border-[color:var(--c2d3148)]">
               <th className="text-left px-5 py-2.5">Шаблон</th>
-              <th className="text-right px-3 py-2.5">Просм.</th>
-              <th className="text-right px-3 py-2.5">Выбор бандла</th>
-              <th className="text-right px-3 py-2.5">Клик купить</th>
-              <th className="text-right px-3 py-2.5">Скролл 75%</th>
-              <th className="text-right px-3 py-2.5">Продажи</th>
-              <th className="text-right px-3 py-2.5">Buy rate</th>
+              <th className="text-right px-3 py-2.5">Просм.<Hint k="lf.views" /></th>
+              <th className="text-right px-3 py-2.5">Выбор бандла<Hint k="lf.bundle" /></th>
+              <th className="text-right px-3 py-2.5">Клик купить<Hint k="lf.buy" /></th>
+              <th className="text-right px-3 py-2.5">Скролл 75%<Hint k="lf.scroll75" /></th>
+              <th className="text-right px-3 py-2.5">Продажи<Hint k="m.sales" /></th>
+              <th className="text-right px-3 py-2.5">Buy rate<Hint k="lf.buyRate" /></th>
               <th className="px-5 py-2.5 min-w-[120px]">Воронка</th>
             </tr>
           </thead>
@@ -425,13 +426,13 @@ function BuyerStatsSection({ from, to }) {
         <table className="w-full text-xs">
           <thead>
             <tr className="text-gray-500 border-b border-[color:var(--c2d3148)]">
-              <th className="text-left px-5 py-2.5">Байер</th>
-              <th className="text-right px-3 py-2.5">Клики</th>
-              <th className="text-right px-3 py-2.5">Продажи</th>
-              <th className="text-right px-3 py-2.5">Спенд</th>
-              <th className="text-right px-3 py-2.5">Профит</th>
-              <th className="text-right px-3 py-2.5">ROI</th>
-              <th className="text-right px-5 py-2.5">CR</th>
+              <th className="text-left px-5 py-2.5">Байер<Hint k="an.buyers" /></th>
+              <th className="text-right px-3 py-2.5">Клики<Hint k="m.clicks" /></th>
+              <th className="text-right px-3 py-2.5">Продажи<Hint k="m.sales" /></th>
+              <th className="text-right px-3 py-2.5">Спенд<Hint k="m.spend" /></th>
+              <th className="text-right px-3 py-2.5">Профит<Hint k="m.profit" /></th>
+              <th className="text-right px-3 py-2.5">ROI<Hint k="m.roi" /></th>
+              <th className="text-right px-5 py-2.5">CR<Hint k="m.cr" /></th>
               {data.rows.some(r => r.compare) && (
                 <th className="text-right px-3 py-2.5">Δ Профит</th>
               )}
@@ -680,7 +681,7 @@ export default function AnalyticsPage() {
                           className="text-right px-4 py-3 cursor-pointer hover:text-white transition-colors select-none"
                           onClick={() => toggleSort(col.key)}
                         >
-                          {col.label}
+                          {col.label}<Hint k={`m.${col.key}`} />
                           {sortBy === col.key && <span className="ml-1">{sortDir === 'desc' ? '↓' : '↑'}</span>}
                         </th>
                       ))}
@@ -941,6 +942,7 @@ function QueryBuilderSection() {
           <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} className="accent-indigo-500" />
           Сравнить с прошлым периодом
         </label>
+        <Hint k="an.compare" />
         <button onClick={run} disabled={loading || !metrics.length}
           className="ml-auto px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs rounded transition-colors font-medium">
           {loading ? 'Загрузка...' : '▶ Запустить'}
@@ -961,7 +963,7 @@ function QueryBuilderSection() {
             <thead>
               <tr className="border-b border-[color:var(--c1e2540)]">
                 {allCols.map(col => (
-                  <th key={col} className="text-left py-2 px-3 text-gray-500 font-medium">{col}</th>
+                  <th key={col} className="text-left py-2 px-3 text-gray-500 font-medium">{col}<Hint k={`m.${col}`} /></th>
                 ))}
               </tr>
             </thead>

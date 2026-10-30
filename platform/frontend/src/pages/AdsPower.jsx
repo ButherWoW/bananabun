@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adspower, waitAgentJob } from '../api/client.js';
+import Hint from '../components/Hint.jsx';
 
 function StatusDot({ active }) {
   return (
@@ -76,7 +77,7 @@ export default function AdsPowerPage() {
                 <tr className="text-xs text-gray-500 border-b border-[color:var(--c2d3148)]">
                   <th className="text-left px-5 py-3">#</th>
                   <th className="text-left px-4 py-3">Аккаунт</th>
-                  <th className="text-left px-4 py-3">Группа</th>
+                  <th className="text-left px-4 py-3">Группа<Hint k="ap.group" /></th>
                   <th className="text-left px-4 py-3">Страна</th>
                   <th className="text-right px-5 py-3">Действия</th>
                 </tr>
