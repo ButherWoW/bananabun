@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One deploy at a time: overlapping runs rebuilt the panel under each other's checks and failed.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
