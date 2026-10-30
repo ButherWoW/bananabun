@@ -47,7 +47,10 @@ jobs:
             platform/frontend/package.json \
             platform/frontend/package-lock.json \
             platform/frontend/vite.config.js \
+            platform/frontend/index.html \
             root@148.230.98.232:/opt/affiliate/frontend/
+          # Static files (logo, favicon…). No --delete: the server may hold files that were never in git.
+          rsync -az --exclude '._*' --exclude .DS_Store platform/frontend/public/ root@148.230.98.232:/opt/affiliate/frontend/public/
           rsync -az --delete-after platform/frontend/stub/ root@148.230.98.232:/opt/affiliate/frontend/stub/
           rsync -az platform/deploy/nginx-banana.conf root@148.230.98.232:/opt/affiliate/nginx-banana.conf
 
@@ -179,6 +182,7 @@ jobs:
             ROOT=$(curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/)
             echo "$ROOT" | grep -q "<html" && ! echo "$ROOT" | grep -q "/banana/assets/" || { echo "stub not served on /"; exit 1; }
             curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/assets/" || { echo "panel not served under /banana/"; exit 1; }
+            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/login | grep -q "<title>Banana Platform</title>" || { echo "panel index.html is stale"; exit 1; }
             [ "$(code /_stub/bg-desktop.webp)" = "200" ] && [ "$(code /_stub/bg-mobile.jpg)" = "200" ] || { echo "stub background not served under /_stub/"; exit 1; }
             echo "/banana/demo/ $(code /banana/demo/)  /banana/demo/campaigns $(code /banana/demo/campaigns)"
             [ "$(code /banana/demo/)" = "200" ] && [ "$(code /banana/demo/campaigns)" = "200" ] || { echo "demo not served under /banana/demo/"; exit 1; }
