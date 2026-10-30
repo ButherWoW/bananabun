@@ -1,10 +1,9 @@
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
-import { assertCampaignAccess, assertRecordAccess } from '../../middleware/access.js';
+import { assertRecordAccess } from '../../middleware/access.js';
 import { keitaroClient } from '../../services/keitaro.js';
 import { enqueueAgentJob } from './agent.js';
 import { logFbEvent } from '../../services/fb-campaigns.js';
-import { faAvailable, faCampaignHistory, faGetCampaignAds, faSetBudget, faDuplicate, faRename, faSetTargeting, faBulkEdit, faApplyAdSettings } from '../../services/fa-client.js';
 
 const _ktCache = new Map();
 setInterval(() => { const now = Date.now(); for (const [k, v] of _ktCache) if (now - v.ts > 60_000) _ktCache.delete(k); }, 5 * 60_000).unref();
@@ -430,7 +429,7 @@ export async function campaignRoutes(app) {
     if (!campaign) return reply.status(404).send({ error: 'Not found' });
     if (req.user.role === 'buyer' && campaign.created_by !== req.user.id) return reply.status(403).send({ error: 'Access denied' });
 
-    const allowed = ['name', 'status', 'daily_budget', 'targeting', 'fb_campaign_id'];
+    const allowed = ['name', 'status', 'daily_budget', 'targeting'];
     const data = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
@@ -444,89 +443,5 @@ export async function campaignRoutes(app) {
     if (req.user.role === 'buyer' && campaign.created_by !== req.user.id) return reply.status(403).send({ error: 'Access denied' });
     await db.delete('campaigns', campaign.id);
     return { ok: true };
-  });
-
-  app.get('/:id/history', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
-    await assertCampaignAccess(req, req.params.id);
-    try {
-      return await faCampaignHistory(req.params.id);
-    } catch (e) {
-      return reply.status(502).send({ error: e.message });
-    }
-  });
-
-  // :id here is the FA campaign (Facebook campaign id or fbkc_ row); adset ids come from /:id/ads.
-  const fa = (handler) => async (req, reply) => {
-    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
-    try {
-      return await handler(req, reply);
-    } catch (e) {
-      if (e.statusCode) throw e;
-      return reply.status(502).send({ error: e.message });
-    }
-  };
-  const need = (cond, msg) => { if (!cond) throw Object.assign(new Error(msg), { statusCode: 400 }); };
-
-  app.post('/:id/apply-ad-settings', auth, fa(async (req) => {
-    await assertCampaignAccess(req, req.params.id);
-    const { ad_settings_id, adset_id } = req.body;
-    need(ad_settings_id, 'Выбери пресет');
-    need(adset_id, 'Пресет применяется к адсету — выбери адсет в раскрытой строке');
-    return faApplyAdSettings(adset_id, ad_settings_id);
-  }));
-
-  app.post('/:id/set-targeting', auth, fa(async (req) => {
-    await assertCampaignAccess(req, req.params.id);
-    const { adset_id, age_min, age_max, gender, genders, countries } = req.body;
-    need(adset_id, 'Таргетинг меняется у адсета — выбери адсет в раскрытой строке');
-    return faSetTargeting(req.params.id, { adset_id, age_min, age_max, gender: gender || genders, countries });
-  }));
-
-  app.post('/bulk-edit', auth, fa(async (req) => {
-    const { campaign_ids, action, value } = req.body;
-    need(campaign_ids?.length && action, 'Нужны кампании и действие');
-    await assertCampaignAccess(req, campaign_ids);
-    return faBulkEdit(campaign_ids, action, value);
-  }));
-
-  app.post('/:id/duplicate', auth, fa(async (req) => {
-    await assertCampaignAccess(req, req.params.id);
-    const { row_id, level, copies } = req.body || {};
-    need(row_id && level, 'Дублируются адсет или объявление; кампанию копирует новый залив');
-    return faDuplicate(req.params.id, { rowId: row_id, level, copies: copies || 1 });
-  }));
-
-  app.post('/:id/rename', auth, fa(async (req) => {
-    await assertCampaignAccess(req, req.params.id);
-    need(false, 'Имя кампании в FA собирается автоматически — переименовать можно адсет или объявление');
-  }));
-
-  app.post('/:id/set-budget', auth, fa(async (req) => {
-    await assertCampaignAccess(req, req.params.id);
-    const { budget, adset_id, level } = req.body;
-    need(budget && !isNaN(Number(budget)), 'Укажи бюджет');
-    return faSetBudget(req.params.id, {
-      rowId: adset_id || req.params.id,
-      level: adset_id ? 'adset' : (level || 'campaign'),
-      dailyBudget: Number(budget),
-    });
-  }));
-
-  app.post('/:id/rename-adset', auth, fa(async (req) => {
-    await assertCampaignAccess(req, req.params.id);
-    const { adset_id, ad_id, name } = req.body;
-    need((adset_id || ad_id) && name, 'Нужны адсет или объявление и новое имя');
-    return faRename(ad_id ? 'ad' : 'adset', ad_id || adset_id, name);
-  }));
-
-  app.get('/:id/ads', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
-    await assertCampaignAccess(req, req.params.id);
-    try {
-      return await faGetCampaignAds(req.params.id);
-    } catch (e) {
-      return reply.status(502).send({ error: e.message });
-    }
   });
 }

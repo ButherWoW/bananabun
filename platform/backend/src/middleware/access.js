@@ -54,27 +54,4 @@ export async function assertCreativeAccess(req, ids, { productId, ready = false 
   return rows;
 }
 
-// Campaign actions take Facebook campaign ids. An id is allowed only if this workspace knows it:
-// from our FB snapshot (buyers: their own AdsPower group), a push, or our campaigns table.
-export async function assertCampaignAccess(req, ids) {
-  const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean).map(String);
-  if (!list.length) throw Object.assign(new Error('ids required'), { statusCode: 400 });
-  const buyer = req.user.role === 'buyer';
-  const email = String(req.user.email || '').toLowerCase();
-  const { rows } = await db.query(`
-    SELECT c.id FROM fb_campaigns c
-      JOIN fb_accounts fa ON fa.id = c.fb_account_id LEFT JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
-     WHERE c.workspace_id = $1 AND c.id = ANY($2) AND (NOT $3 OR LOWER(ap.group_name) = $4)
-    UNION
-    SELECT fb_campaign_id FROM pushes
-     WHERE workspace_id = $1 AND fb_campaign_id = ANY($2) AND (NOT $3 OR created_by = $5)
-    UNION
-    SELECT id FROM campaigns
-     WHERE workspace_id = $1 AND (id = ANY($2) OR fb_campaign_id = ANY($2)) AND (NOT $3 OR created_by = $5)`,
-    [req.user.ws, list, buyer, email, req.user.id]);
-  const known = new Set(rows.map(r => String(r.id)));
-  if (list.some(id => !known.has(id))) {
-    throw Object.assign(new Error('Кампания не найдена в вашей команде — обновите список из FB'), { statusCode: buyer ? 403 : 404 });
-  }
-}
 export const assertProductAccess = (req, ids) => assertRecordAccess(req, 'products', ids);
