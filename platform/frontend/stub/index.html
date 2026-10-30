@@ -170,6 +170,7 @@
 <button class="start" id="start" type="button">Начать</button>
 <button class="mute" id="mute" type="button" aria-label="Выключить музыку" hidden>🔊</button>
 <audio id="music" src="/_stub/music.mp3" preload="none" loop></audio>
+<audio id="voice" src="/_stub/who-are-you.mp3" preload="none"></audio>
 
 <div class="pad" id="pad" role="group" aria-label="Кодовый замок" hidden>
   <span class="screw tl"></span><span class="screw tr"></span><span class="screw bl"></span><span class="screw br"></span>
@@ -240,7 +241,14 @@
       } else {
         red.classList.add('on'); show('ТВОЙ РОТ ЕБАЛ', true); sound.error();
         pad.classList.remove('shake'); void pad.offsetWidth; pad.classList.add('shake');
-        setTimeout(() => { window.location.href = '/wrong-pin'; }, 900); // platform/frontend/stub/wrong-pin.html
+        // The line plays here, right after the visitor's key press (the next page could not start sound on its own),
+        // then platform/frontend/stub/wrong-pin.html opens. Muted, or if the browser refuses: go on after a short pause.
+        const go = () => { window.location.href = '/wrong-pin'; };
+        if (muted) { setTimeout(go, 900); } else {
+          music.pause(); voice.currentTime = 0;
+          voice.onended = go; setTimeout(go, 8000);
+          voice.play().catch(() => setTimeout(go, 900));
+        }
       }
       return;
     }
@@ -251,12 +259,13 @@
   }
   pad.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) press(b.dataset.k); });
   // Music starts on "Начать": browsers do not let a page play sound before the visitor has clicked something.
-  const music = document.getElementById('music'), mute = document.getElementById('mute');
+  const music = document.getElementById('music'), voice = document.getElementById('voice'), mute = document.getElementById('mute');
   let muted = false;
   try { muted = localStorage.getItem('stub-muted') === '1'; } catch {}
   const drawMute = () => { mute.textContent = muted ? '🔇' : '🔊'; mute.setAttribute('aria-label', muted ? 'Включить музыку' : 'Выключить музыку'); };
   function playMusic() {
     mute.hidden = false; drawMute();
+    voice.load(); // fetched now so the wrong-PIN line plays without a delay
     music.volume = 0.6;
     if (!muted) music.play().catch(() => {});
   }
