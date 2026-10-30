@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <title>nespizdili.lol</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Inter:wght@800;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Allerta+Stencil&family=Inter:wght@800;900&display=swap">
 <style>
   :root {
     color-scheme: dark;
@@ -35,99 +35,92 @@
   }
   @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 
-  /* ---------- Brushed stainless keypad ---------- */
+  /* ---------- Vandal-proof stainless keypad (brushed plate, domed keys, stencil-engraved digits) ---------- */
   .pad {
-    --brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.004 0.9' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    position: relative; width: min(372px, 100%); padding: 30px 30px 34px; border-radius: 30px;
+    --brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.004 0.9' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.8 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --grime: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.05' numOctaves='4' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.3  0 0 0 0 0.3  0 0 0 0 0.3  0 0 0 -0.5 0.32'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+    position: relative; width: min(380px, 100%); padding: 34px; border-radius: 6px;
     background:
-      var(--brush),
-      linear-gradient(115deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.55) 46%, rgba(255,255,255,0) 60%),
-      linear-gradient(180deg, #eef1f4 0%, #c3c9cf 38%, #9aa2aa 62%, #c9ced3 100%);
-    background-blend-mode: overlay, screen, normal;
-    box-shadow:
-      inset 0 2px 1px rgba(255,255,255,.95),
-      inset 0 -2px 1px rgba(0,0,0,.35),
-      inset 2px 0 1px rgba(255,255,255,.4),
-      inset -2px 0 1px rgba(0,0,0,.2),
-      0 0 0 1px #6b737b,
-      0 0 0 6px #2a2f34,
-      0 0 0 7px #4a5158,
-      0 30px 60px rgba(0,0,0,.75),
-      0 10px 18px rgba(0,0,0,.5);
-    display: grid; gap: 20px;
+      var(--grime), var(--brush),
+      linear-gradient(120deg, rgba(255,255,255,0) 25%, rgba(255,255,255,.35) 45%, rgba(255,255,255,0) 65%),
+      linear-gradient(180deg, #a4aab0 0%, #7f868c 50%, #969ca2 100%);
+    background-blend-mode: multiply, overlay, screen, normal;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(0,0,0,.4), 0 0 0 1px #3d4247, 0 30px 60px rgba(0,0,0,.75), 0 10px 18px rgba(0,0,0,.5);
   }
-  /* corner screws */
-  .screw { position: absolute; width: 16px; height: 16px; border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #ffffff 0, #d9dde1 25%, #8b939b 70%, #5a6168 100%);
-    box-shadow: inset 0 -1px 2px rgba(0,0,0,.5), 0 1px 1px rgba(255,255,255,.7), 0 0 0 2px rgba(0,0,0,.18); }
-  .screw::before, .screw::after { content: ""; position: absolute; left: 3px; right: 3px; top: 7px; height: 2px; border-radius: 1px; background: #4c535a; box-shadow: 0 1px 0 rgba(255,255,255,.6); }
-  .screw::after { transform: rotate(90deg); }
-  .screw.tl { top: 11px; left: 11px; transform: rotate(18deg); } .screw.tr { top: 11px; right: 11px; transform: rotate(-31deg); }
-  .screw.bl { bottom: 11px; left: 11px; transform: rotate(52deg); } .screw.br { bottom: 11px; right: 11px; transform: rotate(7deg); }
-
-  /* LCD under glass in a recessed bezel */
-  .bezel { padding: 7px; border-radius: 10px;
-    background: linear-gradient(180deg, #5c646c, #a7aeb5 55%, #e6e9ec);
-    box-shadow: inset 0 2px 4px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.8); }
-  .lcd {
-    position: relative; height: 78px; border-radius: 4px; display: grid; place-items: center; overflow: hidden;
+  /* raised inner plate */
+  .face { position: relative; display: grid; gap: 18px; padding: 22px 20px 24px; border-radius: 16px;
     background:
-      repeating-linear-gradient(0deg, rgba(0,0,40,.10) 0 1px, transparent 1px 3px),
-      repeating-linear-gradient(90deg, rgba(0,0,40,.08) 0 1px, transparent 1px 3px),
-      radial-gradient(ellipse at 50% 40%, #8b97ff 0%, #6672f5 55%, #4b56d6 100%);
-    box-shadow: inset 0 0 18px rgba(0,0,30,.55), inset 0 2px 3px rgba(0,0,0,.6);
-    font-family: VT323, "Courier New", monospace; font-size: 48px; letter-spacing: .1em; color: #121540;
-    text-shadow: 2px 2px 0 rgba(18,21,64,.22), 0 0 1px rgba(18,21,64,.6); white-space: nowrap;
+      var(--grime), var(--brush),
+      radial-gradient(ellipse 90% 70% at 40% 30%, rgba(255,255,255,.35), transparent 70%),
+      linear-gradient(180deg, #c6cbcf 0%, #9ea4a9 55%, #b3b8bd 100%);
+    background-blend-mode: multiply, overlay, screen, normal;
+    box-shadow: inset 0 2px 1px rgba(255,255,255,.85), inset 0 -2px 2px rgba(0,0,0,.35), inset 2px 0 1px rgba(255,255,255,.4), inset -2px 0 1px rgba(0,0,0,.2),
+      0 0 0 1px #6c7379, 0 3px 4px rgba(0,0,0,.45), 0 -1px 0 1px rgba(255,255,255,.35); }
+  /* corner screws: dome heads, slot cross */
+  .screw { position: absolute; width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #f4f6f7 0, #c5cacf 30%, #7d848a 75%, #50565c 100%);
+    box-shadow: inset 0 -1px 2px rgba(0,0,0,.5), 0 1px 1px rgba(255,255,255,.5), 0 0 0 2px rgba(0,0,0,.25); }
+  .screw::before, .screw::after { content: ""; position: absolute; left: 3px; right: 3px; top: 8px; height: 2px; border-radius: 1px; background: #3f454b; box-shadow: 0 1px 0 rgba(255,255,255,.5); }
+  .screw::after { transform: rotate(90deg); }
+  .screw.tl { top: 8px; left: 8px; transform: rotate(18deg); } .screw.tr { top: 8px; right: 8px; transform: rotate(-31deg); }
+  .screw.bl { bottom: 8px; left: 8px; transform: rotate(52deg); } .screw.br { bottom: 8px; right: 8px; transform: rotate(7deg); }
+
+  /* narrow display window with status LEDs, cut into the plate */
+  .bezel { display: flex; align-items: center; gap: 10px; padding: 5px 10px 5px 5px; border-radius: 7px;
+    background: #1b1e21; box-shadow: inset 0 2px 4px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.7), 0 -1px 0 rgba(0,0,0,.25); }
+  .lcd {
+    position: relative; flex: 1; min-width: 0; height: 46px; border-radius: 3px; display: grid; place-items: center; overflow: hidden;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at 50% 40%, #3a4a2c 0%, #26321d 70%, #1a2314 100%);
+    box-shadow: inset 0 0 12px rgba(0,0,0,.7);
+    font-family: VT323, "Courier New", monospace; font-size: 34px; letter-spacing: .14em; color: #b6ff6a;
+    text-shadow: 0 0 6px rgba(150,255,80,.55); white-space: nowrap;
   }
   .lcd::after { content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(160deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.08) 38%, transparent 40%, transparent 100%); }
-  .lcd.small { font-size: 30px; letter-spacing: .04em; }
+    background: linear-gradient(160deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.03) 38%, transparent 40%); }
+  .lcd.small { font-size: 22px; letter-spacing: .04em; }
+  .lcd.err { color: #ff6a5a; text-shadow: 0 0 6px rgba(255,80,60,.6); }
+  .leds { display: grid; gap: 7px; }
+  .led { position: relative; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px #5d646a, inset 0 -2px 3px rgba(0,0,0,.6); }
+  .led::after { content: ""; position: absolute; top: 2px; left: 3px; width: 4px; height: 3px; border-radius: 50%; background: rgba(255,255,255,.6); }
+  .led.red { background: #5a0b0b; } .led.green { background: #0b3a12; }
+  .led.red.on { background: radial-gradient(circle, #ffd0d0, #ff3030 50%, #b30d0d); box-shadow: 0 0 0 2px #5d646a, 0 0 12px 3px rgba(255,40,40,.75); }
+  .led.green.on { background: radial-gradient(circle, #e0ffe3, #3dff6a 50%, #12a332); box-shadow: 0 0 0 2px #5d646a, 0 0 12px 3px rgba(60,255,110,.7); }
 
-  /* glass LED lenses in steel rings */
-  .leds { display: flex; justify-content: center; gap: 110px; }
-  .led { position: relative; width: 26px; height: 26px; border-radius: 50%;
-    box-shadow: 0 0 0 3px #c7ccd1, 0 0 0 4px #6e767e, 0 1px 0 4px rgba(255,255,255,.5), inset 0 -4px 6px rgba(0,0,0,.55); }
-  .led::after { content: ""; position: absolute; top: 4px; left: 6px; width: 9px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.75); filter: blur(.6px); }
-  .led.red { background: radial-gradient(circle at 50% 55%, #b02020 0%, #6a0a0a 70%, #3a0404 100%); }
-  .led.green { background: radial-gradient(circle at 50% 55%, #1f8a31 0%, #0d4a17 70%, #062a0c 100%); }
-  .led.red.on { background: radial-gradient(circle at 50% 55%, #ffd0d0 0%, #ff3030 35%, #b30d0d 75%); box-shadow: 0 0 0 3px #c7ccd1, 0 0 0 4px #6e767e, 0 0 22px 6px rgba(255,40,40,.75); }
-  .led.green.on { background: radial-gradient(circle at 50% 55%, #e0ffe3 0%, #3dff6a 35%, #12a332 75%); box-shadow: 0 0 0 3px #c7ccd1, 0 0 0 4px #6e767e, 0 0 22px 6px rgba(60,255,110,.7); }
-
-  /* chrome keys with engraved labels */
-  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 22px; }
+  /* keys: square stainless caps sitting in a dark gap, domed centre, stencil digits engraved into the steel */
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 22px; padding: 4px 6px 0; }
   button {
-    position: relative; height: 52px; border-radius: 9px; border: 0; cursor: pointer;
-    font: 700 27px/1 Arial, Helvetica, sans-serif; color: #8d949b;
-    text-shadow: 0 1px 0 rgba(255,255,255,.95), 0 -1px 0 rgba(0,0,0,.35);
+    position: relative; aspect-ratio: 1; width: 100%; max-width: 78px; justify-self: center; border: 0; border-radius: 11px; cursor: pointer; padding: 0;
+    font: 400 40px/1 "Allerta Stencil", "Stardos Stencil", Arial, sans-serif; color: #1d2125;
+    text-shadow: 0 1px 0 rgba(255,255,255,.8), 0 -1px 1px rgba(0,0,0,.35);
     background:
       var(--brush),
-      linear-gradient(180deg, #fbfcfd 0%, #dfe3e7 45%, #b9c0c7 55%, #d3d8dd 100%);
+      linear-gradient(180deg, #e7eaec 0%, #b9bfc4 50%, #8d949a 100%);
     background-blend-mode: overlay, normal;
     box-shadow:
-      inset 0 1px 0 #ffffff, inset 0 -2px 2px rgba(0,0,0,.28), inset 1px 0 0 rgba(255,255,255,.6), inset -1px 0 0 rgba(0,0,0,.12),
-      0 0 0 1px #7d858d,
-      0 4px 0 #6a727a,
-      0 6px 10px rgba(0,0,0,.45);
-    transition: transform .05s, box-shadow .05s, filter .05s;
+      inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(0,0,0,.35),
+      0 0 0 2px #3b4045,               /* gap between cap and plate */
+      0 0 0 3px #6a7177,
+      0 1px 0 3px rgba(255,255,255,.5); /* light catching the plate's cut edge */
+    transition: transform .05s, filter .05s;
+    isolation: isolate;
   }
-  button::before { content: ""; position: absolute; inset: -5px; border-radius: 12px; z-index: -1;
-    background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(255,255,255,.35)); }
-  button:hover { filter: brightness(1.04); }
-  button:active, button.pressed {
-    transform: translateY(4px);
-    box-shadow: inset 0 1px 0 #ffffff, inset 0 -1px 1px rgba(0,0,0,.25), 0 0 0 1px #7d858d, 0 0 0 #6a727a, 0 1px 3px rgba(0,0,0,.4);
-  }
-  button:focus-visible { outline: 3px solid var(--tiffany); outline-offset: 3px; }
-  .cancel, .enter { font-size: 16px; letter-spacing: .04em; }
-  .cancel { color: #3e0b0b; text-shadow: 0 1px 0 rgba(255,255,255,.35);
-    background: var(--brush), linear-gradient(180deg, #e2a3a3 0%, #b45555 45%, #8a2f2f 55%, #a64848 100%); }
-  .enter  { color: #0b330e; text-shadow: 0 1px 0 rgba(255,255,255,.35);
-    background: var(--brush), linear-gradient(180deg, #b9edb9 0%, #5fb35f 45%, #3a8a3a 55%, #52a352 100%); }
-  .cancel, .enter { background-blend-mode: overlay, normal; }
+  /* the pillow-domed face inside the flat rim */
+  button::before { content: ""; position: absolute; inset: 7px; border-radius: 9px; z-index: -1;
+    background:
+      var(--brush),
+      radial-gradient(ellipse 75% 70% at 45% 38%, #ffffff 0%, #e2e6e9 35%, #b3b9be 75%, #868d93 100%);
+    background-blend-mode: overlay, normal;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 1px 0 1px rgba(255,255,255,.5), inset 0 -3px 5px rgba(0,0,0,.25), inset 0 2px 3px rgba(255,255,255,.8); }
+  button:hover { filter: brightness(1.05); }
+  button:active, button.pressed { transform: translateY(2px) scale(.985); filter: brightness(.93); }
+  button:focus-visible { outline: 3px solid var(--tiffany); outline-offset: 5px; }
+  .hint { margin: -2px 0 0; text-align: center; font: 400 12px/1 "Allerta Stencil", Arial, sans-serif; letter-spacing: .14em; color: #4f565c; text-shadow: 0 1px 0 rgba(255,255,255,.6); }
 
   .shake { animation: shake .35s; }
   @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
-  @media (max-width: 380px) { .pad { padding: 26px 20px 30px; } .keys { gap: 14px 14px; } .leds { gap: 80px; } }
+  @media (max-width: 380px) { .pad { padding: 28px; } .face { padding: 18px 14px 20px; } .keys { gap: 14px; } button { font-size: 34px; } }
   @media (prefers-reduced-motion: reduce) { h1 { animation: none; background-position: 50% 0; } .shake { animation: none; } }
 </style>
 </head>
@@ -136,13 +129,15 @@
 
 <div class="pad" id="pad" role="group" aria-label="Кодовый замок">
   <span class="screw tl"></span><span class="screw tr"></span><span class="screw bl"></span><span class="screw br"></span>
-  <div class="bezel"><div class="lcd" id="lcd" aria-live="polite">----</div></div>
-  <div class="leds"><span class="led red" id="red"></span><span class="led green" id="green"></span></div>
-  <div class="keys">
-    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
-    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
-    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
-    <button data-k="cancel" class="cancel">CANCEL</button><button data-k="0">0</button><button data-k="enter" class="enter">ENTER</button>
+  <div class="face">
+    <div class="bezel"><div class="lcd" id="lcd" aria-live="polite">----</div><div class="leds"><span class="led red" id="red"></span><span class="led green" id="green"></span></div></div>
+    <div class="keys">
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+      <button data-k="cancel" aria-label="Сброс">*</button><button data-k="0">0</button><button data-k="enter" aria-label="Ввод">#</button>
+    </div>
+    <p class="hint">* СБРОС &nbsp;·&nbsp; # ВВОД</p>
   </div>
 </div>
 
@@ -178,7 +173,7 @@
     ok: () => { click(0, 0.2); tone(880, 0.02, 0.14, { type: 'triangle', gain: 0.22 }); tone(1318.5, 0.16, 0.28, { type: 'triangle', gain: 0.22 }); click(0.42, 0.6); tone(140, 0.42, 0.12, { type: 'sine', gain: 0.25, to: 70 }); },
     error: () => { tone(150, 0, 0.45, { type: 'square', gain: 0.12 }); tone(110, 0.05, 0.45, { type: 'sawtooth', gain: 0.06 }); },
   };
-  const show = (text, small = false) => { lcd.textContent = text; lcd.classList.toggle('small', small); };
+  const show = (text, small = false) => { lcd.textContent = text; lcd.classList.toggle('small', small); lcd.classList.toggle('err', small); };
   const reset = () => { code = ''; red.classList.remove('on'); green.classList.remove('on'); show('----'); };
   async function sha256(s) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -209,7 +204,7 @@
   }
   pad.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) press(b.dataset.k); });
   document.addEventListener('keydown', (e) => {
-    const k = /^[0-9]$/.test(e.key) ? e.key : e.key === 'Enter' ? 'enter' : (e.key === 'Escape' || e.key === 'Backspace') ? 'cancel' : null;
+    const k = /^[0-9]$/.test(e.key) ? e.key : e.key === 'Enter' ? 'enter' : (e.key === 'Escape' || e.key === 'Backspace' || e.key === '*') ? 'cancel' : e.key === '#' ? 'enter' : null;
     if (!k) return;
     e.preventDefault();
     const b = pad.querySelector(`[data-k="${k}"]`);
