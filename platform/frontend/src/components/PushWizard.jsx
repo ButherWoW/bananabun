@@ -7,6 +7,7 @@ const pushApi = {
   options: () => api.get('/api/push/options'),
   generateTexts: (data) => api.post('/api/push/generate-texts', data),
   start: (data) => api.post('/api/push', data),
+  batch: (data) => api.post('/api/push/batch', data),
 };
 
 const GEO_FLAGS = { FR:'🇫🇷',BE:'🇧🇪',CH:'🇨🇭',LU:'🇱🇺',CA:'🇨🇦',DE:'🇩🇪',ES:'🇪🇸',IT:'🇮🇹',NL:'🇳🇱',PT:'🇵🇹',PL:'🇵🇱',AT:'🇦🇹',IE:'🇮🇪',CL:'🇨🇱',CO:'🇨🇴' };
@@ -411,6 +412,10 @@ function StepCreatives({ opts, form, set }) {
 function StepSettings({ opts, form, set }) {
   const presets = opts.presets || [];
   const selected = presets.find(p => p.id === form.preset_id);
+  const targets = pushTargets(form, opts.cabinets);
+  const multi = targets.length > 1;
+  const bids = form.cabinet_bids || {};
+  const setBid = (id, k, v) => set('cabinet_bids', { ...bids, [id]: { ...bids[id], [k]: v } });
 
   return (
     <div className="space-y-4">
@@ -438,13 +443,27 @@ function StepSettings({ opts, form, set }) {
         )}
       </div>
 
+      {multi && (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-gray-500 uppercase tracking-wider">Бюджет на адсет / день и ставка — у каждого кабинета свои</label>
+          {targets.map(t => (
+            <div key={t.body.cabinet_id} className="grid grid-cols-[minmax(0,1fr)_6rem_6rem] gap-2 items-center">
+              <span className="text-xs text-gray-300 truncate">{t.name}</span>
+              <input type="number" value={bids[t.body.cabinet_id]?.daily_budget ?? ''} onChange={e => setBid(t.body.cabinet_id, 'daily_budget', e.target.value)} className={inp} placeholder="бюджет" />
+              <input type="number" step="0.01" value={bids[t.body.cabinet_id]?.bid_amount ?? ''} onChange={e => setBid(t.body.cabinet_id, 'bid_amount', e.target.value)} className={inp} placeholder="ставка" />
+            </div>
+          ))}
+          <div className="text-[10px] text-gray-600">По гео с лидом; значения не копируются между кабинетами.</div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Field label="Бюджет на адсет / день">
+        {!multi && <Field label="Бюджет на адсет / день">
           <input type="number" value={form.daily_budget || ''} onChange={e => set('daily_budget', e.target.value)} className={inp} placeholder="по гео с лидом" />
-        </Field>
-        <Field label="Ставка (bid cap)">
+        </Field>}
+        {!multi && <Field label="Ставка (bid cap)">
           <input type="number" step="0.01" value={form.bid_amount || ''} onChange={e => set('bid_amount', e.target.value)} className={inp} placeholder="по гео с лидом" />
-        </Field>
+        </Field>}
         <Field label="Adsets">
           <input type="number" value={form.adsets_count || 1} onChange={e => set('adsets_count', Number(e.target.value))} className={inp} min={1} max={20} />
         </Field>
@@ -457,12 +476,12 @@ function StepSettings({ opts, form, set }) {
         </Field>
       </div>
 
-      <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+      {!multi && <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
         <input type="checkbox" checked={Array.isArray(form.bid_amounts)}
           onChange={() => set('bid_amounts', Array.isArray(form.bid_amounts) ? null : Array.from({ length: Number(form.adsets_count) || 1 }, () => form.bid_amount || ''))} />
         Своя ставка у каждого адсета
-      </label>
-      {Array.isArray(form.bid_amounts) && (
+      </label>}
+      {!multi && Array.isArray(form.bid_amounts) && (
         <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
           {Array.from({ length: Number(form.adsets_count) || 1 }, (_, i) => (
             <Field key={i} label={`Адсет ${i + 1}`}>
@@ -555,8 +574,13 @@ function StepLaunch({ opts, form, set }) {
         <Row label="Пресет" val={(opts.presets||[]).find(p=>p.id===form.preset_id)?.name} />
         <Row label="Креативов" val={form.creative_ids?.length} />
         <Row label="Adsets" val={form.adsets_count} />
-        <Row label="Бюджет" val={form.daily_budget ? `${form.daily_budget} в день на адсет` : ''} />
-        <Row label="Ставка" val={Array.isArray(form.bid_amounts) ? `по адсетам ${form.bid_amounts.join(' / ')}` : form.bid_amount ? `${form.bid_amount}` : ''} />
+        {pushTargets(form, opts.cabinets).length > 1 ? pushTargets(form, opts.cabinets).map(t => (
+          <Row key={t.body.cabinet_id} label={`Бюджет · ставка: ${t.name}`}
+            val={`${form.cabinet_bids?.[t.body.cabinet_id]?.daily_budget || '—'} в день на адсет · ${form.cabinet_bids?.[t.body.cabinet_id]?.bid_amount || '—'}`} />
+        )) : (<>
+          <Row label="Бюджет" val={form.daily_budget ? `${form.daily_budget} в день на адсет` : ''} />
+          <Row label="Ставка" val={Array.isArray(form.bid_amounts) ? `по адсетам ${form.bid_amounts.join(' / ')}` : form.bid_amount ? `${form.bid_amount}` : ''} />
+        </>)}
         <Row label="Аудитория" val={audienceText(form)} />
         <Row label="Креативы" val={layoutText(form)} />
         <Row label="Офферы" val={(form.offer_ids || []).join(', ')} />
@@ -655,7 +679,7 @@ const INIT = {
   genders: 'all', devices: 'all', platforms: [], creo_mode: 'all-all', creo_per_adset: 3,
   pixel_event: 'LEAD', url_params: 'utm_campaign={{campaign.name}}&utm_source={{site_source_name}}&utm_placement={{placement}}&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}&adset_name={{adset.name}}&ad_name={{ad.name}}',
   call_to_action: 'SHOP_NOW', ad_title: '', ad_body: '', run_now: false,
-  white_landing_id: '', offer_ids: [], kt_group_id: '', extra_cabinets: [],
+  white_landing_id: '', offer_ids: [], kt_group_id: '', extra_cabinets: [], cabinet_bids: {},
   _text_variants: [],
 };
 
@@ -669,14 +693,20 @@ function canProceed(step, form) {
     return !partial && (current || (form.extra_cabinets || []).length > 0);
   }
   if (step === 3) return form.creative_ids?.length > 0;
-  if (step === 4) return Number(form.daily_budget) > 0 && Number(form.bid_amount) > 0 && !settingsProblem(form);
+  if (step === 4) {
+    const targets = pushTargets(form);
+    const ok = targets.length > 1
+      ? targets.every(t => Number(form.cabinet_bids?.[t.body.cabinet_id]?.daily_budget) > 0 && Number(form.cabinet_bids?.[t.body.cabinet_id]?.bid_amount) > 0)
+      : Number(form.daily_budget) > 0 && Number(form.bid_amount) > 0;
+    return ok && !settingsProblem(form);
+  }
   return true;
 }
 
 // What in the ad settings would make the push refuse, in words; '' when all is fine.
 function settingsProblem(form) {
   const n = Number(form.adsets_count) || 1;
-  if (Array.isArray(form.bid_amounts) && (form.bid_amounts.length !== n || form.bid_amounts.some(b => !(Number(b) > 0))))
+  if (pushTargets(form).length < 2 && Array.isArray(form.bid_amounts) && (form.bid_amounts.length !== n || form.bid_amounts.some(b => !(Number(b) > 0))))
     return `Укажите ставку у каждого из ${n} адсетов`;
   if (form.auto_placement === false && !(form.platforms || []).length)
     return 'Авто-плейсменты выключены в пресете, а площадки не выбраны';
@@ -835,14 +865,33 @@ export default function PushWizard({ onClose, onSuccess, initialPreset }) {
     // One push per cabinet: the batch plus the current choice; one refusal does not stop the rest.
     mutationFn: async () => {
       const targets = pushTargets(form, opts.cabinets);
-      const results = [];
-      for (const t of targets) {
+      if (targets.length === 1) {
         try {
-          results.push({ ...t, push: await pushApi.start({ ...pushBody(form), ...t.body }) });
+          return [{ ...targets[0], push: await pushApi.start({ ...pushBody(form), ...targets[0].body }) }];
         } catch (e) {
-          results.push({ ...t, error: e.error || e.message || 'Ошибка' });
+          throw new Error(e.error || e.message || 'Ошибка');
         }
       }
+      // The server checks every cabinet before creating anything; budget and bid go per cabinet.
+      const { cabinet_id, cabinet_external_id, page_external_id, pixel_id, daily_budget, bid_amount, bid_amounts, ...common } = pushBody(form);
+      let answer;
+      try {
+        answer = await pushApi.batch({
+          ...common,
+          cabinets: targets.map(t => ({
+            ...t.body,
+            daily_budget: Number(form.cabinet_bids?.[t.body.cabinet_id]?.daily_budget),
+            bid_amount: Number(form.cabinet_bids?.[t.body.cabinet_id]?.bid_amount),
+          })),
+        });
+      } catch (e) {
+        throw new Error(e.error || e.message || 'Ошибка');
+      }
+      const results = (answer.results || []).map(r => ({
+        ...(targets.find(t => t.body.cabinet_external_id === r.cabinet_external_id) || { name: r.cabinet_external_id }),
+        push: r.push_id ? { id: r.push_id } : null,
+        error: r.error,
+      }));
       if (results.every(r => r.error)) throw new Error(results.map(r => `${r.name}: ${r.error}`).join('; '));
       return results;
     },

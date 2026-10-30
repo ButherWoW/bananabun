@@ -5,112 +5,159 @@ import { assertProductAccess, assertCreativeAccess, assertRecordAccess, ownUser 
 
 const ownOnly = (req) => (req.user.role === 'buyer' ? req.user.id : null);
 
-// Buyers push only through cabinets of their own AdsPower group (named after their email).
-async function buyerOwnsCabinet(req, externalId) {
-  if (req.user.role !== 'buyer') return true;
+// A push goes only into a cabinet synced for this workspace; buyers only into cabinets of their own AdsPower group
+// (named after their email).
+async function cabinetAllowed(req, externalId) {
   const ext = String(externalId || '').replace(/^act_/, '');
+  const buyer = req.user.role === 'buyer';
   const { rows } = await db.query(`
-    SELECT 1 FROM fb_cabinets c JOIN fb_accounts fa ON fa.id = c.fb_account_id
-      JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
-     WHERE c.workspace_id = $1 AND c.external_id IN ($2, $3) AND LOWER(ap.group_name) = $4 LIMIT 1`,
-    [req.user.ws, ext, `act_${ext}`, String(req.user.email || '').toLowerCase()]);
+    SELECT 1 FROM fb_cabinets c
+      LEFT JOIN fb_accounts fa ON fa.id = c.fb_account_id
+      LEFT JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
+     WHERE c.workspace_id = $1 AND c.external_id IN ($2, $3) AND ($4::text IS NULL OR LOWER(ap.group_name) = $4) LIMIT 1`,
+    [req.user.ws, ext, `act_${ext}`, buyer ? String(req.user.email || '').toLowerCase() : null]);
   return rows.length > 0;
 }
+
+// Validates one push request and returns its params; no side effects, so a batch can check every cabinet first.
+async function buildPushParams(req, input) {
+  const {
+    product_id, landing_id, landing_url, campaign_name,
+    domain_id, whitepage,
+    cabinet_id, cabinet_external_id,
+    page_external_id, pixel_id,
+    creative_ids, preset_id,
+    objective, daily_budget, bid_strategy, bid_amount,
+    optimization_goal, billing_event, pixel_event,
+    countries, age_min, age_max, auto_placement,
+    adsets_count, call_to_action,
+    genders, devices, platforms, bid_amounts, creo_mode, creo_per_adset,
+    ad_title, ad_body,
+    kt_landing_id, white_landing_id, offer_ids, kt_group_id,
+  } = input;
+
+  if (!product_id || !creative_ids?.length || !cabinet_external_id || !pixel_id)
+    throw Object.assign(new Error('Missing required fields'), { statusCode: 400 });
+  await assertProductAccess(req, product_id);
+  if (!Array.isArray(creative_ids) || new Set(creative_ids).size !== creative_ids.length)
+    throw Object.assign(new Error('Нужен список различных креативов'), { statusCode: 400 });
+  await assertCreativeAccess(req, creative_ids, { productId: product_id, ready: true });
+  if (preset_id) await assertRecordAccess(req, 'ad_settings', preset_id);
+  if (landing_id) await assertRecordAccess(req, 'landing_templates', landing_id);
+  if (!(await cabinetAllowed(req, cabinet_external_id)))
+    throw Object.assign(new Error('Это не ваш кабинет'), { statusCode: 403 });
+  // Bid and daily budget are set per geo with the lead — never defaulted.
+  if (!(Number(daily_budget) > 0) || !(Number(bid_amount) > 0))
+    throw Object.assign(new Error('Укажите дневной бюджет и ставку'), { statusCode: 400 });
+
+  const adsets = Math.min(Math.max(Number(adsets_count) || 3, 1), 20);
+  // A bid per adset (lead's choice) — exactly one per adset, or none and bid_amount goes to all.
+  const bids = Array.isArray(bid_amounts) && bid_amounts.length ? bid_amounts.map(Number) : null;
+  if (bids && (bids.length !== adsets || bids.some(b => !(b > 0))))
+    throw Object.assign(new Error(`Ставок по адсетам должно быть ${adsets}, каждая больше нуля`), { statusCode: 400 });
+  const placementList = auto_placement === false
+    ? (Array.isArray(platforms) ? platforms : []).filter(p => ['facebook', 'instagram', 'audience_network', 'messenger'].includes(p))
+    : [];
+  if (auto_placement === false && !placementList.length)
+    throw Object.assign(new Error('Авто-плейсменты выключены — выберите площадки'), { statusCode: 400 });
+  const perAdset = Math.min(Math.max(Number(creo_per_adset) || 1, 1), 50);
+  if (creo_mode === 'one-per' && perAdset * adsets > creative_ids.length)
+    throw Object.assign(new Error(`Раскладка «по ${perAdset} на адсет» × ${adsets} адсетов требует ${perAdset * adsets} креативов, выбрано ${creative_ids.length}`), { statusCode: 400 });
+
+  const params = {
+    product_id, landing_id, landing_url, campaign_name,
+    domain_id, whitepage,
+    cabinet_id, cabinet_external_id,
+    page_external_id, pixel_id,
+    creative_ids, preset_id,
+    objective: 'OUTCOME_LEADS',
+    daily_budget: Number(daily_budget),
+    bid_strategy: 'LOWEST_COST_WITH_BID_CAP',
+    bid_amount: Number(bid_amount),
+    optimization_goal: 'OFFSITE_CONVERSIONS',
+    billing_event: 'IMPRESSIONS',
+    pixel_event: pixel_event || 'LEAD',
+    countries: countries || [],
+    age_min: age_min || 18,
+    age_max: age_max || 65,
+    auto_placement: auto_placement !== false,
+    platforms: placementList,
+    adsets_count: adsets,
+    bid_amounts: bids,
+    genders: ['male', 'female'].includes(genders) ? genders : 'all',
+    devices: ['mobile', 'desktop'].includes(devices) ? devices : 'all',
+    creo_mode: creo_mode === 'one-per' ? 'one-per' : 'all-all',
+    creo_per_adset: perAdset,
+    call_to_action: call_to_action || 'SHOP_NOW',
+    ad_title, ad_body,
+    kt_landing_id, white_landing_id, kt_group_id,
+    offer_ids: (Array.isArray(offer_ids) ? offer_ids : [offer_ids]).filter(Boolean).map(Number),
+    // Everything is created PAUSED; activation is a separate, confirmed step.
+    run_now: false,
+  };
+
+  return params;
+}
+
+async function insertPush(req, params) {
+  const push = await db.insert('pushes', {
+    workspace_id: req.user.ws,
+    product_id: params.product_id,
+    params,
+    status: 'pending',
+    created_by: req.user.id,
+    log: JSON.stringify([]),
+  });
+  runPush(push.id).catch(console.error);
+  return push.id;
+}
+
+const CABINET_FIELDS = ['cabinet_id', 'cabinet_external_id', 'page_external_id', 'pixel_id', 'daily_budget', 'bid_amount', 'bid_amounts'];
+const MAX_BATCH_CABINETS = 20;
 
 export async function pushRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
 
   // Start a new push
   app.post('/', auth, async (req) => {
-    const {
-      product_id, landing_id, landing_url, campaign_name,
-      domain_id, whitepage,
-      cabinet_id, cabinet_external_id,
-      page_external_id, pixel_id,
-      creative_ids, preset_id,
-      objective, daily_budget, bid_strategy, bid_amount,
-      optimization_goal, billing_event, pixel_event,
-      countries, age_min, age_max, auto_placement,
-      adsets_count, call_to_action,
-      genders, devices, platforms, bid_amounts, creo_mode, creo_per_adset,
-      ad_title, ad_body,
-      kt_landing_id, white_landing_id, offer_ids, kt_group_id,
-    } = req.body;
+    const params = await buildPushParams(req, req.body || {});
+    const id = await insertPush(req, params);
+    return { id, status: 'pending' };
+  });
 
-    if (!product_id || !creative_ids?.length || !cabinet_external_id || !pixel_id)
-      throw Object.assign(new Error('Missing required fields'), { statusCode: 400 });
-    await assertProductAccess(req, product_id);
-    if (!Array.isArray(creative_ids) || new Set(creative_ids).size !== creative_ids.length)
-      throw Object.assign(new Error('Нужен список различных креативов'), { statusCode: 400 });
-    await assertCreativeAccess(req, creative_ids, { productId: product_id, ready: true });
-    if (preset_id) await assertRecordAccess(req, 'ad_settings', preset_id);
-    if (landing_id) await assertRecordAccess(req, 'landing_templates', landing_id);
-    if (!(await buyerOwnsCabinet(req, cabinet_external_id)))
-      throw Object.assign(new Error('Это не ваш кабинет'), { statusCode: 403 });
-    // Bid and daily budget are set per geo with the lead — never defaulted.
-    if (!(Number(daily_budget) > 0) || !(Number(bid_amount) > 0))
-      throw Object.assign(new Error('Укажите дневной бюджет и ставку'), { statusCode: 400 });
+  // One push per cabinet with shared product, creatives and settings. Budget and bid come from each cabinet's own
+  // entry (never copied from another one). Every cabinet is validated before any push row is written.
+  app.post('/batch', auth, async (req) => {
+    const { cabinets, ...common } = req.body || {};
+    if (!Array.isArray(cabinets) || !cabinets.length)
+      throw Object.assign(new Error('Выберите хотя бы один кабинет'), { statusCode: 400 });
+    if (cabinets.length > MAX_BATCH_CABINETS)
+      throw Object.assign(new Error(`Не больше ${MAX_BATCH_CABINETS} кабинетов за раз`), { statusCode: 400 });
+    const ext = cabinets.map(c => String(c?.cabinet_external_id || '').replace(/^act_/, ''));
+    if (new Set(ext).size !== ext.length)
+      throw Object.assign(new Error('Кабинет выбран дважды'), { statusCode: 400 });
+    for (const f of CABINET_FIELDS) delete common[f];
 
-    const adsets = Math.min(Math.max(Number(adsets_count) || 3, 1), 20);
-    // A bid per adset (lead's choice) — exactly one per adset, or none and bid_amount goes to all.
-    const bids = Array.isArray(bid_amounts) && bid_amounts.length ? bid_amounts.map(Number) : null;
-    if (bids && (bids.length !== adsets || bids.some(b => !(b > 0))))
-      throw Object.assign(new Error(`Ставок по адсетам должно быть ${adsets}, каждая больше нуля`), { statusCode: 400 });
-    const placementList = auto_placement === false
-      ? (Array.isArray(platforms) ? platforms : []).filter(p => ['facebook', 'instagram', 'audience_network', 'messenger'].includes(p))
-      : [];
-    if (auto_placement === false && !placementList.length)
-      throw Object.assign(new Error('Авто-плейсменты выключены — выберите площадки'), { statusCode: 400 });
-    const perAdset = Math.min(Math.max(Number(creo_per_adset) || 1, 1), 50);
-    if (creo_mode === 'one-per' && perAdset * adsets > creative_ids.length)
-      throw Object.assign(new Error(`Раскладка «по ${perAdset} на адсет» × ${adsets} адсетов требует ${perAdset * adsets} креативов, выбрано ${creative_ids.length}`), { statusCode: 400 });
+    const planned = [];
+    for (const [i, cab] of cabinets.entries()) {
+      const own = Object.fromEntries(CABINET_FIELDS.filter(f => cab?.[f] !== undefined).map(f => [f, cab[f]]));
+      try {
+        planned.push(await buildPushParams(req, { ...common, ...own }));
+      } catch (e) {
+        e.message = `Кабинет ${cab?.cabinet_external_id || i + 1}: ${e.message}`;
+        throw e;
+      }
+    }
 
-    const params = {
-      product_id, landing_id, landing_url, campaign_name,
-      domain_id, whitepage,
-      cabinet_id, cabinet_external_id,
-      page_external_id, pixel_id,
-      creative_ids, preset_id,
-      objective: 'OUTCOME_LEADS',
-      daily_budget: Number(daily_budget),
-      bid_strategy: 'LOWEST_COST_WITH_BID_CAP',
-      bid_amount: Number(bid_amount),
-      optimization_goal: 'OFFSITE_CONVERSIONS',
-      billing_event: 'IMPRESSIONS',
-      pixel_event: pixel_event || 'LEAD',
-      countries: countries || [],
-      age_min: age_min || 18,
-      age_max: age_max || 65,
-      auto_placement: auto_placement !== false,
-      platforms: placementList,
-      adsets_count: adsets,
-      bid_amounts: bids,
-      genders: ['male', 'female'].includes(genders) ? genders : 'all',
-      devices: ['mobile', 'desktop'].includes(devices) ? devices : 'all',
-      creo_mode: creo_mode === 'one-per' ? 'one-per' : 'all-all',
-      creo_per_adset: perAdset,
-      call_to_action: call_to_action || 'SHOP_NOW',
-      ad_title, ad_body,
-      kt_landing_id, white_landing_id, kt_group_id,
-      offer_ids: (Array.isArray(offer_ids) ? offer_ids : [offer_ids]).filter(Boolean).map(Number),
-      // Everything is created PAUSED; activation is a separate, confirmed step.
-      run_now: false,
-    };
-
-    const push = await db.insert('pushes', {
-      workspace_id: req.user.ws,
-      product_id,
-      params,
-      status: 'pending',
-      created_by: req.user.id,
-      log: JSON.stringify([]),
-    });
-    const pushId = push.id;
-
-    // Run async (don't await)
-    runPush(pushId).catch(console.error);
-
-    return { id: pushId, status: 'pending' };
+    const results = [];
+    for (const params of planned) {
+      try {
+        results.push({ cabinet_id: params.cabinet_id, cabinet_external_id: params.cabinet_external_id, push_id: await insertPush(req, params), status: 'pending' });
+      } catch (e) {
+        results.push({ cabinet_id: params.cabinet_id, cabinet_external_id: params.cabinet_external_id, error: e.message });
+      }
+    }
+    return { results };
   });
 
   // List pushes
