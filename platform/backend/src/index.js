@@ -31,8 +31,10 @@ import { adSettingsRoutes } from './api/routes/adSettings.js';
 import { trackRoutes } from './api/routes/track.js';
 import { tiktokRoutes } from './api/routes/tiktok.js';
 import { gateRoutes } from './api/routes/gate.js';
+import { mcpRoutes, mcpTokenRoutes } from './api/routes/mcp.js';
+import { registerAuthenticate } from './middleware/authenticate.js';
 import { startScrapeRecovery } from './services/scrape-jobs.js';
-import { db, pool } from './db/client.js';
+import { pool } from './db/client.js';
 import { startCreativeWorker } from './services/creative-jobs.js';
 
 const app = Fastify({ logger: true });
@@ -50,19 +52,7 @@ await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 const uploadsDir = process.env.UPLOADS_DIR ? resolve(process.env.UPLOADS_DIR) : join(__dirname, '..', 'uploads');
 await app.register(staticPlugin, { root: uploadsDir, prefix: '/uploads/', decorateReply: false });
 
-// Auth decorator
-// Role and workspace come from the DB on every request, so a removed or demoted user
-// loses access at once instead of keeping the rights baked into an old token.
-app.decorate('authenticate', async (req, reply) => {
-  try {
-    await req.jwtVerify();
-  } catch {
-    return reply.status(401).send({ error: 'Unauthorized' });
-  }
-  const { rows: [u] } = await db.query('SELECT id, workspace_id, role, email FROM users WHERE id = $1', [req.user.id]);
-  if (!u) return reply.status(401).send({ error: 'Unauthorized' });
-  req.user = { ...req.user, ws: u.workspace_id, role: u.role, email: u.email };
-});
+registerAuthenticate(app);
 
 // Routes
 app.register(authRoutes, { prefix: '/api/auth' });
@@ -86,6 +76,8 @@ app.register(landingRoutes, { prefix: '/api/landings' });
 app.register(adSettingsRoutes, { prefix: '/api/ad-settings' });
 app.register(trackRoutes, { prefix: '/api/t' });
 app.register(tiktokRoutes, { prefix: '/api/tiktok' });
+app.register(mcpTokenRoutes, { prefix: '/api/mcp-tokens' });
+app.register(mcpRoutes, { prefix: '/api/mcp' });
 // PIN doors of the stub page: not under /api, reachable only through nginx (see routes/gate.js).
 app.register(gateRoutes, { prefix: '/gate' });
 

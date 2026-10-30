@@ -79,7 +79,7 @@ function runOwnScrape(ws, productId, asin, marketplace, source = 'amazon', sourc
   });
 }
 
-async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetId, creativePresetId }) {
+async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetId, creativePresetId, dryRun = false }) {
   const engine = currentEngine();
   const links = inputs.map(s => ({ input: s, link: parseProductLink(s, marketplace) }));
   const bad = links.filter(l => !l.link).map(l => l.input);
@@ -89,6 +89,7 @@ async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetI
 
   const bundles = await loadPresetBundles(ws, presetId);
   await assertCreativePreset(ws, creativePresetId);
+  if (dryRun) return { engine, links: links.map(l => l.link), bundles };
   const products = [];
   for (const { link } of links) {
     products.push(await createPlaceholder({ ws, userId, link, engine, folderId, presetId, bundles, creativePresetId }));
@@ -122,9 +123,13 @@ export async function scrapeRoutes(app) {
     if (inputs.length > 50) throw badRequest('Не больше 50 ссылок за раз');
     await assertScrapeRefs(req, folder_id, bundle_preset_id, creative_preset_id);
 
-    const { engine, products } = await startScrapes({
-      ws, userId, inputs, marketplace, folderId: folder_id, presetId: bundle_preset_id, creativePresetId: creative_preset_id,
+    // ?dry_run=1: every check, nothing created (used to validate MCP drafts).
+    const dryRun = req.query?.dry_run === '1';
+    const started = await startScrapes({
+      ws, userId, inputs, marketplace, folderId: folder_id, presetId: bundle_preset_id, creativePresetId: creative_preset_id, dryRun,
     });
+    if (dryRun) return { ok: true, links: started.links, bundles: started.bundles };
+    const { engine, products } = started;
     return {
       engine,
       total: products.length,

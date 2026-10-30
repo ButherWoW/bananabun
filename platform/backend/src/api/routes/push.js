@@ -119,8 +119,10 @@ export async function pushRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
 
   // Start a new push
+  // ?dry_run=1 runs every check and writes nothing (MCP drafts are validated this way before the human says yes).
   app.post('/', auth, async (req) => {
     const params = await buildPushParams(req, req.body || {});
+    if (req.query?.dry_run === '1') return { ok: true, params };
     const id = await insertPush(req, params);
     return { id, status: 'pending' };
   });
@@ -148,6 +150,7 @@ export async function pushRoutes(app) {
         throw e;
       }
     }
+    if (req.query?.dry_run === '1') return { ok: true, cabinets: planned };
 
     const results = [];
     for (const params of planned) {

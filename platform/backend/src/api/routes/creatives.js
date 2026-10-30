@@ -49,7 +49,7 @@ export function presetToGenerateBody(template = {}) {
   };
 }
 
-export async function startGeneration({ ws, userId, product, body, batchKey }) {
+export async function startGeneration({ ws, userId, product, body, batchKey, dryRun = false }) {
   if (batchKey !== undefined && (typeof batchKey !== 'string' || !batchKey || batchKey.length > 120)) throw new Error('Invalid internal creative batch key');
   const { language = 'fr', landing_price, features } = body;
   const { format, headline, styles: pickedStyles } = creativePlan(body);
@@ -73,6 +73,7 @@ export async function startGeneration({ ws, userId, product, body, batchKey }) {
       status: 'pending',
       metadata: { source: requestedSource, style, language, auto_slot: index, ...(batchKey ? {auto_batch_key:batchKey} : {}), options: { language, landing_price, features, format, headline, logo_key, image: references.length ? references[index % references.length] : undefined } },
     }));
+  if (dryRun) return { ok: true, total: planned.length, format, source: requestedSource, paid: requestedSource === 'flux', styles: pickedStyles };
   // One SQL statement: a failure must not leave a partially created batch.
   const { rows: records } = await db.query(`INSERT INTO creatives
     (id,product_id,workspace_id,created_by,type,format,status,metadata)
@@ -125,7 +126,7 @@ export async function creativeRoutes(app) {
     const product = await db.findOne('products', { id: req.body.product_id, workspace_id: ws });
     if (!product) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
     await assertProductAccess(req, product.id);
-    return startGeneration({ ws, userId, product, body: req.body });
+    return startGeneration({ ws, userId, product, body: req.body, dryRun: req.query?.dry_run === '1' });
   });
 
   // Info endpoint вЂ” which source is active

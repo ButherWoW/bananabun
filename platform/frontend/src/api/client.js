@@ -264,6 +264,12 @@ export const admin = {
   resetPassword: (id, password) => api.post(`/api/admin/users/${id}/reset-password`, { password }),
 };
 
+export const mcpTokens = {
+  list: () => api.get('/api/mcp-tokens'),
+  create: (name) => api.post('/api/mcp-tokens', { name }),
+  revoke: (id) => api.delete(`/api/mcp-tokens/${id}`),
+};
+
 export const tiktok = {
   accounts: () => api.get('/api/tiktok/accounts'),
   addAccount: (data) => api.post('/api/tiktok/accounts', data),

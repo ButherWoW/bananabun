@@ -623,6 +623,7 @@ const GET = [
   [/^\/api\/landings\/templates$/, () => LANDING_TEMPLATES],
   [/^\/api\/admin\/users$/, () => PEOPLE],
   [/^\/api\/tiktok\/accounts$/, () => TIKTOK_ACCOUNTS],
+  [/^\/api\/mcp-tokens$/, () => []],
   [/^\/api\/tiktok\/pixels\/[^/]+$/, () => []],
 ];
 
