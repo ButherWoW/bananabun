@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, pushes as pushesApi, pushes as pushesClient, keitaro as keitaroApi, landingTemplates } from '../api/client.js';
 import clsx from 'clsx';
+import Hint from './Hint.jsx';
 
 const pushApi = {
   options: () => api.get('/api/push/options'),
@@ -150,7 +151,7 @@ function StepLanding({ opts, form, set }) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Лендинг</label>
+        <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Лендинг<Hint k="pw.landing" /></label>
         <input value={search} onChange={e => setSearch(e.target.value)} className={inp} placeholder="Поиск лендинга..." />
         <div className="space-y-1.5 mt-2 max-h-44 overflow-y-auto pr-1">
           {search
@@ -175,7 +176,7 @@ function StepLanding({ opts, form, set }) {
 
       {geos.length > 0 && (
         <div>
-          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Гео</label>
+          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Гео<Hint k="pw.geo" /></label>
           <div className="flex flex-wrap gap-2">
             {geos.map(g => (
               <button key={g} onClick={() => { set('geo', g); set('landing_uploaded_id', null); }}
@@ -214,14 +215,14 @@ function StepLanding({ opts, form, set }) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Домен</label>
+          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Домен<Hint k="pw.domain" /></label>
           <select value={form.domain_id || ''} onChange={e => set('domain_id', e.target.value)} className={inp}>
             <option value="">Выбери домен</option>
             {domains.map(d => <option key={d.id} value={d.id}>{d.name || d.domain}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Вайт (лендинг Keitaro)</label>
+          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Вайт (лендинг Keitaro)<Hint k="pw.white" /></label>
           <select value={form.white_landing_id || ''} onChange={e => set('white_landing_id', e.target.value)} className={inp}>
             <option value="">Выбери вайт</option>
             {keitaroLandings.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -231,14 +232,14 @@ function StepLanding({ opts, form, set }) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Группа кампаний Keitaro</label>
+          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Группа кампаний Keitaro<Hint k="pw.ktGroup" /></label>
           <select value={form.kt_group_id || ''} onChange={e => set('kt_group_id', e.target.value)} className={inp}>
             <option value="">Без группы</option>
             {(Array.isArray(ktGroups) ? ktGroups : []).filter(g => !g.type || g.type === 'campaigns').map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Оффер (можно несколько, доли поровну)</label>
+          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Оффер (можно несколько, доли поровну)<Hint k="pw.offers" /></label>
           <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
             {offerList.map(o => (
               <label key={o.id} className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
@@ -288,7 +289,7 @@ function StepCabinet({ opts, form, set }) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Рекламный кабинет · сначала где свободнее</label>
+        <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Рекламный кабинет · сначала где свободнее<Hint k="pw.cabinet" /></label>
         <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
           {cabinets.map(c => (
             <button key={c.id} disabled={inBatch(c.id)} onClick={() => { set('cabinet_id', c.id); set('cabinet_external_id', c.external_id); set('page_id', null); set('page_external_id', null); set('pixel_id', c.pixel_id || ''); }}
@@ -314,7 +315,7 @@ function StepCabinet({ opts, form, set }) {
       {selected && (
         <>
           <div>
-            <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Страница</label>
+            <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Страница<Hint k="pw.page" /></label>
             <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
               {pages.map(p => (
                 <button key={p.id} onClick={() => { set('page_id', p.id); set('page_external_id', p.external_id); }}
@@ -330,7 +331,7 @@ function StepCabinet({ opts, form, set }) {
           </div>
 
           <div>
-            <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">ID пикселя</label>
+            <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">ID пикселя<Hint k="pw.pixel" /></label>
             <input value={form.pixel_id || ''} onChange={e => set('pixel_id', e.target.value)}
               className={inp} placeholder="Введи ID пикселя" />
           </div>
@@ -420,7 +421,7 @@ function StepSettings({ opts, form, set }) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Пресет рекламы</label>
+        <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Пресет рекламы<Hint k="pw.preset" /></label>
         <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
           {presets.map(p => (
             <button key={p.id} onClick={() => {
@@ -445,7 +446,7 @@ function StepSettings({ opts, form, set }) {
 
       {multi && (
         <div className="space-y-1.5">
-          <label className="block text-[10px] text-gray-500 uppercase tracking-wider">Бюджет на адсет / день и ставка — у каждого кабинета свои</label>
+          <label className="block text-[10px] text-gray-500 uppercase tracking-wider">Бюджет на адсет / день и ставка — у каждого кабинета свои<Hint k="pw.multiBudget" /></label>
           {targets.map(t => (
             <div key={t.body.cabinet_id} className="grid grid-cols-[minmax(0,1fr)_6rem_6rem] gap-2 items-center">
               <span className="text-xs text-gray-300 truncate">{t.name}</span>
@@ -458,16 +459,16 @@ function StepSettings({ opts, form, set }) {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {!multi && <Field label="Бюджет на адсет / день">
+        {!multi && <Field label="Бюджет на адсет / день" hint="pw.budget">
           <input type="number" value={form.daily_budget || ''} onChange={e => set('daily_budget', e.target.value)} className={inp} placeholder="по гео с лидом" />
         </Field>}
-        {!multi && <Field label="Ставка (bid cap)">
+        {!multi && <Field label="Ставка (bid cap)" hint="pw.bid">
           <input type="number" step="0.01" value={form.bid_amount || ''} onChange={e => set('bid_amount', e.target.value)} className={inp} placeholder="по гео с лидом" />
         </Field>}
-        <Field label="Adsets">
+        <Field label="Adsets" hint="pw.adsets">
           <input type="number" value={form.adsets_count || 1} onChange={e => set('adsets_count', Number(e.target.value))} className={inp} min={1} max={20} />
         </Field>
-        <Field label="Возраст">
+        <Field label="Возраст" hint="pw.age">
           <div className="flex items-center gap-1">
             <input type="number" value={form.age_min || 18} onChange={e => set('age_min', Number(e.target.value))} className={inp + ' w-16'} />
             <span className="text-gray-600">—</span>
@@ -521,7 +522,7 @@ function StepLaunch({ opts, form, set }) {
     <div className="space-y-4">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-[10px] text-gray-500 uppercase tracking-wider">Тексты объявления</label>
+          <label className="text-[10px] text-gray-500 uppercase tracking-wider">Тексты объявления<Hint k="pw.texts" /></label>
           <button onClick={() => textsMut.mutate()} disabled={textsMut.isPending}
             className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50">
             {textsMut.isPending ? '✦ Генерирую...' : '✦ Сгенерировать'}
@@ -554,7 +555,7 @@ function StepLaunch({ opts, form, set }) {
             className={inp + ' resize-none h-16'} placeholder="Текст объявления" maxLength={125} />
           <div className="text-right text-[10px] text-gray-700 mt-0.5">{(form.ad_body || '').length}/125</div>
         </Field>
-        <Field label="Ссылка (CTA)">
+        <Field label="Ссылка (CTA)" hint="pw.cta">
           <select value={form.call_to_action || 'LEARN_MORE'} onChange={e => set('call_to_action', e.target.value)} className={inp}>
             {['LEARN_MORE','SHOP_NOW','GET_OFFER','SIGN_UP','SUBSCRIBE','CONTACT_US','APPLY_NOW'].map(v =>
               <option key={v} value={v}>{v.replace(/_/g,' ')}</option>
@@ -663,8 +664,8 @@ function Row({ label, val }) {
   if (!val && val !== 0) return null;
   return <div className="flex justify-between"><span className="text-gray-600">{label}</span><span>{val}</span></div>;
 }
-function Field({ label, children }) {
-  return <div className="mb-3"><label className="block text-[10px] text-gray-500 mb-1">{label}</label>{children}</div>;
+function Field({ label, hint, children }) {
+  return <div className="mb-3"><label className="block text-[10px] text-gray-500 mb-1">{label}{hint && <Hint k={hint} />}</label>{children}</div>;
 }
 const inp = 'w-full bg-[color:var(--c0d0f1e)] border border-[color:var(--c2d3148)] text-gray-300 text-xs px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-indigo-500';
 

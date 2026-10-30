@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { products as productsApi, creatives as creativesApi, presets as presetsApi } from '../api/client.js';
 import clsx from 'clsx';
+import Hint from '../components/Hint.jsx';
 
 const LANGUAGES = [
   { code: 'fr', label: 'Французский', flag: '🇫🇷' },
@@ -275,9 +276,11 @@ export default function CreativesPage() {
           {useFlux && sourceInfo?.generative_ai
             ? '✦ Ideogram v2: нейросеть генерирует рекламный баннер с точным текстом и ценами. ~$0.08 за изображение.'
             : 'Собственные шаблоны: фото товара, надпись и ваш логотип. До пяти стилей; при большем количестве стили повторяются. Референсы используются как фото.'}
+          <Hint k="cr.engine" />
         </p>
         {/* Idea textarea */}
         <div className="px-4 pt-3">
+          <div className="flex items-center text-[11px] text-gray-500">Надпись на креативе<Hint k="cr.idea" /></div>
           <textarea
             value={idea}
             onChange={e => setIdea(e.target.value)}
@@ -295,7 +298,7 @@ export default function CreativesPage() {
 
         {/* Logo row */}
         <div className="px-4 pb-2 flex items-center gap-3">
-          <span className="text-xs text-gray-500">Логотип</span>
+          <span className="text-xs text-gray-500">Логотип<Hint k="cr.logo" /></span>
           <button
             onClick={() => logoFileRef.current?.click()}
             className="w-28 h-28 border border-dashed border-[color:var(--c3d4168)] rounded-xl flex items-center justify-center hover:border-indigo-500 transition-colors overflow-hidden flex-shrink-0"
@@ -356,6 +359,7 @@ export default function CreativesPage() {
             )}
           </div>
 
+          <Hint k="cr.references" />
           {/* Language */}
           <div className="relative">
             <button
@@ -409,6 +413,7 @@ export default function CreativesPage() {
             )}
           </div>
 
+          <Hint k="cr.format" />
           {/* Count */}
           <div className="relative">
             <button
@@ -435,6 +440,7 @@ export default function CreativesPage() {
             )}
           </div>
 
+          <Hint k="cr.count" />
           {/* Banner toggle — server-side sharp renderer */}
           <button
             onClick={() => { setUseBanner(v => !v); if (!useBanner) setUseFlux(false); }}
@@ -447,6 +453,7 @@ export default function CreativesPage() {
           >
             🖼 Баннер
           </button>
+          <Hint k="cr.banner" />
 
           {/* FLUX AI toggle — only when FAL_API_KEY is configured on the server */}
           {sourceInfo?.generative_ai && (
@@ -462,6 +469,7 @@ export default function CreativesPage() {
               ✦ Ideogram AI
             </button>
           )}
+          {sourceInfo?.generative_ai && <Hint k="cr.ideogram" />}
 
           {/* Diversify */}
           <button
@@ -475,6 +483,7 @@ export default function CreativesPage() {
           >
             Разные стили
           </button>
+          <Hint k="cr.diversify" />
 
           <div className="flex-1" />
 
@@ -490,6 +499,7 @@ export default function CreativesPage() {
             </select>
           )}
 
+          <Hint k="cr.preset" />
           {/* Save preset */}
           {showPresetSave ? (
             <div className="flex items-center gap-1">

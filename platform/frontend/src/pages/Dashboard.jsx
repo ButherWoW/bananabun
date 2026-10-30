@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { analytics } from '../api/client.js';
+import Hint from '../components/Hint.jsx';
 
 const RANGES = [
   { key: 'today', label: 'Сегодня' },
@@ -26,10 +27,10 @@ function Skeleton() {
   return <div className="animate-pulse h-8 rounded bg-[color:var(--c1e2240)] w-3/4" />;
 }
 
-function KpiCard({ label, value, sub, color = 'text-white' }) {
+function KpiCard({ label, hint, value, sub, color = 'text-white' }) {
   return (
     <div className="bg-[color:var(--c0d0f1e)] border border-[color:var(--c1e2240)] rounded-xl p-5 flex flex-col gap-2">
-      <div className="text-xs text-gray-500 uppercase tracking-wider">{label}</div>
+      <div className="text-xs text-gray-500 uppercase tracking-wider">{label}{hint && <Hint k={hint} />}</div>
       <div className={`text-3xl font-bold ${color}`}>{value}</div>
       {sub && <div className="text-xs text-gray-500">{sub}</div>}
     </div>
@@ -115,21 +116,25 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <KpiCard
           label="Расход"
+          hint="d.spend"
           value={isLoading ? <Skeleton /> : fmtEur(totals.spend)}
           color="text-orange-400"
         />
         <KpiCard
           label="Доход"
+          hint="d.revenue"
           value={isLoading ? <Skeleton /> : fmtEur(totals.revenue)}
           color="text-blue-400"
         />
         <KpiCard
           label="Профит"
+          hint="d.profit"
           value={isLoading ? <Skeleton /> : fmtEur(totals.profit)}
           color={profitColor}
         />
         <KpiCard
           label="ROI"
+          hint="d.roi"
           value={isLoading ? <Skeleton /> : fmtPct(totals.roi)}
           color={roiColor}
         />

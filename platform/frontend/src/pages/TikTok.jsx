@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tiktok } from '../api/client.js';
 import GenerateLandingModal from '../components/GenerateLandingModal.jsx';
 import { toast } from '../components/Toaster.jsx';
+import Hint from '../components/Hint.jsx';
 
 function AccountCard({ account, onRemove, onUpdate }) {
   const [editing, setEditing] = useState(false);
@@ -70,13 +71,13 @@ function AddAccountModal({ onClose, onAdded }) {
           <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
         </div>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400">
-          Advertiser ID
+          <span className="flex items-center">Advertiser ID<Hint k="tt.advertiser" /></span>
           <input value={advertiser_id} onChange={e => setAdvertiserId(e.target.value)}
             placeholder="12345678901234567"
             className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
         </label>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400">
-          Access Token
+          <span className="flex items-center">Access Token<Hint k="tt.token" /></span>
           <input value={access_token} onChange={e => setToken(e.target.value)} type="password"
             placeholder="••••••••"
             className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
@@ -179,7 +180,7 @@ function PushTab({ accounts }) {
           </select>
         </label>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400 col-span-2">
-          Product ID (из платформы)
+          <span className="flex items-center">Product ID (из платформы)<Hint k="tt.product" /></span>
           <input value={form.product_id} onChange={e => set('product_id', e.target.value)}
             placeholder="prod_abc123"
             className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
@@ -198,7 +199,7 @@ function PushTab({ accounts }) {
           {form.landing_page_url && <span className="text-xs text-green-400">URL set</span>}
         </label>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400 col-span-2">
-          Link to video
+          <span className="flex items-center">Link to video<Hint k="tt.video" /></span>
           <div className="flex gap-2">
             <input value={form.video_url} onChange={e => set('video_url', e.target.value)}
               placeholder="https://example.com/video.mp4"
@@ -226,7 +227,7 @@ function PushTab({ accounts }) {
             className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
         </label>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400">
-          Гео
+          <span className="flex items-center">Гео<Hint k="tt.geo" /></span>
           <select value={form.geo} onChange={e => set('geo', e.target.value)}
             className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
             {['FR','BE','DE','NL','ES','IT','PL','PT','SE','NO','DK','FI','AT','CH','GB','US','CA'].map(g =>
@@ -235,7 +236,7 @@ function PushTab({ accounts }) {
           </select>
         </label>
         <label className="flex flex-col gap-1.5 text-xs text-gray-400">
-          Дневной бюджет ($)
+          <span className="flex items-center">Дневной бюджет ($)<Hint k="tt.budget" /></span>
           <input type="number" value={form.budget_daily} onChange={e => set('budget_daily', e.target.value)} min="1"
             className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
         </label>

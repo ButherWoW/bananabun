@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adSettings as api, products as productsApi, presets as presetsApi } from '../api/client.js';
 import clsx from 'clsx';
+import Hint from '../components/Hint.jsx';
 
 const DEFAULT = {
   name: 'Новый пресет',
@@ -126,10 +127,10 @@ function ProductsMultiSelect({ value = [], onChange, products = [] }) {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, hint, children }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[11px] text-gray-500 uppercase tracking-wide">{label}</label>
+      <label className="text-[11px] text-gray-500 uppercase tracking-wide">{label}{hint && <Hint k={hint} />}</label>
       {children}
     </div>
   );
@@ -434,7 +435,7 @@ export default function AdSettingsPage() {
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Возраст от">
+              <Field label="Возраст от" hint="as.age">
                 <Input type="number" value={form.age_min} onChange={v => set('age_min', v)} min={18} max={65} />
               </Field>
               <Field label="Возраст до">
@@ -443,14 +444,14 @@ export default function AdSettingsPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Пол">
+              <Field label="Пол" hint="as.gender">
                 <Select value={form.genders} onChange={v => set('genders', v)} options={[
                   { value: 'all', label: 'Все' },
                   { value: 'male', label: 'Мужчины' },
                   { value: 'female', label: 'Женщины' },
                 ]} />
               </Field>
-              <Field label="Устройства">
+              <Field label="Устройства" hint="as.devices">
                 <Select value={form.devices} onChange={v => set('devices', v)} options={[
                   { value: 'all', label: 'Все' },
                   { value: 'mobile', label: 'Мобильные' },
@@ -460,38 +461,38 @@ export default function AdSettingsPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Кол-во адсетов">
+              <Field label="Кол-во адсетов" hint="as.adsets">
                 <Input type="number" value={form.adsets_count} onChange={v => set('adsets_count', v)} min={1} max={10} />
               </Field>
-              <Field label="Бюджет на один адсет, € в день">
+              <Field label="Бюджет на один адсет, € в день" hint="as.budget">
                 <Input type="number" value={form.budget} onChange={v => set('budget', v)} min={1} />
               </Field>
             </div>
 
-            <Field label="Стратегия ставки">
+            <Field label="Стратегия ставки" hint="as.bidStrategy">
               <Select value={form.bid_strategy} onChange={v => set('bid_strategy', v)} options={bidOptions} />
             </Field>
 
-            <Field label="Ставка (€)">
+            <Field label="Ставка (€)" hint="as.bid">
               <Input type="number" value={form.bid_amount} onChange={v => set('bid_amount', v)} min={1} />
             </Field>
 
             <BidsPerAdset form={form} set={set} />
 
-            <Field label="Цель">
+            <Field label="Цель" hint="as.objective">
               <Select value={form.objective} onChange={v => set('objective', v)} options={objectiveOptions} />
             </Field>
 
-            <Field label="Событие пикселя">
+            <Field label="Событие пикселя" hint="as.pixelEvent">
               <Select value={form.pixel_event} onChange={v => set('pixel_event', v)} options={pixelEventOptions} />
             </Field>
 
-            <Field label="CTA">
+            <Field label="CTA" hint="as.cta">
               <Select value={form.call_to_action} onChange={v => set('call_to_action', v)} options={ctaOptions} />
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Режим креативов">
+              <Field label="Режим креативов" hint="as.creoMode">
                 <Select value={form.creo_mode} onChange={v => set('creo_mode', v)} options={[
                   { value: 'all-all', label: 'Все во все адсеты' },
                   { value: 'one-per', label: 'Свои креативы у каждого адсета' },
@@ -519,7 +520,7 @@ export default function AdSettingsPage() {
               </button>
             </Field>
 
-            <Field label="Авто-плейсменты">
+            <Field label="Авто-плейсменты" hint="as.autoPlacement">
               <button
                 onClick={() => set('auto_placement', !form.auto_placement)}
                 className={clsx(
@@ -537,7 +538,7 @@ export default function AdSettingsPage() {
             </Field>
 
             {!form.auto_placement && (
-              <Field label="Площадки">
+              <Field label="Площадки" hint="as.platforms">
                 <div className="flex flex-wrap gap-1.5">
                   {PLATFORMS.map(p => {
                     const on = (form.platforms || []).includes(p.value);
@@ -553,7 +554,7 @@ export default function AdSettingsPage() {
               </Field>
             )}
 
-            <Field label="URL параметры">
+            <Field label="URL параметры" hint="as.urlParams">
               <textarea
                 value={form.url_params}
                 onChange={e => set('url_params', e.target.value)}

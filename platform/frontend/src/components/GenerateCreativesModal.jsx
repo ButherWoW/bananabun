@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { products as productsApi, creatives as creativesApi } from '../api/client.js';
 import clsx from 'clsx';
+import Hint from './Hint.jsx';
 
 const STYLES = [
   { key: 'clean', label: 'Чистый', desc: 'Белый фон, минимализм' },
@@ -122,7 +123,7 @@ export default function GenerateCreativesModal({ productId, onClose, onDone }) {
 
           {/* Landing price */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Цена на лендинге (€)</label>
+            <label className="block text-xs text-gray-400 mb-1.5">Цена на лендинге (€)<Hint k="gcm.landingPrice" /></label>
             <input
               type="number"
               step="0.01"
@@ -136,7 +137,7 @@ export default function GenerateCreativesModal({ productId, onClose, onDone }) {
 
           {/* Language */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Язык</label>
+            <label className="block text-xs text-gray-400 mb-1.5">Язык<Hint k="gcm.language" /></label>
             <div className="flex gap-2 flex-wrap">
               {LANGUAGES.map(lang => (
                 <button
@@ -159,7 +160,7 @@ export default function GenerateCreativesModal({ productId, onClose, onDone }) {
 
           {/* Format */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Формат</label>
+            <label className="block text-xs text-gray-400 mb-1.5">Формат<Hint k="gcm.format" /></label>
             <div className="flex gap-2">
               {FORMATS.map(fmt => (
                 <button
@@ -183,7 +184,7 @@ export default function GenerateCreativesModal({ productId, onClose, onDone }) {
           {/* Styles */}
           <div>
             <label className="block text-xs text-gray-400 mb-1.5">
-              Стили <span className="text-gray-600">({form.styles.length} выбрано)</span>
+              Стили <span className="text-gray-600">({form.styles.length} выбрано)</span><Hint k="gcm.styles" />
             </label>
             <div className="grid grid-cols-1 gap-1.5">
               {STYLES.map(style => (
