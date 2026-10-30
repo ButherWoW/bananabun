@@ -11,14 +11,15 @@
   :root {
     color-scheme: dark;
     --tiffany: #0abab5; --tiffany-hi: #81f2ec; --tiffany-lo: #067a76;
-    --steel-1: #f2f4f6; --steel-2: #b9bfc6; --steel-3: #8e959d; --steel-4: #5f666e;
   }
   * { box-sizing: border-box; }
   html, body { min-height: 100%; margin: 0; }
   body {
-    display: grid; place-items: center; gap: 36px; align-content: center;
-    min-height: 100vh; padding: 32px max(16px, env(safe-area-inset-left, 0px)) 32px max(16px, env(safe-area-inset-right, 0px));
-    background: radial-gradient(ellipse at top, #0f1a1c 0%, #07090b 60%);
+    display: grid; place-items: center; gap: 40px; align-content: center;
+    min-height: 100vh; padding: 32px max(16px, env(safe-area-inset-left, 0px)) 40px max(16px, env(safe-area-inset-right, 0px));
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 0%, rgba(10,186,181,.10), transparent 70%),
+      radial-gradient(ellipse at 50% 120%, #15191d 0%, #07090b 60%);
     color: #e9eef2; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
 
@@ -34,42 +35,99 @@
   }
   @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 
-  /* Brushed-steel keypad */
+  /* ---------- Brushed stainless keypad ---------- */
   .pad {
-    width: min(360px, 100%); padding: 26px 26px 30px; border-radius: 26px;
+    --brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.004 0.9' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    position: relative; width: min(372px, 100%); padding: 30px 30px 34px; border-radius: 30px;
     background:
-      repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.05) 1px 3px),
-      linear-gradient(160deg, var(--steel-1), var(--steel-2) 45%, var(--steel-3) 100%);
-    box-shadow: inset 0 2px 0 rgba(255,255,255,.8), inset 0 -3px 6px rgba(0,0,0,.35), 0 18px 40px rgba(0,0,0,.6);
-    display: grid; gap: 18px;
+      var(--brush),
+      linear-gradient(115deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.55) 46%, rgba(255,255,255,0) 60%),
+      linear-gradient(180deg, #eef1f4 0%, #c3c9cf 38%, #9aa2aa 62%, #c9ced3 100%);
+    background-blend-mode: overlay, screen, normal;
+    box-shadow:
+      inset 0 2px 1px rgba(255,255,255,.95),
+      inset 0 -2px 1px rgba(0,0,0,.35),
+      inset 2px 0 1px rgba(255,255,255,.4),
+      inset -2px 0 1px rgba(0,0,0,.2),
+      0 0 0 1px #6b737b,
+      0 0 0 6px #2a2f34,
+      0 0 0 7px #4a5158,
+      0 30px 60px rgba(0,0,0,.75),
+      0 10px 18px rgba(0,0,0,.5);
+    display: grid; gap: 20px;
   }
+  /* corner screws */
+  .screw { position: absolute; width: 16px; height: 16px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffffff 0, #d9dde1 25%, #8b939b 70%, #5a6168 100%);
+    box-shadow: inset 0 -1px 2px rgba(0,0,0,.5), 0 1px 1px rgba(255,255,255,.7), 0 0 0 2px rgba(0,0,0,.18); }
+  .screw::before, .screw::after { content: ""; position: absolute; left: 3px; right: 3px; top: 7px; height: 2px; border-radius: 1px; background: #4c535a; box-shadow: 0 1px 0 rgba(255,255,255,.6); }
+  .screw::after { transform: rotate(90deg); }
+  .screw.tl { top: 11px; left: 11px; transform: rotate(18deg); } .screw.tr { top: 11px; right: 11px; transform: rotate(-31deg); }
+  .screw.bl { bottom: 11px; left: 11px; transform: rotate(52deg); } .screw.br { bottom: 11px; right: 11px; transform: rotate(7deg); }
+
+  /* LCD under glass in a recessed bezel */
+  .bezel { padding: 7px; border-radius: 10px;
+    background: linear-gradient(180deg, #5c646c, #a7aeb5 55%, #e6e9ec);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.8); }
   .lcd {
-    height: 74px; border-radius: 6px; display: grid; place-items: center; overflow: hidden;
-    background: linear-gradient(180deg, #6f7cff, #5664f2);
-    box-shadow: inset 0 3px 8px rgba(0,0,0,.45), 0 0 0 3px #7c838b, 0 0 0 4px #c9ced3;
-    font-family: VT323, "Courier New", monospace; font-size: 46px; letter-spacing: .08em; color: #13163d;
-    text-shadow: 2px 2px 0 rgba(19,22,61,.18); white-space: nowrap;
+    position: relative; height: 78px; border-radius: 4px; display: grid; place-items: center; overflow: hidden;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,40,.10) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(90deg, rgba(0,0,40,.08) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at 50% 40%, #8b97ff 0%, #6672f5 55%, #4b56d6 100%);
+    box-shadow: inset 0 0 18px rgba(0,0,30,.55), inset 0 2px 3px rgba(0,0,0,.6);
+    font-family: VT323, "Courier New", monospace; font-size: 48px; letter-spacing: .1em; color: #121540;
+    text-shadow: 2px 2px 0 rgba(18,21,64,.22), 0 0 1px rgba(18,21,64,.6); white-space: nowrap;
   }
+  .lcd::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(160deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.08) 38%, transparent 40%, transparent 100%); }
   .lcd.small { font-size: 30px; letter-spacing: .04em; }
-  .leds { display: flex; justify-content: center; gap: 96px; }
-  .led { width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 -3px 5px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.6); }
-  .led.red { background: radial-gradient(circle at 35% 30%, #ffb3b3, #c51d1d 60%, #6d0a0a); opacity: .45; }
-  .led.green { background: radial-gradient(circle at 35% 30%, #c8ffc8, #22b33a 60%, #0b5a16); opacity: .45; }
-  .led.on { opacity: 1; box-shadow: inset 0 -3px 5px rgba(0,0,0,.3), 0 0 16px currentColor; }
-  .led.red.on { color: #ff3b3b; } .led.green.on { color: #3bff6a; }
-  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 22px; }
+
+  /* glass LED lenses in steel rings */
+  .leds { display: flex; justify-content: center; gap: 110px; }
+  .led { position: relative; width: 26px; height: 26px; border-radius: 50%;
+    box-shadow: 0 0 0 3px #c7ccd1, 0 0 0 4px #6e767e, 0 1px 0 4px rgba(255,255,255,.5), inset 0 -4px 6px rgba(0,0,0,.55); }
+  .led::after { content: ""; position: absolute; top: 4px; left: 6px; width: 9px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.75); filter: blur(.6px); }
+  .led.red { background: radial-gradient(circle at 50% 55%, #b02020 0%, #6a0a0a 70%, #3a0404 100%); }
+  .led.green { background: radial-gradient(circle at 50% 55%, #1f8a31 0%, #0d4a17 70%, #062a0c 100%); }
+  .led.red.on { background: radial-gradient(circle at 50% 55%, #ffd0d0 0%, #ff3030 35%, #b30d0d 75%); box-shadow: 0 0 0 3px #c7ccd1, 0 0 0 4px #6e767e, 0 0 22px 6px rgba(255,40,40,.75); }
+  .led.green.on { background: radial-gradient(circle at 50% 55%, #e0ffe3 0%, #3dff6a 35%, #12a332 75%); box-shadow: 0 0 0 3px #c7ccd1, 0 0 0 4px #6e767e, 0 0 22px 6px rgba(60,255,110,.7); }
+
+  /* chrome keys with engraved labels */
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 22px; }
   button {
-    font: 600 26px/1 "Arial Rounded MT Bold", Arial, sans-serif; color: #9aa1a8; height: 48px; border-radius: 8px; border: 0; cursor: pointer;
-    background: linear-gradient(180deg, #e9ecef, #b6bcc3);
-    box-shadow: inset 0 1px 0 #fff, inset 0 -2px 3px rgba(0,0,0,.25), 0 3px 0 #7c838b, 0 5px 8px rgba(0,0,0,.35);
-    text-shadow: 0 1px 0 #fff; transition: transform .05s, box-shadow .05s;
+    position: relative; height: 52px; border-radius: 9px; border: 0; cursor: pointer;
+    font: 700 27px/1 Arial, Helvetica, sans-serif; color: #8d949b;
+    text-shadow: 0 1px 0 rgba(255,255,255,.95), 0 -1px 0 rgba(0,0,0,.35);
+    background:
+      var(--brush),
+      linear-gradient(180deg, #fbfcfd 0%, #dfe3e7 45%, #b9c0c7 55%, #d3d8dd 100%);
+    background-blend-mode: overlay, normal;
+    box-shadow:
+      inset 0 1px 0 #ffffff, inset 0 -2px 2px rgba(0,0,0,.28), inset 1px 0 0 rgba(255,255,255,.6), inset -1px 0 0 rgba(0,0,0,.12),
+      0 0 0 1px #7d858d,
+      0 4px 0 #6a727a,
+      0 6px 10px rgba(0,0,0,.45);
+    transition: transform .05s, box-shadow .05s, filter .05s;
   }
-  button:active, button.pressed { transform: translateY(3px); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 2px rgba(0,0,0,.25), 0 0 0 #7c838b, 0 2px 3px rgba(0,0,0,.3); }
-  button:focus-visible { outline: 3px solid var(--tiffany); outline-offset: 2px; }
-  .cancel { font-size: 17px; color: #4a1010; background: linear-gradient(180deg, #c98080, #8e3a3a); text-shadow: 0 1px 0 rgba(255,255,255,.35); }
-  .enter  { font-size: 17px; color: #0d3a0d; background: linear-gradient(180deg, #8fd68f, #3e8e3e); text-shadow: 0 1px 0 rgba(255,255,255,.35); }
+  button::before { content: ""; position: absolute; inset: -5px; border-radius: 12px; z-index: -1;
+    background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(255,255,255,.35)); }
+  button:hover { filter: brightness(1.04); }
+  button:active, button.pressed {
+    transform: translateY(4px);
+    box-shadow: inset 0 1px 0 #ffffff, inset 0 -1px 1px rgba(0,0,0,.25), 0 0 0 1px #7d858d, 0 0 0 #6a727a, 0 1px 3px rgba(0,0,0,.4);
+  }
+  button:focus-visible { outline: 3px solid var(--tiffany); outline-offset: 3px; }
+  .cancel, .enter { font-size: 16px; letter-spacing: .04em; }
+  .cancel { color: #3e0b0b; text-shadow: 0 1px 0 rgba(255,255,255,.35);
+    background: var(--brush), linear-gradient(180deg, #e2a3a3 0%, #b45555 45%, #8a2f2f 55%, #a64848 100%); }
+  .enter  { color: #0b330e; text-shadow: 0 1px 0 rgba(255,255,255,.35);
+    background: var(--brush), linear-gradient(180deg, #b9edb9 0%, #5fb35f 45%, #3a8a3a 55%, #52a352 100%); }
+  .cancel, .enter { background-blend-mode: overlay, normal; }
+
   .shake { animation: shake .35s; }
   @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+  @media (max-width: 380px) { .pad { padding: 26px 20px 30px; } .keys { gap: 14px 14px; } .leds { gap: 80px; } }
   @media (prefers-reduced-motion: reduce) { h1 { animation: none; background-position: 50% 0; } .shake { animation: none; } }
 </style>
 </head>
@@ -77,7 +135,8 @@
 <h1>Идите нахуй Я&nbsp;вас не звал !</h1>
 
 <div class="pad" id="pad" role="group" aria-label="Кодовый замок">
-  <div class="lcd" id="lcd" aria-live="polite">----</div>
+  <span class="screw tl"></span><span class="screw tr"></span><span class="screw bl"></span><span class="screw br"></span>
+  <div class="bezel"><div class="lcd" id="lcd" aria-live="polite">----</div></div>
   <div class="leds"><span class="led red" id="red"></span><span class="led green" id="green"></span></div>
   <div class="keys">
     <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
@@ -95,6 +154,30 @@
   };
   const lcd = document.getElementById('lcd'), red = document.getElementById('red'), green = document.getElementById('green'), pad = document.getElementById('pad');
   let code = '', busy = false;
+
+  // Sounds are synthesized (Web Audio), no files. Browsers allow audio only after a user gesture — every sound here follows one.
+  let ac = null;
+  const audio = () => { try { ac ||= new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch { ac = null; } return ac; };
+  function tone(freq, start, dur, { type = 'sine', gain = 0.2, to = null } = {}) {
+    const a = audio(); if (!a) return;
+    const t = a.currentTime + start, o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t); if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function click(start = 0, gain = 0.35) { // short metallic tick: filtered noise burst
+    const a = audio(); if (!a) return;
+    const t = a.currentTime + start, len = Math.floor(a.sampleRate * 0.03), buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4);
+    const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    f.type = 'bandpass'; f.frequency.value = 3200; f.Q.value = 2.5; g.gain.value = gain;
+    src.buffer = buf; src.connect(f).connect(g).connect(a.destination); src.start(t);
+  }
+  const sound = {
+    key: () => { click(); tone(2093, 0, 0.07, { type: 'square', gain: 0.05 }); },
+    ok: () => { click(0, 0.2); tone(880, 0.02, 0.14, { type: 'triangle', gain: 0.22 }); tone(1318.5, 0.16, 0.28, { type: 'triangle', gain: 0.22 }); click(0.42, 0.6); tone(140, 0.42, 0.12, { type: 'sine', gain: 0.25, to: 70 }); },
+    error: () => { tone(150, 0, 0.45, { type: 'square', gain: 0.12 }); tone(110, 0.05, 0.45, { type: 'sawtooth', gain: 0.06 }); },
+  };
   const show = (text, small = false) => { lcd.textContent = text; lcd.classList.toggle('small', small); };
   const reset = () => { code = ''; red.classList.remove('on'); green.classList.remove('on'); show('----'); };
   async function sha256(s) {
@@ -103,21 +186,23 @@
   }
   async function press(k) {
     if (busy) return;
-    if (k === 'cancel') return reset();
+    if (k === 'cancel') { sound.key(); return reset(); }
     if (k === 'enter') {
+      sound.key();
       if (!code) return;
       busy = true;
       const door = DOORS[await sha256(code)];
       if (door) {
-        green.classList.add('on'); show('OK');
-        setTimeout(() => { window.location.href = door; }, 450);
+        green.classList.add('on'); show('OK'); sound.ok();
+        setTimeout(() => { window.location.href = door; }, 700);
       } else {
-        red.classList.add('on'); show('ТВОЙ РОТ ЕБАЛ', true);
+        red.classList.add('on'); show('ТВОЙ РОТ ЕБАЛ', true); sound.error();
         pad.classList.remove('shake'); void pad.offsetWidth; pad.classList.add('shake');
         setTimeout(() => { busy = false; reset(); }, 1600);
       }
       return;
     }
+    sound.key();
     if (code.length >= 8) return;
     if (!code) { red.classList.remove('on'); }
     code += k; show('*'.repeat(code.length));
