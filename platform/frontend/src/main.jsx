@@ -12,6 +12,8 @@ import { applyTheme, getTheme } from './store/theme.js';
 
 applyTheme(getTheme());
 
+const DEMO = import.meta.env.MODE === 'demo';
+
 // Old links (/products, /login…) still reach this build through nginx's fallback: move them under /banana/.
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 if (BASE && !window.location.pathname.startsWith(BASE + '/') && window.location.pathname !== BASE) {
@@ -33,8 +35,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <Toaster />
     <BrowserRouter basename={BASE || undefined}>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        {/* The demo has no accounts: login and registration lead straight into the panel. */}
+        <Route path="/login" element={DEMO ? <Navigate to="/" replace /> : <LoginPage />} />
+        <Route path="/register" element={DEMO ? <Navigate to="/" replace /> : <RegisterPage />} />
         <Route path="/*" element={<App />} />
       </Routes>
     </BrowserRouter>

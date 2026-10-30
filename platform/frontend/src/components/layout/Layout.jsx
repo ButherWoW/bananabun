@@ -29,6 +29,17 @@ const NAV_MORE = [
   { path: '/search', label: 'Поиск на Amazon', icon: '🔍' },
   { path: '/2fa', label: 'Коды 2FA', icon: '🔐' },
 ];
+// Public demo build: a strip over the whole panel so nobody mistakes it for the real one.
+const DEMO = import.meta.env.MODE === 'demo';
+
+function DemoBanner() {
+  return (
+    <div role="status" className="flex-shrink-0 bg-amber-400 text-black text-xs sm:text-sm font-semibold text-center px-3 py-1.5 leading-snug">
+      ДЕМО-РЕЖИМ — данные выдуманные, изменения не сохраняются
+    </div>
+  );
+}
+
 const USER_MENU = [
   { path: '/admin', label: 'Команда', roles: ['owner', 'lead'] },
   { path: '/settings', label: 'Настройки', roles: ['owner'] },
@@ -110,8 +121,8 @@ export default function Layout({ children }) {
   const sharedFolders = folderList.filter(f => f.shared);
   const allowed = item => !item.roles || item.roles.includes(user?.role);
 
-  return (
-    <div className="flex h-screen overflow-hidden">
+  const shell = (
+    <div className={DEMO ? 'flex flex-1 min-h-0 overflow-hidden' : 'flex h-screen overflow-hidden'}>
       {/* Sidebar */}
       <aside className="w-56 flex-shrink-0 bg-[color:var(--c0d0f1e)] border-r border-[color:var(--c1e2240)] flex flex-col">
         {/* Logo */}
@@ -228,6 +239,14 @@ export default function Layout({ children }) {
           onSuccess={() => navigate('/pushes')}
         />
       )}
+    </div>
+  );
+
+  if (!DEMO) return shell;
+  return (
+    <div className="flex flex-col h-screen overflow-hidden">
+      <DemoBanner />
+      {shell}
     </div>
   );
 }

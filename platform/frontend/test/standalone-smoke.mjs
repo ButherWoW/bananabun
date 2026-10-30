@@ -10,7 +10,8 @@ const shots=fileURLToPath(new URL('../../../docs/screenshots/',import.meta.url))
 await fs.mkdir(shots,{recursive:true});
 const mime={'.js':'text/javascript','.css':'text/css','.png':'image/png','.mp3':'audio/mpeg','.html':'text/html'};
 const server=createServer(async(req,res)=>{
-  const url=new URL(req.url,'http://localhost');const target=path.resolve(root,'.'+decodeURIComponent(url.pathname));
+  // The build lives under /banana/ (vite base), like behind nginx.
+  const url=new URL(req.url,'http://localhost');const target=path.resolve(root,'.'+decodeURIComponent(url.pathname.replace(/^\/banana(?=\/|$)/,'')));
   if(!target.startsWith(root)){res.writeHead(403);return res.end();}
   let file=target;
   if(!path.extname(url.pathname))file=path.join(root,'index.html');
@@ -32,7 +33,7 @@ try{
   page.on('pageerror',error=>errors.push(error.message));
   // UI fixtures only: no requests leave this temporary local web server.
   await page.route('**/api/**',async route=>{
-    const url=new URL(route.request().url()),p=url.pathname;
+    const url=new URL(route.request().url()),p=url.pathname.replace(/^\/banana(?=\/)/,'');
     if (/fa-ready|ready-images|sync-fa|import-ready|fa-query/.test(p)) faRequests.push(p);
     const user={id:'test',name:'Test owner',email:'test@example.invalid',role:'owner'};
     let data=[];
@@ -76,8 +77,8 @@ try{
   await page.goto(origin+'/products');
   await page.getByText('Fixture product',{exact:true}).first().click();
   await page.getByText('Preset asset missing',{exact:true}).waitFor();
-  assert.equal(await page.getByRole('link',{name:'Открыть креативы',exact:true}).getAttribute('href'),'/creatives?product_id=product');
-  await page.goto(origin+'/creatives?product_id=product');
+  assert.equal(await page.getByRole('link',{name:'Открыть креативы',exact:true}).getAttribute('href'),'/banana/creatives?product_id=product');
+  await page.goto(origin+'/banana/creatives?product_id=product');
   await page.locator('select').filter({has:page.locator('option[value="saved"]')}).selectOption('saved');
   assert.equal(await page.getByPlaceholder('Надпись на креативе (до 200 символов)').inputValue(),'Saved caption');
   await page.getByRole('button',{name:'Сгенерировать',exact:true}).click();

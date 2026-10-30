@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tiktok } from '../api/client.js';
 import GenerateLandingModal from '../components/GenerateLandingModal.jsx';
+import { toast } from '../components/Toaster.jsx';
 
 function AccountCard({ account, onRemove, onUpdate }) {
   const [editing, setEditing] = useState(false);
@@ -304,8 +305,8 @@ export default function TikTokPage() {
     try {
       const res = await tiktok.oauthUrl();
       if (res?.url) window.location.href = res.url;
-    } catch {
-      alert('OAuth не настроен. Установите TIKTOK_APP_ID и TIKTOK_APP_SECRET на сервере.');
+    } catch (e) {
+      toast(e?.error || 'OAuth не настроен. Установите TIKTOK_APP_ID и TIKTOK_APP_SECRET на сервере.');
     }
   };
 
@@ -321,6 +322,7 @@ export default function TikTokPage() {
       qc.invalidateQueries(['tiktok-accounts']);
     } catch (e) {
       setRefreshResult({ error: e?.error || e?.message || 'Ошибка обновления' });
+      toast(e?.error || e?.message || 'Ошибка обновления');
     } finally {
       setRefreshing(false);
     }

@@ -5,6 +5,7 @@ import PushWizard from '../components/PushWizard.jsx';
 import PushPresetsPanel from '../components/PushPresetsPanel.jsx';
 import clsx from 'clsx';
 import { useRole } from '../hooks/useRole.js';
+import { toast, errorText } from '../components/Toaster.jsx';
 
 const TABS = [
   { key: 'active', label: 'В работе' },
@@ -737,7 +738,7 @@ export default function CampaignsPage() {
       }
       qc.invalidateQueries({ queryKey: ['campaigns', 'fb'] });
     } catch (e) {
-      window.alert(e?.error || e?.message || 'Не получилось');
+      toast(errorText(e));
     } finally { setFbBusy(null); }
   };
   const refreshFromFb = async () => {
@@ -748,6 +749,8 @@ export default function CampaignsPage() {
       let done = 0;
       await Promise.all(job_ids.map(id => waitAgentJob(id, { timeoutMs: 300000 }).then(() => setFbRefreshing(`${++done}/${job_ids.length}`)).catch(() => {})));
       qc.invalidateQueries({ queryKey: ['campaigns', 'fb'] });
+    } catch (e) {
+      toast(errorText(e));
     } finally { setFbRefreshing(''); }
   };
 
@@ -891,8 +894,8 @@ export default function CampaignsPage() {
       }
       return campaignsApi.bulkEdit(ids, action, value);
     },
+    // A failure is shown by the global mutation toast (main.jsx).
     onSuccess: () => { setSelectedIds(new Set()); qc.invalidateQueries(['campaigns']); },
-    onError: (e) => window.alert(e.error || e.message || 'Ошибка'),
   });
 
   const applyAdSettingsMutation = useMutation({

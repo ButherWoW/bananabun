@@ -240,28 +240,25 @@ export default function LandingsPage() {
     onSuccess: () => { qc.invalidateQueries(['landing-templates']); setTab('templates'); },
   });
 
+  // Failures of these mutations are shown by the global mutation toast (main.jsx).
   const createStoreMutation = useMutation({
     mutationFn: (store) => landingTemplates.createStore({ store }),
     onSuccess: () => { qc.invalidateQueries(['landing-templates']); setTab('templates'); },
-    onError: (e) => window.alert?.(e?.error || 'Не удалось создать шаблон'),
   });
 
   const createCdiscountMutation = useMutation({
     mutationFn: () => landingTemplates.createCdiscount({}),
     onSuccess: () => { qc.invalidateQueries(['landing-templates']); setTab('templates'); },
-    onError: (e) => window.alert?.(e?.error || e?.message || 'Ошибка'),
   });
 
   const createManomanoMutation = useMutation({
     mutationFn: () => landingTemplates.createManomano({}),
     onSuccess: () => { qc.invalidateQueries(['landing-templates']); setTab('templates'); },
-    onError: (e) => window.alert?.(e?.error || e?.message || 'Ошибка'),
   });
 
   const createEasyMutation = useMutation({
     mutationFn: () => landingTemplates.createEasy({}),
     onSuccess: () => { qc.invalidateQueries(['landing-templates']); setTab('templates'); },
-    onError: (e) => window.alert?.(e?.error || e?.message || 'Ошибка'),
   });
 
   const { data: landings = [], isLoading, error } = useQuery({

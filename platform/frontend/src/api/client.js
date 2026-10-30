@@ -5,6 +5,15 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || import.meta.env.BASE_URL.replace(/\/$/, ''),
 });
 
+// Demo build (vite build --mode demo): every call is answered in the browser from made-up data and
+// every change is refused, so nothing ever reaches the backend. The normal build drops this block.
+if (import.meta.env.MODE === 'demo') {
+  const demo = import('./demo.js');
+  api.defaults.adapter = async (config) => (await demo).demoAdapter(config);
+  const realFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => (await demo).demoFetch(input, init, realFetch);
+}
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
