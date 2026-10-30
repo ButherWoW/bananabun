@@ -71,7 +71,7 @@ export default function PushPresetsPanel({ onClose, onPick }) {
           </select>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-3 flex flex-col gap-2">
+        <div data-tour="push-presets" className="flex-1 overflow-y-auto px-5 py-3 flex flex-col gap-2">
           {isLoading && <div className="text-sm text-gray-500 py-8 text-center">Загрузка…</div>}
           {!isLoading && !list.length && (
             <div className="text-sm text-gray-500 py-8 text-center">
@@ -100,6 +100,7 @@ export default function PushPresetsPanel({ onClose, onPick }) {
             className="flex-1 py-2 text-center text-sm text-gray-300 hover:text-white border border-dashed border-[color:var(--c2d3148)] hover:border-indigo-500/50 rounded-xl"
           >+ Новый пресет</Link>
           <button
+            data-tour="push-no-preset"
             onClick={() => onPick(null)}
             className="flex-1 py-2 text-sm text-gray-300 hover:text-white border border-[color:var(--c2d3148)] rounded-xl"
           >Без пресета</button>

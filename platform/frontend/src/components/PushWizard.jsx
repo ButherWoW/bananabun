@@ -914,11 +914,11 @@ export default function PushWizard({ onClose, onSuccess, initialPreset }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[color:var(--c2d3148)] flex-shrink-0">
           <h2 className="text-sm font-semibold text-white">Залить рекламу{initialPreset ? ` · ${initialPreset.name}` : ''}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
+          <button data-tour="wizard-close" onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
         </div>
 
         {/* Steps */}
-        <div className="flex items-center gap-1 px-5 py-3 border-b border-[color:var(--c2d3148)] flex-shrink-0">
+        <div data-tour="wizard-steps" className="flex items-center gap-1 px-5 py-3 border-b border-[color:var(--c2d3148)] flex-shrink-0">
           {STEPS.map((s, i) => (
             <React.Fragment key={i}>
               <button onClick={() => i < step && setStep(i)}
@@ -935,7 +935,7 @@ export default function PushWizard({ onClose, onSuccess, initialPreset }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div data-tour="wizard-body" className="flex-1 overflow-y-auto px-5 py-4">
           {launchedPushId ? (
             <>
               {batchResults.length > 1 && (
@@ -967,7 +967,7 @@ export default function PushWizard({ onClose, onSuccess, initialPreset }) {
               </button>
 
               {step < STEPS.length - 1 ? (
-                <button onClick={() => setStep(s => s + 1)} disabled={!canProceed(step, form)}
+                <button data-tour="wizard-next" onClick={() => setStep(s => s + 1)} disabled={!canProceed(step, form)}
                   className="px-5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed">
                   Далее →
                 </button>

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { folders as foldersApi } from '../../api/client.js';
@@ -7,6 +7,7 @@ import { getTheme, setTheme } from '../../store/theme.js';
 import clsx from 'clsx';
 import PushWizard from '../PushWizard.jsx';
 import PushPresetsPanel from '../PushPresetsPanel.jsx';
+import Tour, { TourButton } from '../tour/Tour.jsx';
 
 // Same three top-level sections as the original; the rest stays reachable under «Ещё».
 const NAV_MAIN = [
@@ -50,6 +51,7 @@ function NavLink({ item, active }) {
   return (
     <Link
       to={item.path}
+      data-tour={`nav-${item.path.slice(1)}`}
       className={clsx(
         'flex items-center gap-2 px-2 py-2 rounded-lg text-sm transition-colors',
         active ? 'bg-indigo-600/20 text-indigo-300 font-medium' : 'text-gray-400 hover:text-white hover:bg-[color:var(--c1a1d35)]'
@@ -112,6 +114,10 @@ export default function Layout({ children }) {
   const [showPresets, setShowPresets] = useState(false);
   const [pushPreset, setPushPreset] = useState(undefined); // undefined = wizard closed, null = no preset
   const navigate = useNavigate();
+  // The tour and links may land on a page under «Ещё»; keep its menu item visible.
+  useEffect(() => {
+    if (NAV_MORE.some(i => location.pathname.startsWith(i.path))) setShowMore(true);
+  }, [location.pathname]);
 
   const { data: folderList = [] } = useQuery({ queryKey: ['folders'], queryFn: foldersApi.list });
   const { data: counts } = useQuery({ queryKey: ['folders', 'counts'], queryFn: foldersApi.counts });
@@ -137,11 +143,13 @@ export default function Layout({ children }) {
 
         <div className="px-2 pb-2">
           <button
+            data-tour="push-open"
             onClick={() => setShowPresets(true)}
             className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
           >
             🚀 Залить рекламу
           </button>
+          <div className="mt-1.5"><TourButton /></div>
         </div>
 
         <div className="px-2 pb-1">
@@ -240,6 +248,7 @@ export default function Layout({ children }) {
           onSuccess={() => navigate('/pushes')}
         />
       )}
+      <Tour />
     </div>
   );
 

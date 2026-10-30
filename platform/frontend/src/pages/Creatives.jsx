@@ -245,6 +245,7 @@ export default function CreativesPage() {
         <div className="flex items-center gap-3 px-6 py-3 border-b border-[color:var(--c1e2240)] bg-[color:var(--c0d0f1e)]">
           <span className="text-sm text-gray-400">Связка:</span>
           <select
+            data-tour="creatives-product"
             value={productIdFilter}
             onChange={e => setSearchParams(e.target.value ? { product_id: e.target.value } : {})}
             className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] text-white text-sm px-3 py-1.5 rounded-lg focus:outline-none focus:border-indigo-500 max-w-xs"
@@ -279,7 +280,7 @@ export default function CreativesPage() {
           <Hint k="cr.engine" />
         </p>
         {/* Idea textarea */}
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-3" data-tour="creatives-idea">
           <div className="flex items-center text-[11px] text-gray-500">Надпись на креативе<Hint k="cr.idea" /></div>
           <textarea
             value={idea}
@@ -297,7 +298,7 @@ export default function CreativesPage() {
         </div>
 
         {/* Logo row */}
-        <div className="px-4 pb-2 flex items-center gap-3">
+        <div className="px-4 pb-2 flex items-center gap-3" data-tour="creatives-logo">
           <span className="text-xs text-gray-500">Логотип<Hint k="cr.logo" /></span>
           <button
             onClick={() => logoFileRef.current?.click()}
@@ -317,7 +318,7 @@ export default function CreativesPage() {
         {/* Toolbar */}
         <div className="px-4 pb-3 flex items-center gap-2 flex-wrap">
           {/* References */}
-          <div className="relative">
+          <div className="relative" data-tour="creatives-refs">
             <button
               onClick={() => references.length < 4 && refFileRef.current?.click()}
               className={clsx(
@@ -361,7 +362,7 @@ export default function CreativesPage() {
 
           <Hint k="cr.references" />
           {/* Language */}
-          <div className="relative">
+          <div className="relative" data-tour="creatives-options">
             <button
               onClick={() => { setShowLangMenu(v => !v); setShowFmtMenu(false); setShowCountMenu(false); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-[color:var(--c2d3148)] text-gray-300 hover:text-white hover:border-[color:var(--c3d4168)] transition-colors font-medium"
@@ -443,6 +444,7 @@ export default function CreativesPage() {
           <Hint k="cr.count" />
           {/* Banner toggle — server-side sharp renderer */}
           <button
+            data-tour="creatives-mode"
             onClick={() => { setUseBanner(v => !v); if (!useBanner) setUseFlux(false); }}
             className={clsx(
               'px-3 py-1.5 rounded-full text-xs border transition-colors',
@@ -529,7 +531,7 @@ export default function CreativesPage() {
           </button>
 
           {/* Generate */}
-          <div className="flex flex-col items-end">
+          <div className="flex flex-col items-end" data-tour="creatives-generate">
             <button
               onClick={handleGenerate}
               disabled={!productIdFilter || uploading || generateMutation.isPending || idea.length > 200}
@@ -554,7 +556,7 @@ export default function CreativesPage() {
       {/* Creatives list */}
       <div className="flex-1 overflow-y-auto flex flex-col">
         {/* Section header */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-[color:var(--c1e2240)]">
+        <div data-tour="creatives-list" className="flex items-center justify-between px-6 py-3 border-b border-[color:var(--c1e2240)]">
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase">Креативы</span>
             {selected.size > 0 && (
