@@ -43,6 +43,7 @@ function DemoBanner() {
 const USER_MENU = [
   { path: '/admin', label: 'Команда', roles: ['owner', 'lead'] },
   { path: '/settings', label: 'Настройки', roles: ['owner'] },
+  { path: '/mcp', label: 'Подключение ИИ (MCP)' },
 ];
 
 function NavLink({ item, active }) {

@@ -26,6 +26,7 @@ import TwoFaPage from './pages/TwoFa.jsx';
 import TikTokPage from './pages/TikTok.jsx';
 import GooglePage from './pages/Google.jsx';
 import DashboardPage from './pages/Dashboard.jsx';
+import McpPage from './pages/Mcp.jsx';
 
 export default function App() {
   const { user, loading, loadMe } = useAuth();
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/tiktok" element={<TikTokPage />} />
         <Route path="/google" element={<GooglePage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/mcp" element={<McpPage />} />
       </Routes>
     </Layout>
   );
