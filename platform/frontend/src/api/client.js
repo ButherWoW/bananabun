@@ -81,8 +81,6 @@ export const creatives = {
   spend: () => api.get('/api/creatives/spend'),
   retry: (id) => api.post(`/api/creatives/${id}/retry`),
   readyImages: () => api.get('/api/creatives/ready-images'),
-  importReady: (genId, product_id) => api.post(`/api/creatives/import-ready/${genId}`, { product_id }),
-  faReady: () => api.get('/api/creatives/fa-ready'),
 };
 
 export const presets = {
@@ -101,7 +99,6 @@ export const analytics = {
   landingBehavior: (from, to) => api.get('/api/analytics/landing-behavior', { params: { from, to } }),
   buyers: (from, to, compare = false) => api.get('/api/analytics/buyers', { params: { from, to, compare: compare ? 'true' : undefined } }),
   query: (plan) => api.post('/api/analytics/query', plan),
-  faQuery: (plan) => api.post('/api/analytics/fa-query', { plan }),
   dashboard: (range = 'today') => api.get('/api/analytics/dashboard', { params: { range } }),
 };
 
@@ -241,7 +238,6 @@ export const landingTemplates = {
   create: (data) => api.post('/api/landings/templates', data),
   update: (id, data) => api.put(`/api/landings/templates/${id}`, data),
   remove: (id) => api.delete(`/api/landings/templates/${id}`),
-  syncFa: () => api.post('/api/landings/templates/sync-fa'),
   uploadHtml: (file) => {
     const fd = new FormData();
     fd.append('file', file);

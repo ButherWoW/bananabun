@@ -2,7 +2,7 @@ import { assertProductAccess, assertFolderAccess, assertRecordAccess } from '../
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
 import { enqueueOwnScrape } from '../../services/scrape-jobs.js';
-import { currentEngine, parseProductLink, faStartScrapes } from '../../services/engine.js';
+import { currentEngine, parseProductLink } from '../../services/engine.js';
 
 function badRequest(msg) {
   return Object.assign(new Error(msg), { statusCode: 400 });
@@ -79,37 +79,13 @@ function runOwnScrape(ws, productId, asin, marketplace, source = 'amazon', sourc
   });
 }
 
-/* ───── FA engine: FA scrapes, workers/product-sync.js pulls results ───── */
-
-function runFaScrapes(products) {
-  faStartScrapes(products).then(async (pairs) => {
-    for (const { productId, externalId } of pairs) {
-      await db.update('products', productId, { external_id: externalId });
-    }
-    const matched = new Set(pairs.map(p => p.productId));
-    for (const p of products.filter(p => !matched.has(p.id))) {
-      await db.update('products', p.id, { scrape_status: 'failed', scrape_error: 'FA не вернул товар по этой ссылке' });
-    }
-  }).catch(async (err) => {
-    logScrapeError(err);
-    for (const p of products) {
-      await db.update('products', p.id, {
-        scrape_status: 'failed',
-        scrape_error: String(err?.message || 'FA не принял скрап').slice(0, 500),
-      }).catch(logScrapeError);
-    }
-  });
-}
-
 async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetId, creativePresetId }) {
   const engine = currentEngine();
   const links = inputs.map(s => ({ input: s, link: parseProductLink(s, marketplace) }));
   const bad = links.filter(l => !l.link).map(l => l.input);
   if (bad.length) throw badRequest('Не распознаны ссылки (нужны Amazon, Walmart, Target, Best Buy или Etsy): ' + bad.join(', '));
-  if (engine === 'own') {
-    const unsupported = links.filter(l => !ownScrapable(l.link)).map(l => l.input);
-    if (unsupported.length) throw badRequest('Свой движок скрапит Amazon, Walmart, Target, Best Buy и Etsy (walmart.com/ip/…); нужна прямая ссылка на конкретный товар: ' + unsupported.join(', '));
-  }
+  const unsupported = links.filter(l => !ownScrapable(l.link)).map(l => l.input);
+  if (unsupported.length) throw badRequest('Свой движок скрапит Amazon, Walmart, Target, Best Buy и Etsy (walmart.com/ip/…); нужна прямая ссылка на конкретный товар: ' + unsupported.join(', '));
 
   const bundles = await loadPresetBundles(ws, presetId);
   await assertCreativePreset(ws, creativePresetId);
@@ -118,8 +94,7 @@ async function startScrapes({ ws, userId, inputs, marketplace, folderId, presetI
     products.push(await createPlaceholder({ ws, userId, link, engine, folderId, presetId, bundles, creativePresetId }));
   }
 
-  if (engine === 'fa') runFaScrapes(products);
-  else products.forEach(p => runOwnScrape(ws, p.id, p.source_id, p.marketplace, p.source, p.source_url));
+  products.forEach(p => runOwnScrape(ws, p.id, p.source_id, p.marketplace, p.source, p.source_url));
 
   return { engine, products };
 }
@@ -175,10 +150,10 @@ export async function scrapeRoutes(app) {
     if (!link) return reply.status(400).send({ error: 'У товара нет корректной ссылки — удали его и соскрапь заново' });
 
     const engine = currentEngine();
-    if (engine === 'own' && !ownScrapable(link)) {
+    if (!ownScrapable(link)) {
       return reply.status(400).send({ error: 'Свой движок скрапит Amazon, Walmart, Target, Best Buy и Etsy; нужна прямая ссылка на конкретный товар' });
     }
-    const updated = await db.update('products', product.id, {
+    await db.update('products', product.id, {
       engine,
       external_id: null,
       source: link.source,
@@ -189,8 +164,7 @@ export async function scrapeRoutes(app) {
       scrape_error: null,
       scrape_started_at: new Date(),
     });
-    if (engine === 'fa') runFaScrapes([updated]);
-    else runOwnScrape(req.user.ws, product.id, link.asin, link.marketplace, link.source, link.url);
+    runOwnScrape(req.user.ws, product.id, link.asin, link.marketplace, link.source, link.url);
 
     return { ok: true, status: 'processing', engine };
   });

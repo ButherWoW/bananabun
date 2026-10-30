@@ -1,5 +1,4 @@
 ﻿import { db } from '../../db/client.js';
-import { faAnalyticsQuery, faAvailable } from '../../services/fa-client.js';
 import { landingFunnel, landingBehavior } from '../../services/lp-analytics.js';
 import { keitaroClient } from '../../services/keitaro.js';
 import { tiktokClient } from '../../services/tiktok.js';
@@ -126,16 +125,6 @@ export async function analyticsRoutes(app) {
     const { from, to, campaign, top } = req.query;
     if (!DAY.test(from || '') || !DAY.test(to || '')) return reply.status(400).send({ error: 'from и to — даты YYYY-MM-DD' });
     return landingBehavior(req.user, { from, to, campaigns: campaignList(campaign), top: Math.min(Number(top) || 8, 30) });
-  });
-
-  app.post('/fa-query', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
-    if (!req.body?.plan) return reply.status(400).send({ error: 'Нужен план запроса' });
-    try {
-      return await faAnalyticsQuery(req.body.plan, req.body.compare_range);
-    } catch (e) {
-      return reply.status(502).send({ error: e.message });
-    }
   });
 
   // Keitaro rows with the extra keys needed for buyer attribution and the buyer's own scope.

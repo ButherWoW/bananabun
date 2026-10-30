@@ -241,6 +241,7 @@ export async function tiktokRoutes(app) {
       daily_budget, age_min = 18, age_max = 55,
       optimization_event = 'CompletePayment',
       campaign_name,
+      resume_push_id,
     } = req.body || {};
 
     if (!product_id) return reply.status(400).send({ error: 'product_id required' });
@@ -263,15 +264,33 @@ export async function tiktokRoutes(app) {
 
     // The push row is written first and updated after every step, so a failure late in the chain still leaves
     // the ids TikTok already created (campaign, ad group…) on record instead of an orphan nobody knows about.
-    const params = {
-      tiktok: true, tiktok_account_id, advertiser_id: acc.advertiser_id,
-      countries, daily_budget: Number(daily_budget), landing_page_url, ad_text,
-    };
-    const log = [];
-    const push = await db.insert('pushes', {
-      workspace_id: req.user.ws, product_id, params, status: 'running', created_by: req.user.id,
-      started_at: new Date(), log: JSON.stringify(log),
-    });
+    // A failed push can be resumed: ids it already got from TikTok are reused instead of creating a second campaign.
+    // The status flip is a conditional UPDATE, so two simultaneous resumes cannot both run.
+    let params, log, push;
+    if (resume_push_id) {
+      const { rows: [prev] } = await db.query(
+        `UPDATE pushes SET status='running', error=NULL, started_at=NOW(), finished_at=NULL
+         WHERE id=$1 AND workspace_id=$2 AND product_id=$3 AND status='failed'
+           AND params->>'tiktok'='true' AND params->>'tiktok_account_id'=$4
+           AND ($5::text IS NULL OR created_by=$5)
+         RETURNING *`,
+        [resume_push_id, req.user.ws, product_id, tiktok_account_id, ownUser(req)]);
+      if (!prev) return reply.status(409).send({ error: 'Возобновить можно только свой упавший залив этого товара в этот же TikTok-аккаунт' });
+      params = { ...prev.params, countries, daily_budget: Number(daily_budget), landing_page_url, ad_text };
+      log = Array.isArray(prev.log) ? prev.log : JSON.parse(prev.log || '[]');
+      log.push({ step: 'resumed' });
+      push = prev;
+    } else {
+      params = {
+        tiktok: true, tiktok_account_id, advertiser_id: acc.advertiser_id,
+        countries, daily_budget: Number(daily_budget), landing_page_url, ad_text,
+      };
+      log = [];
+      push = await db.insert('pushes', {
+        workspace_id: req.user.ws, product_id, params, status: 'running', created_by: req.user.id,
+        started_at: new Date(), log: JSON.stringify(log),
+      });
+    }
     const step = async (name, ids) => {
       Object.assign(params, ids);
       log.push({ step: name, ...ids });
@@ -280,45 +299,57 @@ export async function tiktokRoutes(app) {
 
     try {
       // 1. Upload video
-      const video = await loadVideo(video_url);
-      const videoData = await client.uploadVideoFile(acc.advertiser_id, video.body, video.filename);
-      const video_id = videoData.video_id;
-      await step('video_uploaded', { video_id });
+      let video_id = params.video_id;
+      if (!video_id) {
+        const video = await loadVideo(video_url);
+        const videoData = await client.uploadVideoFile(acc.advertiser_id, video.body, video.filename);
+        video_id = videoData.video_id;
+        await step('video_uploaded', { video_id });
+      }
 
       // 2. Create campaign
-      const campaign = await client.createCampaign(acc.advertiser_id, {
-        name: cName,
-        objective: 'CONVERSIONS',
-        budget: Number(daily_budget),
-      });
-      const campaign_id = campaign.campaign_id;
-      await step('campaign_created', { campaign_id });
+      let campaign_id = params.campaign_id;
+      if (!campaign_id) {
+        const campaign = await client.createCampaign(acc.advertiser_id, {
+          name: cName,
+          objective: 'CONVERSIONS',
+          budget: Number(daily_budget),
+        });
+        campaign_id = campaign.campaign_id;
+        await step('campaign_created', { campaign_id });
+      }
 
       // 3. Create ad group
-      const adgroup = await client.createAdGroup(acc.advertiser_id, {
-        campaign_id,
-        name: `${cName} — AG`,
-        location_ids,
-        budget: Number(daily_budget),
-        pixel_id: acc.pixel_id,
-        optimization_event,
-        age_min: Number(age_min),
-        age_max: Number(age_max),
-      });
-      const adgroup_id = adgroup.adgroup_id;
-      await step('adgroup_created', { adgroup_id });
+      let adgroup_id = params.adgroup_id;
+      if (!adgroup_id) {
+        const adgroup = await client.createAdGroup(acc.advertiser_id, {
+          campaign_id,
+          name: `${cName} — AG`,
+          location_ids,
+          budget: Number(daily_budget),
+          pixel_id: acc.pixel_id,
+          optimization_event,
+          age_min: Number(age_min),
+          age_max: Number(age_max),
+        });
+        adgroup_id = adgroup.adgroup_id;
+        await step('adgroup_created', { adgroup_id });
+      }
 
       // 4. Create ad
-      const ad = await client.createAd(acc.advertiser_id, {
-        adgroup_id,
-        video_id,
-        ad_text,
-        ad_name: cName,
-        call_to_action: 'SHOP_NOW',
-        landing_page_url,
-      });
-      const ad_id = ad.ad_ids?.[0] || ad.ad_id;
-      await step('ad_created', { ad_id });
+      let ad_id = params.ad_id;
+      if (!ad_id) {
+        const ad = await client.createAd(acc.advertiser_id, {
+          adgroup_id,
+          video_id,
+          ad_text,
+          ad_name: cName,
+          call_to_action: 'SHOP_NOW',
+          landing_page_url,
+        });
+        ad_id = ad.ad_ids?.[0] || ad.ad_id;
+        await step('ad_created', { ad_id });
+      }
       await db.update('pushes', push.id, { status: 'done', finished_at: new Date() });
 
       return {
@@ -334,8 +365,8 @@ export async function tiktokRoutes(app) {
     } catch (e) {
       await db.update('pushes', push.id, { status: 'failed', error: String(e.message).slice(0, 500), finished_at: new Date() })
         .catch(err => req.log.error(err, 'tiktok push: failed to record the failure'));
-      // What was already created stays in TikTok (paused) and is listed here; repeating the push creates a new set.
-      return reply.status(502).send({ error: e.message, push_id: push.id, created: { ...params, tiktok: undefined } });
+      // What was already created stays in TikTok (paused) and is listed here; send resume_push_id to continue from it.
+      return reply.status(502).send({ error: e.message, push_id: push.id, resume_push_id: push.id, created: { ...params, tiktok: undefined } });
     }
   });
 }

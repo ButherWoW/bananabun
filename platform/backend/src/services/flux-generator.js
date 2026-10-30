@@ -28,15 +28,15 @@ function asArray(raw) {
 // Scene templates for visual diversity — each slot gets a different composition
 const SCENE_TEMPLATES = [
   // 0: Hero product on clean background
-  (product, lang) => `Place the ${product} as the hero product centered on a clean, modern background with soft studio lighting; keep composition uncluttered with clear space in the upper area for a logo badge. Use high contrast lighting to make product details pop.`,
+  (product) => `Place the ${product} as the hero product centered on a clean, modern background with soft studio lighting; keep composition uncluttered with clear space in the upper area for a logo badge. Use high contrast lighting to make product details pop.`,
   // 1: Lifestyle in use
-  (product, lang) => `Show the ${product} in a lifestyle setting — in use in a real home environment, warm natural light, inviting atmosphere; leave a clear area in a corner for logo. Scene should feel authentic and aspirational.`,
+  (product) => `Show the ${product} in a lifestyle setting — in use in a real home environment, warm natural light, inviting atmosphere; leave a clear area in a corner for logo. Scene should feel authentic and aspirational.`,
   // 2: Dark dramatic
-  (product, lang) => `Create a dramatic close-up of the ${product} against a deep jewel-toned dark background (navy or charcoal); crisp, high-contrast lighting; reserve a clear bright area for a logo in the top corner.`,
+  (product) => `Create a dramatic close-up of the ${product} against a deep jewel-toned dark background (navy or charcoal); crisp, high-contrast lighting; reserve a clear bright area for a logo in the top corner.`,
   // 3: Bright airy pastel
-  (product, lang) => `Show the ${product} in a bright, airy composition on a pale pastel or white background; fresh minimalist feel, soft shadows; leave a clean zone in the upper-left corner for logo placement.`,
+  (product) => `Show the ${product} in a bright, airy composition on a pale pastel or white background; fresh minimalist feel, soft shadows; leave a clean zone in the upper-left corner for logo placement.`,
   // 4: Detail feature shot
-  (product, lang) => `Create a close-up detail shot highlighting key features of the ${product}; use a contrasting backdrop that complements the product color; reserve a clearly separated area for logo badge.`,
+  (product) => `Create a close-up detail shot highlighting key features of the ${product}; use a contrasting backdrop that complements the product color; reserve a clearly separated area for logo badge.`,
 ];
 
 const CTAS = {
@@ -89,7 +89,7 @@ function buildDirection(product, slot, options = {}) {
   const headlineText = isInstruction ? headlines[slot % headlines.length] : (headline || headlines[slot % headlines.length]);
 
   // Build the visual scene direction
-  const scene = SCENE_TEMPLATES[slot % SCENE_TEMPLATES.length](title, lang);
+  const scene = SCENE_TEMPLATES[slot % SCENE_TEMPLATES.length](title);
 
   // Price text block — always render when we have any price data
   const priceBlock = [
