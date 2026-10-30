@@ -30,7 +30,8 @@
   .art picture, .art img { display: block; width: 100%; height: 100%; }
   .art img { object-fit: contain; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
   /* hit area over the drawn button: x 1200–1575, y 474–545 of 1672×941 */
-  .hit { position: absolute; left: 71.7%; top: 50.3%; width: 22.5%; height: 7.6%; border-radius: 999px; }
+  .hit { position: absolute; left: 71.7%; top: 50.3%; width: 22.5%; height: 7.6%; border-radius: 999px; pointer-events: none; opacity: 0; }
+  .quiz-complete .hit { pointer-events: auto; opacity: 1; }
   .hit:hover { box-shadow: 0 0 0 2px rgba(255,255,255,.55), 0 0 28px rgba(239,106,112,.7); }
   .hit:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 
@@ -42,6 +43,26 @@
   }
   .again:active { transform: translateY(1px); }
   .again:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .quiz { width: min(920px, calc(100% - 32px)); margin: 0 auto 42px; padding: 28px; border: 1px solid rgba(255,255,255,.14); border-radius: 24px; background: rgba(20,8,10,.86); box-shadow: 0 20px 70px rgba(0,0,0,.45); }
+  .quiz[hidden] { display: none; }
+  .quiz-kicker { margin: 0 0 8px; color: #ff6b72; font-size: 13px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+  .quiz h2 { margin: 0; font-size: clamp(28px, 5vw, 48px); line-height: .98; text-transform: uppercase; }
+  .quiz-intro { margin: 12px 0 24px; color: #c5b7b9; }
+  .quiz-top { display: flex; justify-content: space-between; gap: 16px; align-items: center; color: #b9aeb0; font-size: 14px; }
+  .progress { height: 7px; margin: 10px 0 24px; overflow: hidden; border-radius: 99px; background: #35171b; }
+  .progress i { display: block; height: 100%; width: 20%; border-radius: inherit; background: linear-gradient(90deg, #ff2d3a, #ff8b5d); transition: width .25s ease; }
+  .question { margin: 0 0 18px; font-size: clamp(20px, 3vw, 28px); line-height: 1.1; }
+  .answers { display: grid; gap: 10px; }
+  .answer { width: 100%; padding: 15px 17px; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; color: #fff; background: rgba(255,255,255,.07); font: inherit; text-align: left; cursor: pointer; transition: transform .15s ease, background .15s ease, border-color .15s ease; }
+  .answer:hover, .answer:focus-visible { border-color: #ff6b72; background: rgba(255,45,58,.18); transform: translateY(-1px); outline: none; }
+  .answer.correct { border-color: #5ce6a0; background: rgba(42,170,104,.22); }
+  .answer.wrong { border-color: #ff6b72; background: rgba(217,67,74,.25); }
+  .quiz-result { text-align: center; }
+  .quiz-result h3 { margin: 0 0 10px; color: #ff6b72; font-size: clamp(28px, 6vw, 58px); line-height: .95; text-transform: uppercase; }
+  .score { margin: 0 0 18px; font-size: 20px; }
+  .result-art { display: block; width: min(100%, 540px); max-height: 330px; object-fit: cover; object-position: center; margin: 0 auto 20px; border-radius: 18px; }
+  .quiz-button { border: 0; padding: 15px 24px; border-radius: 14px; color: #fff; background: linear-gradient(180deg, var(--red-hi), var(--red)); font: 800 17px inherit; cursor: pointer; box-shadow: 0 10px 28px rgba(0,0,0,.4); }
+  .quiz-button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   .phone { display: none; }
   /* Phones: a big crop around the banana, then the heading and the button as real text */
   @media (max-width: 760px) {
@@ -55,7 +76,8 @@
       font-size: clamp(30px, 10vw, 44px); text-shadow: 0 3px 0 rgba(0,0,0,.5); }
     .phone h1 span { display: block; color: #ff2d3a; font-size: 1.25em; }
     .phone p { margin: 0; color: #b9aeb0; font-size: 15px; }
-    .again { display: inline-block; margin-top: 8px; }
+    .again { display: none; }
+    .quiz-complete .again { display: inline-block; }
   }
 </style>
 </head>
@@ -65,12 +87,67 @@
     <source srcset="/_stub/wrong-pin.webp" type="image/webp">
     <img src="/_stub/wrong-pin.jpg" width="1672" height="941" alt="Неправильный пин-код. Похоже, ты не из наших…">
   </picture>
-  <a class="hit" href="/" aria-label="Попробовать еще раз"></a>
+  <a class="hit" href="/" aria-label="Попробовать еще раз" aria-disabled="true" tabindex="-1"></a>
 </div>
 <div class="phone">
   <h1>Неправильный <span>пин-код</span></h1>
   <p>Похоже, ты не из наших…</p>
-  <a class="again" href="/">Попробовать еще раз</a>
+  <a class="again" href="/" aria-label="Попробовать еще раз" aria-disabled="true" tabindex="-1">Попробовать еще раз</a>
 </div>
+<main class="quiz" id="quiz" aria-live="polite">
+  <section id="quiz-start">
+    <p class="quiz-kicker">А раз уж ты здесь</p>
+    <h2>Тест «Толстый сиськастый»</h2>
+    <p class="quiz-intro">Пять вопросов по великому цветовому конфликту. Выбери продолжение фразы — и узнай свой уровень авторитета.</p>
+    <button class="quiz-button" id="start-quiz" type="button">Начать тест</button>
+  </section>
+  <section id="quiz-game" hidden>
+    <div class="quiz-top"><span id="question-count">Вопрос 1 из 5</span><span id="score-label">Счёт: 0</span></div>
+    <div class="progress"><i id="progress-bar"></i></div>
+    <h3 class="question" id="question"></h3>
+    <div class="answers" id="answers"></div>
+  </section>
+  <section class="quiz-result" id="quiz-result" hidden>
+    <p class="quiz-kicker">Вердикт вынесен</p>
+    <h3 id="result-title"></h3>
+    <p class="score" id="result-score"></p>
+    <img class="result-art" src="/_stub/wrong-pin.jpg" alt="Злой банан" id="result-image">
+    <button class="quiz-button" id="restart-quiz" type="button">Пройти ещё раз</button>
+  </section>
+</main>
+<script>
+  const questions = [
+    { q: '«Тебя не трогать, я говорю. Ты ___ мне дай сейчас»', a: ['цветы', 'телефон', 'банан', 'пиццу'], correct: 0 },
+    { q: '«Иди нахуй отсюда, ___, блядь»', a: ['цветочный', 'сиськастый', 'малиновый', 'соседский'], correct: 1 },
+    { q: '«Иди отсюда, залупа, блядь, ___, блядь»', a: ['цветочная', 'клубничная', 'мокрая', 'банановая'], correct: 0 },
+    { q: '«Лох, цветочный, толстый, ___»', a: ['сиськастый', 'квадратный', 'смешной', 'громкий'], correct: 0 },
+    { q: 'Что нужно сделать, когда тебя зовут «Иди сюда»?', a: ['Пойти нахуй', 'Дать цветы', 'Отдать телефон', 'Сказать «Понял?»'], correct: 0 }
+  ];
+  const start = document.querySelector('#quiz-start'), game = document.querySelector('#quiz-game'), result = document.querySelector('#quiz-result');
+  const questionEl = document.querySelector('#question'), answersEl = document.querySelector('#answers'), countEl = document.querySelector('#question-count'), scoreEl = document.querySelector('#score-label'), progress = document.querySelector('#progress-bar');
+  let current = 0, score = 0;
+  function renderQuestion() {
+    const item = questions[current];
+    countEl.textContent = `Вопрос ${current + 1} из ${questions.length}`;
+    scoreEl.textContent = `Счёт: ${score}`;
+    progress.style.width = `${((current + 1) / questions.length) * 100}%`;
+    questionEl.textContent = item.q; answersEl.innerHTML = '';
+    item.a.forEach((answer, index) => { const button = document.createElement('button'); button.className = 'answer'; button.type = 'button'; button.textContent = answer; button.addEventListener('click', () => choose(button, index)); answersEl.append(button); });
+  }
+  function choose(button, index) {
+    const item = questions[current], buttons = [...answersEl.children]; buttons.forEach(b => b.disabled = true); buttons[item.correct].classList.add('correct');
+    if (index === item.correct) score++; else button.classList.add('wrong');
+    setTimeout(() => { current++; current < questions.length ? renderQuestion() : showResult(); }, 420);
+  }
+  function showResult() {
+    game.hidden = true; result.hidden = false; document.body.classList.add('quiz-complete'); document.querySelectorAll('.hit, .again').forEach(link => { link.removeAttribute('aria-disabled'); link.removeAttribute('tabindex'); }); document.querySelector('#result-score').textContent = `Правильных ответов: ${score} из ${questions.length}`;
+    const title = document.querySelector('#result-title'), image = document.querySelector('#result-image');
+    if (score < 3) { title.textContent = 'Ну ты и сиськастый'; image.alt = 'Злой банан показывает средний палец'; }
+    else if (score < 5) { title.textContent = 'ЦВЕТОЧНЫЙ АВТОРИТЕТ'; image.alt = 'Банан-маскот'; }
+    else { title.textContent = 'ТЫ ЛЕГЕНДА, СИСЬКАСТЫЙ'; image.alt = 'Банан-маскот'; }
+  }
+  function reset() { current = 0; score = 0; start.hidden = true; result.hidden = true; game.hidden = false; renderQuestion(); }
+  document.querySelector('#start-quiz').addEventListener('click', reset); document.querySelector('#restart-quiz').addEventListener('click', reset);
+</script>
 </body>
 </html>
