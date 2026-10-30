@@ -269,6 +269,7 @@ export async function analyticsRoutes(app) {
   });
 
   // Unified dashboard: Keitaro + FB + TikTok totals for a date range.
+  const DASH_SPEND_COL = { today: 'spend_today', yesterday: 'spend_yesterday', last_7_days: 'spend_7d', last_30_days: 'spend_30d' };
   app.get('/dashboard', auth, async (req) => {
     const { range = 'today' } = req.query;
     const { ws } = req.user;
@@ -296,60 +297,77 @@ export async function analyticsRoutes(app) {
       period: { from, to, range },
     };
 
+    // Every expense is counted once. Facebook spend comes from the cabinets (fb_campaigns, read by the agent);
+    // a Keitaro campaign linked to one of them by sub_id_2 brings its clicks and leads, but its Keitaro cost is that
+    // same Facebook money, so it is not added again. Keitaro cost counts only for traffic not linked to Facebook
+    // (or when the Facebook spend for this period has not been read yet).
+    const fbSpend = new Map();
+    try {
+      const col = DASH_SPEND_COL[range] || 'spend_today';
+      const { rows } = await db.query(
+        `SELECT c.id, c.${col} AS spend FROM fb_campaigns c
+           JOIN fb_accounts fa ON fa.id = c.fb_account_id
+           LEFT JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
+          WHERE c.workspace_id = $1 AND ($2::text IS NULL OR LOWER(ap.group_name) = $2)`,
+        [ws, req.user.role === 'buyer' ? String(req.user.email || '').toLowerCase() : null]);
+      for (const r of rows) fbSpend.set(String(r.id), r.spend === null || r.spend === undefined ? null : Number(r.spend) || 0);
+    } catch { /* FB data unavailable */ }
+    let fbTotal = 0, fbUnknown = 0, fbClicks = 0, fbLeads = 0;
+    for (const v of fbSpend.values()) { if (v === null) fbUnknown++; else fbTotal += v; }
+
+    let keitaroCounted = 0;
     try {
       const wsData = await db.findOne('workspaces', { id: ws });
       if (wsData?.keitaro_url && wsData?.keitaro_api_key) {
         const client = keitaroClient(wsData.keitaro_url, wsData.keitaro_api_key);
-        const scope = await buyerScope(req);
-        const rawData = await client.stats({ from, to }, [], RAW);
-        let rows = rawData?.rows || [];
-        if (scope) rows = rows.filter(r => inScope(scope, r.campaign, r.campaign_group));
-        const tot = rows.reduce((acc, r) => { for (const m of RAW) acc[m] += Number(r[m]) || 0; return acc; }, Object.fromEntries(RAW.map(m => [m, 0])));
-        result.keitaro = { clicks: tot.clicks, conversions: tot.sales, revenue: tot.revenue, cost: tot.cost };
+        const rows = await scopedRows(req, client, { from, to }, ['sub_id_2'], false);
+        const tot = Object.fromEntries(RAW.map(m => [m, 0]));
+        for (const r of rows) {
+          for (const m of RAW) tot[m] += Number(r[m]) || 0;
+          const fbId = String(r.sub_id_2 ?? '');
+          const linked = fbSpend.has(fbId);
+          if (linked) { fbClicks += Number(r.clicks) || 0; fbLeads += (Number(r.leads) || 0) + (Number(r.sales) || 0); }
+          if (!linked || fbSpend.get(fbId) === null) keitaroCounted += Number(r.cost) || 0;
+        }
+        result.keitaro = { clicks: tot.clicks, conversions: tot.sales, revenue: tot.revenue, cost: tot.cost, cost_counted: keitaroCounted };
       }
     } catch { /* Keitaro unavailable */ }
+    result.fb = { spend: fbTotal, clicks: fbClicks, impressions: null, leads: fbLeads, campaigns: fbSpend.size, spend_unknown: fbUnknown };
 
+    // TikTok via the Marketing API. A buyer gets only campaigns created by their own TikTok pushes.
     try {
-      const { rows: fbRows } = await db.query(
-        `SELECT COALESCE(SUM(spend),0) as spend, COALESCE(SUM(clicks),0) as clicks,
-                COALESCE(SUM(impressions),0) as impressions, COALESCE(SUM(leads),0) as leads
-         FROM campaigns WHERE workspace_id=$1 AND ($2::text IS NULL OR created_by=$2)
-           AND DATE(created_at) BETWEEN $3 AND $4`,
-        [ws, ownUser(req), from, to]
-      );
-      const fb = fbRows[0] || {};
-      result.fb = { spend: Number(fb.spend)||0, clicks: Number(fb.clicks)||0, impressions: Number(fb.impressions)||0, leads: Number(fb.leads)||0 };
-    } catch { /* FB data unavailable */ }
+      const buyer = req.user.role === 'buyer';
+      let mine = null;
+      if (buyer) {
+        const { rows } = await db.query(
+          `SELECT DISTINCT params->>'tiktok_account_id' AS acc, params->>'campaign_id' AS campaign_id FROM pushes
+            WHERE workspace_id = $1 AND created_by = $2 AND params->>'tiktok' = 'true' AND params->>'campaign_id' IS NOT NULL`,
+          [ws, req.user.id]);
+        mine = { accounts: [...new Set(rows.map(r => r.acc))], campaigns: new Set(rows.map(r => String(r.campaign_id))) };
+      }
+      const { rows: ttAccounts } = mine && !mine.accounts.length ? { rows: [] } : await db.query(
+        `SELECT advertiser_id, access_token FROM tiktok_accounts
+          WHERE workspace_id = $1 AND status = 'active' AND ($2::text[] IS NULL OR id = ANY($2))`,
+        [ws, mine ? mine.accounts : null]);
 
-  // Real TikTok analytics via Marketing API
-  try {
-    const { rows: ttAccounts } = await db.query(
-      `SELECT advertiser_id, access_token FROM tiktok_accounts WHERE workspace_id = $1 AND status = 'active'`,
-      [ws]
-    );
-
-    let ttSpend = 0, ttClicks = 0, ttImpressions = 0, ttConversions = 0;
-
-    for (const acc of ttAccounts) {
-      try {
-        const client = tiktokClient(acc.access_token);
-        const statsResp = await client.getCampaignStats(acc.advertiser_id, { from, to });
-        if (statsResp?.list) {
-          for (const row of statsResp.list) {
+      let ttSpend = 0, ttClicks = 0, ttImpressions = 0, ttConversions = 0;
+      for (const acc of ttAccounts) {
+        try {
+          const statsResp = await tiktokClient(acc.access_token).getCampaignStats(acc.advertiser_id, { from, to });
+          for (const row of statsResp?.list || []) {
+            if (mine && !mine.campaigns.has(String(row.dimensions?.campaign_id))) continue;
             const m = row.metrics || {};
             ttSpend       += parseFloat(m.spend       || 0);
             ttClicks      += parseInt(m.clicks         || 0);
             ttImpressions += parseInt(m.impressions    || 0);
             ttConversions += parseInt(m.conversion     || 0);
           }
-        }
-      } catch { /* skip individual account errors */ }
-    }
+        } catch { /* skip individual account errors */ }
+      }
+      result.tiktok = { spend: ttSpend, clicks: ttClicks, impressions: ttImpressions, conversions: ttConversions };
+    } catch { /* TikTok data unavailable */ }
 
-    result.tiktok = { spend: ttSpend, clicks: ttClicks, impressions: ttImpressions, conversions: ttConversions };
-  } catch { /* TikTok data unavailable */ }
-
-    const totalSpend = result.fb.spend + result.tiktok.spend + result.keitaro.cost;
+    const totalSpend = result.fb.spend + result.tiktok.spend + keitaroCounted;
     const revenue = result.keitaro.revenue;
     const profit = revenue - totalSpend;
     result.totals = { spend: totalSpend, revenue, profit, roi: totalSpend > 0 ? profit / totalSpend * 100 : null };

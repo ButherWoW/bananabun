@@ -523,7 +523,9 @@ export default function AnalyticsPage() {
     queryFn: analytics.overview,
   });
 
-  const allRows = kStats?.rows || [];
+  const fmtPct = n => (typeof n === 'number' && Number.isFinite(n) ? `${n.toFixed(1)}%` : '—');
+  // ROI in percent, (revenue − spend) / spend, like the hint and the dashboard; Keitaro's own field is not used.
+  const allRows = (kStats?.rows || []).map(r => ({ ...r, roi: Number(r.cost) > 0 ? (Number(r.revenue) - Number(r.cost)) / Number(r.cost) * 100 : null }));
 
   // Extract buyer tags like [Angry], [Yan4ik], [Dima] from campaign names
   const buyers = ['all', ...Array.from(new Set(
@@ -561,7 +563,7 @@ export default function AnalyticsPage() {
     profit: acc.profit + (r.profit || 0),
   }), { clicks: 0, conversions: 0, revenue: 0, cost: 0, profit: 0 });
 
-  const roi = totals.cost > 0 ? (totals.revenue / totals.cost).toFixed(2) : '—';
+  const roi = totals.cost > 0 ? (totals.revenue - totals.cost) / totals.cost * 100 : null;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -613,7 +615,7 @@ export default function AnalyticsPage() {
           <StatCard label="Конверсии" value={fmtInt(totals.conversions)} color="text-emerald-400" />
           <StatCard label="Спенд" value={`${fmt(totals.cost)}€`} color="text-indigo-400" />
           <StatCard label="Доход" value={`${fmt(totals.revenue)}€`} color="text-emerald-400" />
-          <StatCard label="ROI" value={`×${roi}`} color="text-yellow-400" sub={`Профит: ${fmt(totals.profit)}€`} />
+          <StatCard label="ROI" value={fmtPct(roi)} color="text-yellow-400" sub={`Профит: ${fmt(totals.profit)}€`} />
         </div>
 
         {/* Chart */}
@@ -689,7 +691,6 @@ export default function AnalyticsPage() {
                   </thead>
                   <tbody>
                     {rows.map((r, i) => {
-                      const rowRoi = r.cost > 0 ? (r.revenue / r.cost).toFixed(2) : '—';
                       const profitColor = r.profit > 0 ? 'text-emerald-400' : r.profit < 0 ? 'text-red-400' : 'text-gray-400';
                       return (
                         <tr key={i} className="border-b border-[color:var(--c1a1d3a)] hover:bg-[color:var(--c1a1d3a)] transition-colors">
@@ -699,7 +700,7 @@ export default function AnalyticsPage() {
                           <td className="px-4 py-2.5 text-right text-indigo-400">{fmt(r.cost)}€</td>
                           <td className="px-4 py-2.5 text-right text-emerald-400">{fmt(r.revenue)}€</td>
                           <td className={`px-4 py-2.5 text-right ${profitColor}`}>{fmt(r.profit)}€</td>
-                          <td className="px-5 py-2.5 text-right text-yellow-400">×{rowRoi}</td>
+                          <td className="px-5 py-2.5 text-right text-yellow-400">{fmtPct(r.roi)}</td>
                         </tr>
                       );
                     })}

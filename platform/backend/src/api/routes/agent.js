@@ -95,7 +95,7 @@ export async function agentRoutes(app) {
     // Reaper: jobs nobody finished within an hour fail visibly instead of hanging forever.
     const { rows: stale } = await db.query(`
       UPDATE agent_jobs SET status = 'failed', done_at = NOW(),
-             result = '{"ok":false,"error":"Агент не выполнил задачу: взята больше 2 ч назад или ждала больше 6 ч","data":null}'::jsonb
+             result = '{"ok":false,"error":"Агент не выполнил задачу: взята больше 2 ч назад или ждала больше 6 ч","data":null,"reaped":true}'::jsonb
        WHERE workspace_id = $1 AND type <> 'totp' AND (
              (status = 'taken' AND taken_at < NOW() - INTERVAL '2 hours')
           OR (status = 'pending' AND created_at < NOW() - INTERVAL '6 hours'))
