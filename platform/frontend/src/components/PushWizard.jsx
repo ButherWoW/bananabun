@@ -384,7 +384,7 @@ function StepCreatives({ opts, form, set }) {
                 isSelected ? 'border-indigo-500' : 'border-[color:var(--c2d3148)] hover:border-indigo-500/40'
               )}>
               {c.thumbnail_url || c.url
-                ? <img src={c.thumbnail_url || (c.url?.startsWith('http') ? c.url : (c.url?.startsWith('/') ? c.url : `/uploads/${c.url}`))} className="w-full h-full object-cover" />
+                ? <img src={c.thumbnail_url || (c.url?.startsWith('http') ? c.url : (c.url?.startsWith('/') ? `${import.meta.env.BASE_URL.replace(/\/$/, '')}${c.url}` : `${import.meta.env.BASE_URL}uploads/${c.url}`))} className="w-full h-full object-cover" />
                 : <div className="w-full h-full bg-[color:var(--c1e2240)] flex items-center justify-center text-gray-600 text-xs">{c.id?.slice(-6)}</div>
               }
               {isSelected && (

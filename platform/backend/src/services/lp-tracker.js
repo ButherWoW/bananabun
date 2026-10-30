@@ -6,7 +6,8 @@
 // a known block (gallery, price, specs, reviews…). Buttons: data-buy / data-bundle / data-quiz-answer,
 // or by their words when the template has no marks.
 
-const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
+// Absolute links go under the panel's base (https://nespizdili.lol/banana); old /uploads and /api keep working.
+const PUBLIC_URL = (process.env.PUBLIC_BASE_URL || process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
 
 export function trackerScript({ templateId, productId, geo }) {
   const cfg = JSON.stringify({ u: `${PUBLIC_URL}/api/t`, t: String(templateId || ''), p: String(productId || ''), g: String(geo || '') })

@@ -48,6 +48,8 @@ jobs:
             platform/frontend/package-lock.json \
             platform/frontend/vite.config.js \
             root@148.230.98.232:/opt/affiliate/frontend/
+          rsync -az --delete-after platform/frontend/stub/ root@148.230.98.232:/opt/affiliate/frontend/stub/
+          rsync -az platform/deploy/nginx-banana.conf root@148.230.98.232:/opt/affiliate/nginx-banana.conf
 
       - name: Inject env vars
         env:
@@ -57,6 +59,7 @@ jobs:
           # Build env patch file on runner
           cat > /tmp/env.patch << 'EOF'
           PUBLIC_URL=https://nespizdili.lol
+          PUBLIC_BASE_URL=https://nespizdili.lol/banana
           UPLOADS_DIR=/opt/affiliate/uploads
           TIKTOK_REDIRECT_URI=https://nespizdili.lol/api/tiktok/oauth/callback
           EOF
@@ -139,3 +142,31 @@ jobs:
             exit 1
           fi
           curl -s -o /dev/null -w "api %{http_code}\n" http://127.0.0.1:4000/api/agent/status'
+
+      - name: Wire nginx — stub on /, panel under /banana/ (backup, include once, test, rollback)
+        run: |
+          ssh root@148.230.98.232 'set -e
+            chmod -R a+rX /opt/affiliate/frontend/stub /opt/affiliate/frontend/dist
+            install -m 644 /opt/affiliate/nginx-banana.conf /etc/nginx/snippets/banana.conf
+            SITE=$(grep -lE "server_name[^;]*nespizdili\.lol" /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf 2>/dev/null | head -1)
+            [ -n "$SITE" ] || { echo "nespizdili.lol server block not found"; exit 1; }
+            SITE=$(readlink -f "$SITE")
+            cp "$SITE" /tmp/banana-site.bak
+            if ! grep -q "include snippets/banana.conf;" "$SITE"; then
+              cp "$SITE" "/root/nginx-before-banana-$(date +%Y%m%d%H%M%S).conf"
+              sed -i -E "/server_name[^;]*nespizdili\.lol/a\    include snippets/banana.conf;" "$SITE"
+            fi
+            if nginx -t; then systemctl reload nginx; echo "nginx reloaded"
+            else
+              cp /tmp/banana-site.bak "$SITE"
+              nginx -t && systemctl reload nginx
+              echo "nginx config rejected, rolled back"; exit 1
+            fi
+            rm -f /tmp/banana-site.bak
+            sleep 1
+            code() { curl -s -o /dev/null -w "%{http_code}" -H "Host: nespizdili.lol" "https://127.0.0.1$1" -k; }
+            echo "/ $(code /)  /banana/ $(code /banana/)  /banana/products $(code /banana/products)  /banana/api/agent/status $(code /banana/api/agent/status)  /api/agent/status $(code /api/agent/status)"
+            [ "$(code /banana/api/agent/status)" = "$(code /api/agent/status)" ] || { echo "/banana/api differs from /api"; exit 1; }
+            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/ | grep -q "а хули ты тут забыл" || { echo "stub not served"; exit 1; }
+            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/assets/" || { echo "panel not served under /banana/"; exit 1; }'
+

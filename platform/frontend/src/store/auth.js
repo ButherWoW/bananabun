@@ -16,7 +16,7 @@ export const useAuth = create((set) => ({
   logout: () => {
     localStorage.removeItem('token');
     set({ user: null, workspace: null });
-    window.location.href = '/login';
+    window.location.href = `${import.meta.env.BASE_URL}login`;
   },
 
   loadMe: async () => {

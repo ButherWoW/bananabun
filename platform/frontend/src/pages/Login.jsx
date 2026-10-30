@@ -16,7 +16,7 @@ export default function LoginPage() {
   const audioRef = useRef(null);
 
   useEffect(() => {
-    const audio = new Audio('/login.mp3');
+    const audio = new Audio(`${import.meta.env.BASE_URL}login.mp3`);
     audio.volume = 0.7;
     audioRef.current = audio;
 
