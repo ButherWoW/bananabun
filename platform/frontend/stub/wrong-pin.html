@@ -13,6 +13,7 @@
      On narrow screens the drawn button is too small, so a real button is shown under the picture. */
   :root { color-scheme: dark; --red: #d9434a; --red-hi: #ef6a70; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; min-height: 100%; }
   html { background: #0b0607; }
   body {
@@ -125,9 +126,9 @@
     <h3 id="result-title"></h3>
     <p class="score" id="result-score"></p>
     <img class="result-art" src="/_stub/wrong-pin.jpg" alt="Злой банан" id="result-image">
-    <div class="result-actions">
+    <p class="quiz-intro" id="result-again" hidden>Не все 5 из 5 — с первого вопроса, заново.</p>
+    <div class="result-actions" id="result-actions" hidden>
       <a class="quiz-button" href="/">Попробовать еще раз</a>
-      <button class="quiz-button ghost" id="restart-quiz" type="button">Пройти ещё раз</button>
     </div>
   </section>
 </main>
@@ -157,15 +158,23 @@
     if (index === item.correct) score++; else button.classList.add('wrong');
     setTimeout(() => { current++; current < questions.length ? renderQuestion() : showResult(); }, 420);
   }
+  // Only 5 of 5 lets the visitor out ("Попробовать еще раз" → the main page); anything less starts again from question 1.
+  let passed = false;
   function showResult() {
-    game.hidden = true; result.hidden = false; document.body.classList.add('quiz-complete'); document.querySelectorAll('.hit, .again').forEach(link => { link.removeAttribute('aria-disabled'); link.removeAttribute('tabindex'); }); document.querySelector('#result-score').textContent = `Правильных ответов: ${score} из ${questions.length}`;
+    game.hidden = true; result.hidden = false; document.querySelector('#result-score').textContent = `Правильных ответов: ${score} из ${questions.length}`;
+    passed = score === questions.length;
+    document.querySelector('#result-actions').hidden = !passed; document.querySelector('#result-again').hidden = passed;
+    if (passed) { document.body.classList.add('quiz-complete'); document.querySelectorAll('.hit, .again').forEach(link => { link.removeAttribute('aria-disabled'); link.removeAttribute('tabindex'); }); }
+    else setTimeout(reset, 2800);
     const title = document.querySelector('#result-title'), image = document.querySelector('#result-image');
     if (score < 3) { title.textContent = 'Ну ты и сиськастый'; image.alt = 'Злой банан показывает средний палец'; }
     else if (score < 5) { title.textContent = 'ЦВЕТОЧНЫЙ АВТОРИТЕТ'; image.alt = 'Банан-маскот'; }
     else { title.textContent = 'ТЫ ЛЕГЕНДА, СИСЬКАСТЫЙ'; image.alt = 'Банан-маскот'; }
   }
   function reset() { current = 0; score = 0; result.hidden = true; game.hidden = false; renderQuestion(); }
-  document.querySelector('#restart-quiz').addEventListener('click', reset);
+  // No way back until the quiz is passed: the browser's Back button lands on this page again.
+  history.pushState(null, '', location.href);
+  addEventListener('popstate', () => { if (!passed) history.pushState(null, '', location.href); });
 
   // The song starts on the "Ты знаешь кто ты?" click: browsers allow sound only after the visitor presses something.
   // The 🔊/🔇 choice is shared with the main page (same localStorage key).
