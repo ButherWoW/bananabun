@@ -1,30 +1,26 @@
 import { createRequire } from 'module';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import https from 'https';
-import http from 'http';
 import { nanoid } from 'nanoid';
 import os from 'os';
+import { safeDownload } from './safe-fetch.js';
 
+// Product photos come from scraped shops: every hop is checked, size and time are capped (safe-fetch.js).
 async function downloadImage(url, dest) {
-  return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https') ? https : http;
-    const file = fs.createWriteStream(dest);
-    const req = protocol.get(url, { timeout: 15000 }, (res) => {
-      if (res.statusCode === 301 || res.statusCode === 302) {
-        file.close();
-        return downloadImage(res.headers.location, dest).then(resolve).catch(reject);
-      }
-      res.pipe(file);
-      file.on('finish', () => { file.close(); resolve(dest); });
-    });
-    req.on('error', (e) => { try { fs.unlinkSync(dest); } catch { /* */ } reject(e); });
-    file.on('error', (e) => { try { fs.unlinkSync(dest); } catch { /* */ } reject(e); });
-  });
+  const { body } = await safeDownload(url, { maxBytes: 15 * 1024 * 1024, timeoutMs: 15000 });
+  await fs.promises.writeFile(dest, body);
+  return dest;
 }
 
+let ffmpegBin;
 function getFfmpegBin() {
+  if (ffmpegBin !== undefined) return ffmpegBin;
+  ffmpegBin = findFfmpegBin();
+  return ffmpegBin;
+}
+
+function findFfmpegBin() {
   try {
     const require = createRequire(import.meta.url);
     const installer = require('@ffmpeg-installer/ffmpeg');
@@ -40,9 +36,25 @@ function getFfmpegBin() {
   return null;
 }
 
+// ffmpeg runs as a child process without blocking the event loop; one encode at a time, the rest wait in line.
+let queue = Promise.resolve();
+function runFfmpeg(bin, args, timeoutMs = 120000) {
+  const run = () => new Promise((resolve) => {
+    const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (c) => { stderr = (stderr + c).slice(-2000); });
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    child.on('error', (e) => { clearTimeout(timer); resolve({ status: -1, stderr: e.message }); });
+    child.on('close', (status) => { clearTimeout(timer); resolve({ status, stderr }); });
+  });
+  const next = queue.then(run, run);
+  queue = next.catch(() => {});
+  return next;
+}
+
 export async function generateTikTokVideo(images, title, outputDir) {
-  const ffmpegBin = getFfmpegBin();
-  if (!ffmpegBin) return null;
+  const bin = getFfmpegBin();
+  if (!bin) return null;
 
   const imgUrls = (images || []).filter(Boolean).slice(0, 6);
   if (!imgUrls.length) return null;
@@ -89,7 +101,7 @@ export async function generateTikTokVideo(images, title, outputDir) {
       outPath,
     ];
 
-    const result = spawnSync(ffmpegBin, args, { timeout: 120000, encoding: 'utf8' });
+    const result = await runFfmpeg(bin, args);
     if (result.status !== 0 || !fs.existsSync(outPath)) {
       console.error('[tiktok-video] ffmpeg failed:', result.stderr?.slice(-500));
       return null;

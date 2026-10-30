@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
+import { deleteUser } from '../../services/users.js';
 
 export async function adminRoutes(app) {
   // Use app.authenticate so role is always re-read from the DB, not from the JWT.
@@ -91,12 +92,7 @@ export async function adminRoutes(app) {
     const user = await db.findOne('users', { id, workspace_id: req.user.ws });
     if (!user) return reply.status(404).send({ error: 'Пользователь не найден' });
 
-    // Nullify created_by references before deletion to avoid FK errors.
-    await db.query(`UPDATE products  SET created_by = NULL WHERE created_by = $1`, [id]);
-    await db.query(`UPDATE creatives SET created_by = NULL WHERE created_by = $1`, [id]);
-    await db.query(`UPDATE folders   SET created_by = NULL WHERE created_by = $1`, [id]);
-    await db.query('DELETE FROM users WHERE id = $1', [id]);
-    return { ok: true };
+    return deleteUser(id, reply);
   });
 
   // Reset password (owner only)

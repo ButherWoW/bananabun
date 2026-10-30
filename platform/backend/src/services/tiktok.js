@@ -29,13 +29,7 @@ export function tiktokClient(accessToken) {
       return req('GET', `/pixel/list/?advertiser_id=${encodeURIComponent(advertiserId)}&page=1&page_size=100`);
     },
 
-    async uploadVideoUrl(advertiserId, videoUrl) {
-      const imgRes = await fetch(videoUrl, { signal: AbortSignal.timeout(60000) });
-      if (!imgRes.ok) throw new Error(`Failed to fetch video: ${videoUrl}`);
-      const buf = Buffer.from(await imgRes.arrayBuffer());
-      const ext = videoUrl.split('?')[0].split('.').pop()?.toLowerCase() || 'mp4';
-      const filename = `upload.${ext}`;
-
+    async uploadVideoFile(advertiserId, buf, filename = 'upload.mp4') {
       const form = new FormData();
       form.append('advertiser_id', advertiserId);
       form.append('video_file', new Blob([buf], { type: 'video/mp4' }), filename);

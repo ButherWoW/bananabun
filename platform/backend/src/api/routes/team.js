@@ -2,6 +2,7 @@ import { adminOnly } from '../../middleware/access.js';
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { db } from '../../db/client.js';
+import { deleteUser } from '../../services/users.js';
 
 export async function teamRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
@@ -42,6 +43,13 @@ export async function teamRoutes(app) {
     if (req.user.role !== 'owner' && req.body.role !== undefined) return reply.status(403).send({ error: 'Менять роли может только owner' });
     const member = await db.findOne('users', { id: req.params.id, workspace_id: req.user.ws });
     if (!member) return reply.status(404).send({ error: 'Not found' });
+    // Same policy as /admin/users: nobody changes their own role, so the team never loses its last owner this way.
+    if (req.body.role !== undefined && member.id === req.user.id && req.body.role !== member.role) {
+      return reply.status(400).send({ error: 'Нельзя изменить свою роль' });
+    }
+    if (req.body.role !== undefined && !['owner', 'lead', 'buyer'].includes(req.body.role)) {
+      return reply.status(400).send({ error: 'Недопустимая роль' });
+    }
 
     const allowed = ['role', 'name'];
     const data = {};
@@ -57,10 +65,6 @@ export async function teamRoutes(app) {
     const member = await db.findOne('users', { id: req.params.id, workspace_id: req.user.ws });
     if (!member) return reply.status(404).send({ error: 'Not found' });
     if (req.user.role !== 'owner' && member.role !== 'buyer') return reply.status(403).send({ error: 'Lead может удалять только баеров' });
-    await db.query(`UPDATE products  SET created_by = NULL WHERE created_by = $1`, [member.id]);
-    await db.query(`UPDATE creatives SET created_by = NULL WHERE created_by = $1`, [member.id]);
-    await db.query(`UPDATE folders   SET created_by = NULL WHERE created_by = $1`, [member.id]);
-    await db.delete('users', member.id);
-    return { ok: true };
+    return deleteUser(member.id, reply);
   });
 }

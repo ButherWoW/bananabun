@@ -2,31 +2,23 @@ import { db } from '../../db/client.js';
 import { nanoid } from 'nanoid';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { adminOnly } from '../../middleware/access.js';
+import { adminOnly, assertProductAccess, ownUser } from '../../middleware/access.js';
 import { tiktokClient, getOAuthUrl, exchangeCode, refreshAccessToken, TIKTOK_LOCATIONS } from '../../services/tiktok.js';
-import { promises as dns } from 'dns';
+import { readFile } from 'fs/promises';
+import { safeDownload } from '../../services/safe-fetch.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-async function isSsrfBlocked(url) {
-  try {
-    const u = new URL(String(url));
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return true;
-    const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-    if (/^(localhost|::1|0\.0\.0\.0|127\.|10\.|192\.168\.|169\.254\.)/.test(h)) return true;
-    if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(h)) return true;
-    if (/^(fc[0-9a-f]{2}|fd[0-9a-f]{2}|fe[89ab][0-9a-f])/i.test(h)) return true;
-    const { address, family } = await dns.lookup(h, { verbatim: true });
-    const a = address.toLowerCase();
-    if (family === 4) {
-      if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0)/.test(a)) return true;
-      if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(a)) return true;
-    } else {
-      if (a === '::1') return true;
-      if (/^(fc[0-9a-f]{2}|fd[0-9a-f]{2}|fe[89ab][0-9a-f])/i.test(a)) return true;
-    }
-    return false;
-  } catch { return true; }
+const UPLOADS_DIR = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS_DIR) : path.join(__dirname, '..', '..', '..', 'uploads');
+const VIDEO_DIR = path.join(UPLOADS_DIR, 'tiktok-videos');
+const OWN_VIDEO = /\/uploads\/tiktok-videos\/([\w-]{16})\.mp4$/;
+
+// A video made by /generate-video is read from disk; any other address goes through the checked downloader.
+async function loadVideo(videoUrl) {
+  const own = OWN_VIDEO.exec(String(videoUrl).split('?')[0]);
+  if (own) return { body: await readFile(path.join(VIDEO_DIR, `${own[1]}.mp4`)), filename: 'upload.mp4' };
+  const { body } = await safeDownload(videoUrl, { maxBytes: 200 * 1024 * 1024, timeoutMs: 60000 });
+  return { body, filename: 'upload.mp4' };
 }
 
 export async function tiktokRoutes(app) {
@@ -207,6 +199,14 @@ export async function tiktokRoutes(app) {
     if (!['ENABLE', 'DISABLE'].includes(status)) return reply.status(400).send({ error: 'status must be ENABLE or DISABLE' });
     const acc = await db.findOne('tiktok_accounts', { advertiser_id: String(advertiser_id), workspace_id: req.user.ws });
     if (!acc) return reply.status(404).send({ error: 'TikTok account not found' });
+    // Buyers switch only campaigns they pushed themselves.
+    if (ownUser(req)) {
+      const { rows } = await db.query(
+        `SELECT 1 FROM pushes WHERE workspace_id = $1 AND created_by = $2 AND params->>'tiktok' = 'true'
+            AND params->>'advertiser_id' = $3 AND params->>'campaign_id' = $4 LIMIT 1`,
+        [req.user.ws, req.user.id, acc.advertiser_id, String(campaign_id)]);
+      if (!rows.length) return reply.status(403).send({ error: 'Not found or access denied' });
+    }
     const client = tiktokClient(acc.access_token);
     try {
       await client.setCampaignStatus(acc.advertiser_id, campaign_id, status);
@@ -221,19 +221,13 @@ export async function tiktokRoutes(app) {
     const { product_id } = req.body || {};
     if (!product_id) return reply.status(400).send({ error: 'product_id required' });
 
-    const product = await db.findOne('products', { id: product_id, workspace_id: req.user.ws });
-    if (!product) return reply.status(404).send({ error: 'Product not found' });
+    const [product] = await assertProductAccess(req, product_id);
 
-    const allImages = Array.isArray(product.images) ? product.images : [];
-    const ssrfChecks = await Promise.all(allImages.map(url => isSsrfBlocked(url)));
-    const images = allImages.filter((_, i) => !ssrfChecks[i]);
+    const images = Array.isArray(product.images) ? product.images : [];
     if (!images.length) return { error: 'No images on product', fallback: true };
 
     const { generateTikTokVideo } = await import('../../services/tiktok-video.js');
-    const uploadsBase = process.env.UPLOADS_DIR || path.join(__dirname, '../../../../uploads');
-    const videoDir = path.join(uploadsBase, 'tiktok-videos');
-
-    const result = await generateTikTokVideo(images, product.title, videoDir);
+    const result = await generateTikTokVideo(images, product.title, VIDEO_DIR);
     if (!result) return { error: 'ffmpeg not available or generation failed', fallback: true };
     return { video_url: result.url };
   });
@@ -256,8 +250,7 @@ export async function tiktokRoutes(app) {
     if (!landing_page_url) return reply.status(400).send({ error: 'landing_page_url required' });
     if (!(Number(daily_budget) > 0)) return reply.status(400).send({ error: 'daily_budget must be > 0' });
 
-    const product = await db.findOne('products', { id: product_id, workspace_id: req.user.ws });
-    if (!product) return reply.status(404).send({ error: 'Product not found' });
+    const [product] = await assertProductAccess(req, product_id);
 
     const acc = await db.findOne('tiktok_accounts', { id: tiktok_account_id, workspace_id: req.user.ws });
     if (!acc) return reply.status(404).send({ error: 'TikTok account not found' });
@@ -268,10 +261,29 @@ export async function tiktokRoutes(app) {
       .map(c => TIKTOK_LOCATIONS[String(c).toUpperCase()])
       .filter(Boolean);
 
+    // The push row is written first and updated after every step, so a failure late in the chain still leaves
+    // the ids TikTok already created (campaign, ad group…) on record instead of an orphan nobody knows about.
+    const params = {
+      tiktok: true, tiktok_account_id, advertiser_id: acc.advertiser_id,
+      countries, daily_budget: Number(daily_budget), landing_page_url, ad_text,
+    };
+    const log = [];
+    const push = await db.insert('pushes', {
+      workspace_id: req.user.ws, product_id, params, status: 'running', created_by: req.user.id,
+      started_at: new Date(), log: JSON.stringify(log),
+    });
+    const step = async (name, ids) => {
+      Object.assign(params, ids);
+      log.push({ step: name, ...ids });
+      await db.update('pushes', push.id, { params, log: JSON.stringify(log) });
+    };
+
     try {
       // 1. Upload video
-      const videoData = await client.uploadVideoUrl(acc.advertiser_id, video_url);
+      const video = await loadVideo(video_url);
+      const videoData = await client.uploadVideoFile(acc.advertiser_id, video.body, video.filename);
       const video_id = videoData.video_id;
+      await step('video_uploaded', { video_id });
 
       // 2. Create campaign
       const campaign = await client.createCampaign(acc.advertiser_id, {
@@ -280,6 +292,7 @@ export async function tiktokRoutes(app) {
         budget: Number(daily_budget),
       });
       const campaign_id = campaign.campaign_id;
+      await step('campaign_created', { campaign_id });
 
       // 3. Create ad group
       const adgroup = await client.createAdGroup(acc.advertiser_id, {
@@ -293,6 +306,7 @@ export async function tiktokRoutes(app) {
         age_max: Number(age_max),
       });
       const adgroup_id = adgroup.adgroup_id;
+      await step('adgroup_created', { adgroup_id });
 
       // 4. Create ad
       const ad = await client.createAd(acc.advertiser_id, {
@@ -304,33 +318,8 @@ export async function tiktokRoutes(app) {
         landing_page_url,
       });
       const ad_id = ad.ad_ids?.[0] || ad.ad_id;
-
-      // 5. Store push record
-      const push = await db.insert('pushes', {
-        workspace_id: req.user.ws,
-        product_id,
-        params: {
-          tiktok: true,
-          tiktok_account_id,
-          advertiser_id: acc.advertiser_id,
-          campaign_id,
-          adgroup_id,
-          ad_id,
-          video_id,
-          countries,
-          daily_budget: Number(daily_budget),
-          landing_page_url,
-          ad_text,
-        },
-        status: 'done',
-        created_by: req.user.id,
-        log: JSON.stringify([
-          { step: 'video_uploaded', video_id },
-          { step: 'campaign_created', campaign_id },
-          { step: 'adgroup_created', adgroup_id },
-          { step: 'ad_created', ad_id },
-        ]),
-      });
+      await step('ad_created', { ad_id });
+      await db.update('pushes', push.id, { status: 'done', finished_at: new Date() });
 
       return {
         ok: true,
@@ -343,7 +332,10 @@ export async function tiktokRoutes(app) {
         note: 'Кампания создана и остановлена. Запустите вручную в TikTok Ads Manager.',
       };
     } catch (e) {
-      return reply.status(500).send({ error: e.message });
+      await db.update('pushes', push.id, { status: 'failed', error: String(e.message).slice(0, 500), finished_at: new Date() })
+        .catch(err => req.log.error(err, 'tiktok push: failed to record the failure'));
+      // What was already created stays in TikTok (paused) and is listed here; repeating the push creates a new set.
+      return reply.status(502).send({ error: e.message, push_id: push.id, created: { ...params, tiktok: undefined } });
     }
   });
 }

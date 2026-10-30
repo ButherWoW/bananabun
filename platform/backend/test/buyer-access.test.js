@@ -53,6 +53,7 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     INSERT INTO ad_presets(id,workspace_id,created_by,name) VALUES ('apa','w1','a','A'),('apb','w1','b','B'),('apo','w2','other','Other');
     INSERT INTO scrape_jobs(id,workspace_id,created_by,type,status,params) VALUES ('ja','w1','a','search','done','{}'),('jb','w1','b','search','done','{}'),('jo','w2','other','search','done','{}'),('legacy','w1',NULL,'search','done','{}');
     INSERT INTO campaigns(id,workspace_id,created_by,name,spend,revenue) VALUES ('cmpa','w1','a','A',10,20),('cmpb','w1','b','B',100,200),('cmpo','w2','other','Other',1000,2000);
+    INSERT INTO tiktok_accounts(id,workspace_id,advertiser_id,access_token,name,created_by) VALUES ('tta','w1','adv1','test-token','TT','b');
   `);
   const users = Object.fromEntries((await db.query('SELECT id,workspace_id AS ws,role,email FROM users')).rows.map(u => [u.id, u]));
   app.decorate('authenticate', async (req, reply) => {
@@ -63,6 +64,7 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     ['products','productRoutes','products'], ['creatives','creativeRoutes','creatives'], ['push','pushRoutes','push'],
     ['folders','folderRoutes','folders'], ['presets','presetRoutes','presets'], ['landings','landingRoutes','landings'],
     ['search','searchRoutes','search'], ['adSettings','adSettingsRoutes','ad-settings'], ['adpresets','adPresetRoutes','ad-presets'], ['analytics','analyticsRoutes','analytics'],
+    ['tiktok','tiktokRoutes','tiktok'], ['team','teamRoutes','team'], ['admin','adminRoutes','admin'],
   ]) app.register((await import(`../src/api/routes/${name}.js`))[exported], { prefix: `/api/${prefix}` });
   await app.ready();
   const req = (method, path, user = 'a', payload) => app.inject({ method, url: path, headers: { 'x-test-user': user }, payload });
@@ -163,11 +165,40 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     const data = await get('/api/analytics/overview');
     assert.equal(data.products_count,2);
     assert.equal(data.creatives_count,3);
-    assert.equal(data.total_spend,10);
-    assert.equal(data.total_revenue,20);
-    const all = await get('/api/analytics/overview','owner');
-    assert.equal(all.total_spend,110);
+    // Spend and revenue left /overview (they were stale); only the daily series carries money now.
+    assert.equal(data.total_spend,undefined);
+    assert.equal((await get('/api/analytics/overview','owner')).products_count,3);
     assert.equal((await get('/api/analytics/daily'))[0].spend,10);
+  });
+  await t.test('TikTok: foreign products, foreign campaigns and internal video addresses are refused', async () => {
+    await denied('POST','/api/tiktok/generate-video',{ product_id:'pb' });
+    await denied('POST','/api/tiktok/generate-video',{ product_id:'po' });
+    const body = { product_id:'pa',tiktok_account_id:'tta',video_url:'https://example.invalid/v.mp4',ad_text:'Text',landing_page_url:'https://example.invalid/',daily_budget:20 };
+    await denied('POST','/api/tiktok/push',{ ...body,product_id:'pb' });
+    const status = await req('PATCH','/api/tiktok/campaigns/1700000000/status','a',{ advertiser_id:'adv1',status:'ENABLE' });
+    assert.equal(status.statusCode,403,status.body);
+    for (const video_url of ['http://127.0.0.1:4000/api/health','http://[::ffff:127.0.0.1]/x','http://169.254.169.254/latest']) {
+      const response = await req('POST','/api/tiktok/push','a',{ ...body,video_url });
+      assert.equal(response.statusCode,502,response.body);
+      const row = await db.findOne('pushes',{ id:response.json().push_id });
+      assert.equal(row.status,'failed');
+      assert.equal(row.created_by,'a');
+      assert.equal(row.params.campaign_id,undefined);
+    }
+  });
+  await t.test('nobody changes their own role through the team page', async () => {
+    const response = await req('PATCH','/api/team/members/owner','owner',{ role:'buyer' });
+    assert.equal(response.statusCode,400,response.body);
+    assert.equal((await db.findOne('users',{ id:'owner' })).role,'owner');
+    assert.equal((await req('PATCH','/api/team/members/a','owner',{ role:'boss' })).statusCode,400);
+  });
+  await t.test('deleting a user removes them in one step and keeps every row they wrote', async () => {
+    const response = await req('DELETE','/api/admin/users/b','owner');
+    assert.equal(response.statusCode,200,response.body);
+    assert.equal(await db.findOne('users',{ id:'b' }),null);
+    for (const [table,id] of [['products','pb'],['creatives','cb'],['folders','shared'],['bundle_presets','bpb'],['creative_presets','cpb'],['tiktok_accounts','tta']]) {
+      assert.equal((await db.findOne(table,{ id })).created_by,null,table);
+    }
   });
   assert.equal(externalCalls,0,'Access tests must not contact Keitaro, Facebook, Amazon or an AI API');
 });
