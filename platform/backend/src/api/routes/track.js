@@ -1,7 +1,10 @@
 import { db } from '../../db/client.js';
 import { deviceOf, osOf, appOf } from '../../services/lp-tracker.js';
 
-const EVENTS = new Set(['view', 'seen', 'depth', 'click', 'buy_click', 'bundle_select', 'quiz_answer', 'leave']);
+const EVENTS = new Set(['view', 'seen', 'depth', 'click', 'buy_click', 'bundle_select', 'quiz_answer', 'leave', 'rage', 'dead']);
+// Element label from the page script (tag#id.class «caption»): printable text only, capped.
+const elOf = (e) => (e.e === 'rage' || e.e === 'dead') && typeof e.el === 'string'
+  ? (e.el.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80) || null) : null;
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
 const idOr = (v) => (ID.test(String(v || '')) ? String(v) : null);
@@ -52,12 +55,12 @@ export async function trackRoutes(app) {
 
     const vals = [];
     const ph = rows.map((e, i) => {
-      vals.push(...base, e.e, clip(e.b, 40), int32(e.n));
-      const o = i * 16;
-      return `(${Array.from({ length: 16 }, (_, k) => `$${o + k + 1}`).join(',')})`;
+      vals.push(...base, e.e, clip(e.b, 40), int32(e.n), elOf(e));
+      const o = i * 17;
+      return `(${Array.from({ length: 17 }, (_, k) => `$${o + k + 1}`).join(',')})`;
     });
     await db.query(`INSERT INTO lp_events (visitor, campaign_id, adset_id, ad_id, template_id, product_id, geo,
-                      device, os, app, placement, source, country, event, block, num) VALUES ${ph.join(',')}`, vals)
+                      device, os, app, placement, source, country, event, block, num, el) VALUES ${ph.join(',')}`, vals)
       .catch((e) => req.log.warn({ err: e.message }, 'lp_events insert failed'));
 
     // Keep 30 days, pruned at most once an hour.

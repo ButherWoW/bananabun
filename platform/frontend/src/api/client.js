@@ -96,7 +96,7 @@ export const analytics = {
   overview: () => api.get('/api/analytics/overview'),
   daily: (days) => api.get('/api/analytics/daily', { params: { days } }),
   landingFunnel: (from, to, group = 'template') => api.get('/api/analytics/landing-funnel', { params: { from, to, group } }),
-  landingBehavior: (from, to) => api.get('/api/analytics/landing-behavior', { params: { from, to } }),
+  landingBehavior: (from, to, filters = {}) => api.get('/api/analytics/landing-behavior', { params: { from, to, ...filters } }),
   buyers: (from, to, compare = false) => api.get('/api/analytics/buyers', { params: { from, to, compare: compare ? 'true' : undefined } }),
   query: (plan) => api.post('/api/analytics/query', plan),
   dashboard: (range = 'today') => api.get('/api/analytics/dashboard', { params: { range } }),

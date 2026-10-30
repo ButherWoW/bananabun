@@ -24,7 +24,7 @@ const VISITORS = `
   WITH ev AS (
     SELECT * FROM lp_events
      WHERE at >= $1::date AND at < ($2::date + 1) AND campaign_id = ANY($3)
-       AND ($4::text[] IS NULL OR campaign_id = ANY($4))
+       AND ($4::text[] IS NULL OR campaign_id = ANY($4)) AND ($5::text[] IS NULL OR template_id = ANY($5))
   ), v AS (
     SELECT visitor, MIN(campaign_id) campaign_id, MIN(template_id) template_id, MIN(product_id) product_id, MIN(geo) geo,
            MIN(device) device, MIN(os) os, MIN(app) app, MIN(placement) placement, MIN(source) source,
@@ -59,7 +59,7 @@ export async function landingFunnel(user, { from, to, group = 'template', campai
     SELECT ${col} AS key, ARRAY_AGG(DISTINCT campaign_id) AS campaigns, COUNT(*)::int views,
            COUNT(*) FILTER (WHERE picked)::int bundle_pick, COUNT(*) FILTER (WHERE bought)::int buy_click,
            COUNT(*) FILTER (WHERE depth >= 75)::int scroll_75
-      FROM v GROUP BY 1 ORDER BY views DESC`, [from, to, scope, campaigns]);
+      FROM v GROUP BY 1 ORDER BY views DESC`, [from, to, scope, campaigns, null]);
 
   const names = new Map();
   const keys = rows.map(r => r.key).filter(Boolean);
@@ -94,9 +94,24 @@ export async function landingFunnel(user, { from, to, group = 'template', campai
 const TIME_BUCKETS = `CASE WHEN secs < 10 THEN '0-10s' WHEN secs < 30 THEN '10-30s' WHEN secs < 60 THEN '30-60s' WHEN secs < 180 THEN '1-3m' ELSE '3m+' END`;
 const TIME_ORDER = ['0-10s', '10-30s', '30-60s', '1-3m', '3m+'];
 
-export async function landingBehavior(user, { from, to, campaigns = null, top = 8 }) {
+// Campaigns and landings that had visitors in the period, for the report's filters (within the caller's scope).
+async function behaviorOptions(from, to, scope) {
+  const { rows } = await db.query(`
+    SELECT 'campaign' AS kind, e.campaign_id AS id, MAX(c.name) AS name, COUNT(DISTINCT e.visitor)::int visitors
+      FROM lp_events e LEFT JOIN fb_campaigns c ON c.id = e.campaign_id
+     WHERE e.at >= $1::date AND e.at < ($2::date + 1) AND e.campaign_id = ANY($3) GROUP BY 2
+    UNION ALL
+    SELECT 'template', e.template_id, MAX(t.name), COUNT(DISTINCT e.visitor)::int
+      FROM lp_events e LEFT JOIN landing_templates t ON t.id = e.template_id
+     WHERE e.at >= $1::date AND e.at < ($2::date + 1) AND e.campaign_id = ANY($3) AND e.template_id IS NOT NULL GROUP BY 2
+    ORDER BY 4 DESC`, [from, to, scope]);
+  const pick = (k) => rows.filter(r => r.kind === k).slice(0, 50).map(r => ({ id: r.id, name: r.name || r.id, visitors: r.visitors }));
+  return { campaigns: pick('campaign'), templates: pick('template') };
+}
+
+export async function landingBehavior(user, { from, to, campaigns = null, templates = null, top = 8 }) {
   const scope = await campaignScope(user);
-  const args = [from, to, scope, campaigns];
+  const args = [from, to, scope, campaigns, templates];
   const q = async (sql) => (await db.query(`${VISITORS} ${sql}`, args)).rows;
 
   const [base] = await q(`SELECT COUNT(*)::int visitors, COUNT(*) FILTER (WHERE picked)::int picked,
@@ -108,6 +123,7 @@ export async function landingBehavior(user, { from, to, campaigns = null, top = 
     base: { ...base, pick_rate: pct(base.picked, visitors), buy_rate: pct(base.bought, visitors), read_rate: pct(base.read_75, visitors), conv_rate: null },
     by: {},
     missing: { converted: 'конверсии посетителей пока не связаны с продажами Keitaro' },
+    options: await behaviorOptions(from, to, scope),
   };
   if (!visitors) return { ...result, note: 'За этот период посетителей нет: счётчик стоит на лендингах, собранных после 28.10' };
 
@@ -141,18 +157,48 @@ export async function landingBehavior(user, { from, to, campaigns = null, top = 
   // Event-level slices: seen blocks, clicks by block, marked buttons.
   const evRows = async (where, keyExpr) => (await db.query(`
     SELECT ${keyExpr} AS value, COUNT(*)::int events, COUNT(DISTINCT visitor)::int visitors FROM lp_events
-     WHERE at >= $1::date AND at < ($2::date + 1) AND campaign_id = ANY($3) AND ($4::text[] IS NULL OR campaign_id = ANY($4)) AND ${where}
+     WHERE at >= $1::date AND at < ($2::date + 1) AND campaign_id = ANY($3) AND ($4::text[] IS NULL OR campaign_id = ANY($4))
+       AND ($5::text[] IS NULL OR template_id = ANY($5)) AND ${where}
      GROUP BY 1 ORDER BY 3 DESC LIMIT ${Number(top) || 8}`, args)).rows
     .map(x => ({ ...x, visitor_pct: pct(x.visitors, visitors) }));
   result.by.seen = await evRows(`event = 'seen'`, `block`);
   result.by.click = await evRows(`event = 'click'`, `COALESCE(NULLIF(block, ''), 'вне размеченных блоков')`);
   result.by.event = await evRows(`event IN ('buy_click', 'bundle_select', 'quiz_answer')`, `event`);
+  // Rage: 3+ clicks in one spot within a second. Dead: a click on something that is not interactive and changed nothing.
+  const elRows = (event) => evRows(`event = '${event}'`, `COALESCE(NULLIF(el, ''), 'без метки') || ' · ' || COALESCE(NULLIF(block, ''), 'вне блоков')`);
+  result.by.rage = await elRows('rage');
+  result.by.dead = await elRows('dead');
+
+  // Where people who left without a buy click stopped scrolling.
+  const exitDepth = await q(`SELECT depth AS mark, COUNT(*)::int visitors FROM v WHERE NOT bought AND left_page GROUP BY 1`);
+  const leavers = exitDepth.reduce((t, x) => t + x.visitors, 0);
+  result.by.exit_depth = [0, 25, 50, 75, 100].map(m => {
+    const n = exitDepth.find(x => Number(x.mark) === m)?.visitors || 0;
+    return { mark: m, visitors: n, pct: pct(n, leavers) };
+  });
+
+  // Clicks per block with rage and dead counts — the click map.
+  const { rows: blocks } = await db.query(`
+    SELECT COALESCE(NULLIF(block, ''), 'вне размеченных блоков') AS id, COUNT(*) FILTER (WHERE event = 'click')::int clicks,
+           COUNT(*) FILTER (WHERE event = 'rage')::int rage_clicks, COUNT(*) FILTER (WHERE event = 'dead')::int dead_clicks
+      FROM lp_events
+     WHERE at >= $1::date AND at < ($2::date + 1) AND campaign_id = ANY($3) AND ($4::text[] IS NULL OR campaign_id = ANY($4))
+       AND ($5::text[] IS NULL OR template_id = ANY($5)) AND event IN ('click', 'rage', 'dead')
+     GROUP BY 1 ORDER BY 2 DESC LIMIT 20`, args);
+  result.blocks = blocks.map(b => ({ ...b, name: b.id }));
 
   const [quiz] = await q(`SELECT COUNT(*) FILTER (WHERE quiz_steps > 0)::int started, MAX(quiz_steps)::int last_step,
       COUNT(*) FILTER (WHERE quiz_steps > 0 AND quiz_steps >= (SELECT MAX(quiz_steps) FROM v))::int completed FROM v`);
   if (quiz?.started) {
+    const reached = await q(`SELECT quiz_steps AS step, COUNT(*)::int n FROM v WHERE quiz_steps > 0 GROUP BY 1`);
+    const lastStep = Math.min(quiz.last_step, 20);
+    const steps = [];
+    for (let s = 1; s <= lastStep; s++) {
+      const n = reached.filter(r => Number(r.step) >= s).reduce((t, r) => t + r.n, 0);
+      steps.push({ step: s, visitors: n, pct: pct(n, quiz.started), drop: s > 1 ? pct(steps[s - 2].visitors - n, steps[s - 2].visitors) : 0 });
+    }
     result.quiz = { started: quiz.started, started_pct: pct(quiz.started, visitors), last_step: quiz.last_step,
-      completed_pct: pct(quiz.completed, quiz.started) };
+      completed_pct: pct(quiz.completed, quiz.started), steps };
   }
   return result;
 }

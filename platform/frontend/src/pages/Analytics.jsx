@@ -187,10 +187,32 @@ function LandingFunnelSection({ from, to }) {
   );
 }
 
+function ClickList({ title, hint, rows, color }) {
+  if (!rows?.length) return null;
+  return (
+    <div className="min-w-0">
+      <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">{title}</div>
+      <div className="text-[11px] text-gray-600 mb-3">{hint}</div>
+      <div className="space-y-1.5">
+        {rows.slice(0, 8).map(r => (
+          <div key={r.value} className="flex items-center gap-2 text-xs min-w-0">
+            <span className="text-gray-300 flex-1 truncate font-mono" title={r.value}>{r.value}</span>
+            <span className={`${color} w-14 text-right`}>{r.events} шт</span>
+            <span className="text-gray-500 w-12 text-right">{r.visitor_pct}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LandingBehaviorSection({ from, to }) {
+  const [campaign, setCampaign] = useState('');
+  const [template, setTemplate] = useState('');
+  const filters = { ...(campaign ? { campaign } : {}), ...(template ? { template } : {}) };
   const { data, isLoading, error } = useQuery({
-    queryKey: ['landing-behavior', from, to],
-    queryFn: () => analytics.landingBehavior(from, to),
+    queryKey: ['landing-behavior', from, to, campaign, template],
+    queryFn: () => analytics.landingBehavior(from, to, filters),
     enabled: !!(from && to),
     retry: 1,
   });
@@ -204,13 +226,29 @@ function LandingBehaviorSection({ from, to }) {
   const byPlacement = data.by?.placement || [];
   const byExit = data.by?.exit || [];
   const depth = data.by?.depth || [];
+  const exitDepth = (data.by?.exit_depth || []).filter(x => x.visitors > 0);
+  const opts = data.options || {};
+  const selectCls = 'bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg text-xs text-gray-300 px-2 py-1 max-w-[220px]';
 
   return (
     <div className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] rounded-xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-[color:var(--c2d3148)]">
-        <div className="text-sm font-medium text-white">Поведение на лендинге</div>
-        <div className="text-xs text-gray-500 mt-0.5">{(base.visitors || 0).toLocaleString()} посетителей · {from} — {to}</div>
+      <div className="px-5 py-3 border-b border-[color:var(--c2d3148)] flex flex-wrap items-center gap-3 justify-between">
+        <div>
+          <div className="text-sm font-medium text-white">Поведение на лендинге</div>
+          <div className="text-xs text-gray-500 mt-0.5">{(base.visitors || 0).toLocaleString()} посетителей · {from} — {to}</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <select className={selectCls} value={campaign} onChange={e => setCampaign(e.target.value)}>
+            <option value="">Все кампании</option>
+            {(opts.campaigns || []).map(c => <option key={c.id} value={c.id}>{c.name} · {c.visitors}</option>)}
+          </select>
+          <select className={selectCls} value={template} onChange={e => setTemplate(e.target.value)}>
+            <option value="">Все лендинги</option>
+            {(opts.templates || []).map(c => <option key={c.id} value={c.id}>{c.name} · {c.visitors}</option>)}
+          </select>
+        </div>
       </div>
+      {data.note && <div className="px-5 py-3 text-xs text-gray-500">{data.note}</div>}
       <div className="p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="space-y-2">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Конверсия</div>
@@ -288,6 +326,49 @@ function LandingBehaviorSection({ from, to }) {
               </div>
             </div>
           )}
+        </div>
+      )}
+      {(exitDepth.length > 0 || quiz.steps?.length > 0) && (
+        <div className="border-t border-[color:var(--c2d3148)] p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {exitDepth.length > 0 && (
+            <div className="min-w-0">
+              <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Где ушли без клика «купить» (глубина)</div>
+              <div className="space-y-2">
+                {exitDepth.map(d => (
+                  <div key={d.mark} className="flex items-center gap-2 text-xs">
+                    <span className="text-gray-400 w-16">{d.mark === 0 ? 'до 25%' : `${d.mark}%`}</span>
+                    <div className="flex-1 bg-[color:var(--c0f1117)] rounded h-1.5 overflow-hidden">
+                      <div className="h-full bg-red-500/50 rounded" style={{ width: `${d.pct}%` }} />
+                    </div>
+                    <span className="text-red-400 w-10 text-right">{d.pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {quiz.steps?.length > 0 && (
+            <div className="min-w-0">
+              <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Квиз по шагам</div>
+              <div className="space-y-2">
+                {quiz.steps.map(s => (
+                  <div key={s.step} className="flex items-center gap-2 text-xs">
+                    <span className="text-gray-400 w-14">Шаг {s.step}</span>
+                    <div className="flex-1 bg-[color:var(--c0f1117)] rounded h-1.5 overflow-hidden">
+                      <div className="h-full bg-emerald-500/60 rounded" style={{ width: `${s.pct}%` }} />
+                    </div>
+                    <span className="text-gray-300 w-10 text-right">{s.pct}%</span>
+                    <span className="text-red-400 w-14 text-right">{s.step > 1 ? `−${s.drop}%` : ''}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {(data.by?.rage?.length > 0 || data.by?.dead?.length > 0) && (
+        <div className="border-t border-[color:var(--c2d3148)] p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <ClickList title="Раздражённые клики" hint="3+ клика в одно место за секунду: элемент кажется кнопкой, но не реагирует" rows={data.by?.rage} color="text-orange-400" />
+          <ClickList title="Мёртвые клики" hint="клик по некликабельному элементу, на странице ничего не изменилось" rows={data.by?.dead} color="text-yellow-400" />
         </div>
       )}
       {byPlacement.length > 0 && (
