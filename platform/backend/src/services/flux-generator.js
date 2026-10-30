@@ -14,6 +14,7 @@ const FORMAT_TO_ASPECT = {
   '4x5': '4:5',
   '9x16': '9:16',
   '3x2': '3:2',
+  '2x3': '2:3',
   '16x9': '16:9',
 };
 
@@ -135,7 +136,11 @@ export async function generateFluxCreative(product, logoKey, format = '1x1', opt
     return { url: `/uploads/${cachedFilename}`, thumbnail: `/uploads/${cachedFilename}`, style: 'flux', language: options.language || 'fr', prompt, slot, cached: true };
   } catch { /* cache miss */ }
 
-  const FLUX_SIZE = { '1:1': 'square_hd', '4:5': 'portrait_4_3', '9:16': 'portrait_4_3', '3:2': 'landscape_4_3', '16:9': 'landscape_16_9' };
+  // FLUX takes exact pixel sizes (multiples of 16), so every format gets its real proportions, not the nearest preset.
+  const FLUX_SIZE = {
+    '1:1': { width: 1024, height: 1024 }, '4:5': { width: 1024, height: 1280 }, '9:16': { width: 720, height: 1280 },
+    '3:2': { width: 1536, height: 1024 }, '2:3': { width: 1024, height: 1536 }, '16:9': { width: 1280, height: 720 },
+  };
   const falBody = IS_FLUX
     ? { prompt, image_size: FLUX_SIZE[aspectRatio] || 'square_hd', num_images: 1, enable_safety_checker: false }
     : { prompt, aspect_ratio: aspectRatio, style_type: 'DESIGN', magic_prompt_option: 'OFF', negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text' };
