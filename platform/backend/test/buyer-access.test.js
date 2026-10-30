@@ -71,7 +71,7 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     ['products','productRoutes','products'], ['creatives','creativeRoutes','creatives'], ['push','pushRoutes','push'],
     ['folders','folderRoutes','folders'], ['presets','presetRoutes','presets'], ['landings','landingRoutes','landings'],
     ['search','searchRoutes','search'], ['adSettings','adSettingsRoutes','ad-settings'], ['adpresets','adPresetRoutes','ad-presets'], ['analytics','analyticsRoutes','analytics'],
-    ['tiktok','tiktokRoutes','tiktok'], ['team','teamRoutes','team'], ['admin','adminRoutes','admin'], ['campaigns','campaignRoutes','campaigns'],
+    ['tiktok','tiktokRoutes','tiktok'], ['team','teamRoutes','team'], ['admin','adminRoutes','admin'], ['campaigns','campaignRoutes','campaigns'], ['keitaro','keitaroRoutes','keitaro'],
   ]) app.register((await import(`../src/api/routes/${name}.js`))[exported], { prefix: `/api/${prefix}` });
   await app.ready();
   const req = (method, path, user = 'a', payload) => app.inject({ method, url: path, headers: { 'x-test-user': user }, payload });
@@ -332,6 +332,7 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
   await t.test('dashboard counts each expense once and gives a buyer only their own TikTok and FB spend', async () => {
     await db.query("UPDATE workspaces SET keitaro_url='https://kt.test.invalid', keitaro_api_key='test' WHERE id='w1'");
     await db.query("UPDATE users SET keitaro_tag='alice' WHERE id='a'");
+    await db.query("UPDATE tiktok_accounts SET currency='USD' WHERE id='tta'");
     await db.query(`INSERT INTO fb_campaigns(id,workspace_id,fb_account_id,spend_7d) VALUES
       ('9001','w1','fba',40),('9002','w1','fbb',70),('9003','w1','fba',NULL)`);
     const blocked = globalThis.fetch;
@@ -366,6 +367,48 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
       assert.equal(all.keitaro.cost_counted,20);
       assert.equal(all.tiktok.spend,53);
       assert.equal(all.totals.spend,183);
+    } finally {
+      globalThis.fetch = blocked;
+    }
+  });
+  await t.test('amounts in another currency are never added to totals; buyers carry one label and a 35% share', async () => {
+    await db.query("UPDATE workspaces SET keitaro_url='https://kt.test.invalid', keitaro_api_key='test' WHERE id='w1'");
+    await db.query("UPDATE users SET keitaro_tag='alice, al', name='Alice A' WHERE id='a'");
+    await db.query("UPDATE tiktok_accounts SET currency='EUR' WHERE id='tta'");
+    await db.query("DELETE FROM fb_campaigns WHERE id IN ('9001','9002','9003')");
+    await db.query(`INSERT INTO fb_campaigns(id,workspace_id,fb_account_id,spend_7d,currency) VALUES
+      ('9101','w1','fba',40,'USD'),('9102','w1','fbb',70,'EUR')`);
+    const blocked = globalThis.fetch;
+    const ktRows = [
+      { campaign_id:1, sub_id_2:'9101', campaign:'[h1][d][alice(1)][x][y][z] Linked', campaign_group:'', clicks:10, leads:0, sales:1, lp_clicks:0, cost:40, revenue:100 },
+      { campaign_id:2, sub_id_2:'9102', campaign:'[h2][d][bob(2)][x][y][z] Euro', campaign_group:'', clicks:10, leads:0, sales:0, lp_clicks:0, cost:65, revenue:20 },
+      { campaign_id:3, sub_id_2:'', campaign:'Plain name', campaign_group:'Al', clicks:1, leads:0, sales:0, lp_clicks:0, cost:5, revenue:0 },
+    ];
+    globalThis.fetch = async (url) => {
+      if (String(url).startsWith('https://kt.test.invalid/')) return { ok:true, json: async () => ({ rows: ktRows }), text: async () => '' };
+      return { ok:true, json: async () => ({ code:0, data:{ list:[{ dimensions:{ campaign_id:'cx' }, metrics:{ spend:'50', clicks:'1', impressions:'1', conversion:'0' } }] } }) };
+    };
+    try {
+      const all = await get('/api/analytics/dashboard?range=last_7_days','owner');
+      assert.equal(all.currency,'USD');
+      assert.equal(all.fb.spend,40,'only the cabinet in the tracker currency');
+      assert.deepEqual(all.fb.other_currency,{ EUR:70 });
+      assert.equal(all.keitaro.cost_counted,70,'the EUR cabinet traffic keeps the tracker cost (65) plus unlinked traffic (5)');
+      assert.equal(all.tiktok.spend,0);
+      assert.deepEqual(all.totals.other_currency,{ EUR:120 });
+      assert.equal(all.totals.spend,110,'40 USD + 70 USD tracker cost, nothing in EUR');
+
+      const stats = await get('/api/keitaro/stats?range=last_7_days','owner');
+      assert.equal(stats.currency,'USD');
+      assert.deepEqual(Object.fromEntries(stats.rows.map(r => [r.campaign_id, r.buyer])), { 1:'Alice A', 2:'bob', 3:'Alice A' },
+        'nickname and Keitaro group both map to the member listing them');
+
+      const buyers = await get('/api/analytics/buyers?from=2026-10-01&to=2026-10-07','owner');
+      assert.equal(buyers.buyer_share_pct,35);
+      const by = Object.fromEntries(buyers.rows.map(r => [r.buyer, r]));
+      assert.equal(by['Alice A'].profit,55);
+      assert.equal(by['Alice A'].buyer_share,19.25);
+      assert.equal(by.bob.buyer_share,0,'no share on a loss');
     } finally {
       globalThis.fetch = blocked;
     }

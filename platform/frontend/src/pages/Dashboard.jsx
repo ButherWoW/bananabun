@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { analytics } from '../api/client.js';
 import Hint from '../components/Hint.jsx';
+import { money, otherCurrencies } from '../lib/money.js';
 
 const RANGES = [
   { key: 'today', label: 'Сегодня' },
@@ -13,10 +14,6 @@ const RANGES = [
 function fmt(n, decimals = 0) {
   if (n == null || isNaN(n)) return '—';
   return Number(n).toLocaleString('ru-RU', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-}
-function fmtEur(n) {
-  if (n == null || isNaN(n)) return '—';
-  return '€' + fmt(n, 2);
 }
 function fmtPct(n) {
   if (n == null || isNaN(n)) return '—';
@@ -73,6 +70,9 @@ export default function Dashboard() {
   const fb = data?.fb || {};
   const tt = data?.tiktok || {};
   const totals = data?.totals || {};
+  const ccy = data?.currency || totals.currency;
+  const cash = (n) => money(n, ccy);
+  const apart = otherCurrencies(totals.other_currency);
 
   const profitColor = totals.profit > 0 ? 'text-green-400' : totals.profit < 0 ? 'text-red-400' : 'text-white';
   const roiColor = (totals.roi ?? 0) > 0 ? 'text-green-400' : (totals.roi ?? 0) < 0 ? 'text-red-400' : 'text-white';
@@ -117,19 +117,21 @@ export default function Dashboard() {
         <KpiCard
           label="Расход"
           hint="d.spend"
-          value={isLoading ? <Skeleton /> : fmtEur(totals.spend)}
+          value={isLoading ? <Skeleton /> : cash(totals.spend)}
+          sub={apart ? `Без учёта расхода в другой валюте: ${apart}` : null}
           color="text-orange-400"
         />
         <KpiCard
           label="Доход"
           hint="d.revenue"
-          value={isLoading ? <Skeleton /> : fmtEur(totals.revenue)}
+          value={isLoading ? <Skeleton /> : cash(totals.revenue)}
           color="text-blue-400"
         />
         <KpiCard
           label="Профит"
           hint="d.profit"
-          value={isLoading ? <Skeleton /> : fmtEur(totals.profit)}
+          value={isLoading ? <Skeleton /> : cash(totals.profit)}
+          sub={apart ? 'Считается в одной валюте, без перевода по курсу' : null}
           color={profitColor}
         />
         <KpiCard
@@ -149,7 +151,7 @@ export default function Dashboard() {
           loading={isLoading}
           notConnected={!isLoading && !fb.spend && !fb.clicks && !fb.impressions && !fb.leads}
           metrics={[
-            { label: 'Расход', value: fmtEur(fb.spend) },
+            { label: 'Расход', value: otherCurrencies(fb.other_currency) ? `${cash(fb.spend)} + ${otherCurrencies(fb.other_currency)}` : cash(fb.spend) },
             { label: 'Клики', value: fmt(fb.clicks) },
             { label: 'Показы', value: fmt(fb.impressions) },
             { label: 'Лиды', value: fmt(fb.leads) },
@@ -163,7 +165,7 @@ export default function Dashboard() {
           loading={isLoading}
           notConnected={!isLoading && !tt.spend && !tt.clicks && !tt.impressions && !tt.conversions}
           metrics={[
-            { label: 'Расход', value: fmtEur(tt.spend) },
+            { label: 'Расход', value: otherCurrencies(tt.other_currency) ? `${cash(tt.spend)} + ${otherCurrencies(tt.other_currency)}` : cash(tt.spend) },
             { label: 'Клики', value: fmt(tt.clicks) },
             { label: 'Показы', value: fmt(tt.impressions) },
             { label: 'Конверсии', value: fmt(tt.conversions) },
@@ -179,8 +181,8 @@ export default function Dashboard() {
           metrics={[
             { label: 'Клики', value: fmt(keitaro.clicks) },
             { label: 'Конверсии', value: fmt(keitaro.conversions) },
-            { label: 'Доход', value: fmtEur(keitaro.revenue) },
-            { label: 'EPC', value: fmtEur(keitaro.clicks > 0 ? keitaro.revenue / keitaro.clicks : null) },
+            { label: 'Доход', value: cash(keitaro.revenue) },
+            { label: 'EPC', value: cash(keitaro.clicks > 0 ? keitaro.revenue / keitaro.clicks : null) },
           ]}
         />
       </div>

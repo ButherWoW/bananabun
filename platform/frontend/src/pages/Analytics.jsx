@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { analytics, keitaro as keitaroApi } from '../api/client.js';
 import Hint from '../components/Hint.jsx';
+import { money } from '../lib/money.js';
 
 const RANGES = [
   { label: 'Сегодня', value: 'today' },
@@ -432,6 +433,7 @@ function BuyerStatsSection({ from, to }) {
               <th className="text-right px-3 py-2.5">Спенд<Hint k="m.spend" /></th>
               <th className="text-right px-3 py-2.5">Профит<Hint k="m.profit" /></th>
               <th className="text-right px-3 py-2.5">ROI<Hint k="m.roi" /></th>
+              <th className="text-right px-3 py-2.5">Байеру {data.buyer_share_pct ?? 35}%<Hint k="m.buyerShare" /></th>
               <th className="text-right px-5 py-2.5">CR<Hint k="m.cr" /></th>
               {data.rows.some(r => r.compare) && (
                 <th className="text-right px-3 py-2.5">Δ Профит</th>
@@ -444,9 +446,10 @@ function BuyerStatsSection({ from, to }) {
                 <td className="px-5 py-2.5 text-white font-medium">{r.buyer || '—'}</td>
                 <td className="px-3 py-2.5 text-right text-gray-400">{(r.clicks || 0).toLocaleString()}</td>
                 <td className="px-3 py-2.5 text-right text-emerald-400">{r.sales || 0}</td>
-                <td className="px-3 py-2.5 text-right text-indigo-400">${fmt2(r.cost)}</td>
-                <td className={`px-3 py-2.5 text-right ${r.profit > 0 ? 'text-emerald-400' : 'text-red-400'}`}>${fmt2(r.profit)}</td>
+                <td className="px-3 py-2.5 text-right text-indigo-400">{money(r.cost, data.currency)}</td>
+                <td className={`px-3 py-2.5 text-right ${r.profit > 0 ? 'text-emerald-400' : 'text-red-400'}`}>{money(r.profit, data.currency)}</td>
                 <td className="px-3 py-2.5 text-right text-yellow-400">{fmtPct(r.roi)}</td>
+                <td className="px-3 py-2.5 text-right text-emerald-300 font-medium">{money(r.buyer_share, data.currency)}</td>
                 <td className="px-5 py-2.5 text-right text-gray-400">{fmtPct(r.cr)}</td>
                 {data.rows.some(r2 => r2.compare) && (
                   <td className={`px-3 py-2.5 text-right text-xs ${r.compare?.profit_diff > 0 ? 'text-emerald-400' : r.compare?.profit_diff < 0 ? 'text-red-400' : 'text-gray-600'}`}>
@@ -486,7 +489,6 @@ function BarChart({ data }) {
 // Keitaro returns 'day' column name for date grouping
 function rowDate(r) { return r.day || r.date || ''; }
 
-const fmt = (n) => typeof n === 'number' ? n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
 const fmtInt = (n) => typeof n === 'number' ? n.toLocaleString('fr-FR') : '0';
 
 const DEFAULT_ROWS = 10;
@@ -527,12 +529,11 @@ export default function AnalyticsPage() {
   // ROI in percent, (revenue − spend) / spend, like the hint and the dashboard; Keitaro's own field is not used.
   const allRows = (kStats?.rows || []).map(r => ({ ...r, roi: Number(r.cost) > 0 ? (Number(r.revenue) - Number(r.cost)) / Number(r.cost) * 100 : null }));
 
-  // Extract buyer tags like [Angry], [Yan4ik], [Dima] from campaign names
-  const buyers = ['all', ...Array.from(new Set(
-    allRows
-      .map(r => { const m = (r.campaign || '').match(/^\[([^\]]+)\]/); return m ? m[1] : null; })
-      .filter(Boolean)
-  )).sort()];
+  // Buyer of each campaign comes from the server (same rule as «Статистика по байерам»); «без метки» goes last.
+  const buyerNames = Array.from(new Set(allRows.map(r => r.buyer).filter(Boolean)))
+    .sort((a, b) => (a === 'без метки') - (b === 'без метки') || a.localeCompare(b, 'ru'));
+  const ccy = kStats?.currency;
+  const sharePct = kStats?.buyer_share_pct ?? 35;
 
   function toggleSort(col) {
     if (sortBy === col) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
@@ -541,10 +542,7 @@ export default function AnalyticsPage() {
 
   const filtered = allRows
     .filter(r => {
-      if (buyerFilter !== 'all') {
-        const m = (r.campaign || '').match(/^\[([^\]]+)\]/);
-        if (!m || m[1] !== buyerFilter) return false;
-      }
+      if (buyerFilter !== 'all' && r.buyer !== buyerFilter) return false;
       return !search || (r.campaign || '').toLowerCase().includes(search.toLowerCase());
     })
     .sort((a, b) => {
@@ -610,12 +608,20 @@ export default function AnalyticsPage() {
 
       <div className="flex-1 p-5 space-y-5">
         {/* Stat Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className={`grid grid-cols-2 gap-3 ${buyerFilter !== 'all' ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
           <StatCard label="Клики" value={fmtInt(totals.clicks)} color="text-white" />
           <StatCard label="Конверсии" value={fmtInt(totals.conversions)} color="text-emerald-400" />
-          <StatCard label="Спенд" value={`${fmt(totals.cost)}€`} color="text-indigo-400" />
-          <StatCard label="Доход" value={`${fmt(totals.revenue)}€`} color="text-emerald-400" />
-          <StatCard label="ROI" value={fmtPct(roi)} color="text-yellow-400" sub={`Профит: ${fmt(totals.profit)}€`} />
+          <StatCard label="Спенд" value={money(totals.cost, ccy)} color="text-indigo-400" />
+          <StatCard label="Доход" value={money(totals.revenue, ccy)} color="text-emerald-400" />
+          <StatCard label="ROI" value={fmtPct(roi)} color="text-yellow-400" sub={`Профит: ${money(totals.profit, ccy)}`} />
+          {buyerFilter !== 'all' && (
+            <StatCard
+              label={<>Байеру ({sharePct}%)<Hint k="m.buyerShare" /></>}
+              value={money(Math.max(totals.profit, 0) * sharePct / 100, ccy)}
+              color="text-emerald-300"
+              sub={totals.profit > 0 ? `${buyerFilter}: ${sharePct}% от профита` : `${buyerFilter}: профит не в плюсе — 0`}
+            />
+          )}
         </div>
 
         {/* Chart */}
@@ -640,23 +646,18 @@ export default function AnalyticsPage() {
               </span>
               {kLoading && <span className="text-xs text-gray-500 animate-pulse ml-auto">Загрузка...</span>}
             </div>
-            {buyers.length > 1 && (
-              <div className="flex gap-1 flex-wrap items-center">
-                <span className="text-xs text-gray-600 mr-1">Группа:</span>
-                {buyers.map(b => (
-                  <button
-                    key={b}
-                    onClick={() => { setBuyerFilter(b); setShowAll(false); }}
-                    className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${
-                      buyerFilter === b
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] text-gray-400 hover:text-white hover:border-indigo-500/50'
-                    }`}
-                  >
-                    {b === 'all' ? 'Все' : b}
-                  </button>
-                ))}
-              </div>
+            {buyerNames.length > 1 && (
+              <label className="flex items-center gap-2 text-xs text-gray-500">
+                Байер:<Hint k="an.buyers" />
+                <select
+                  value={buyerFilter}
+                  onChange={e => { setBuyerFilter(e.target.value); setShowAll(false); }}
+                  className="bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500/60"
+                >
+                  <option value="all">Все</option>
+                  {buyerNames.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </label>
             )}
           </div>
           {filtered.length === 0 && !kLoading ? (
@@ -697,9 +698,9 @@ export default function AnalyticsPage() {
                           <td className="px-5 py-2.5 text-gray-300 max-w-xs truncate text-xs">{r.campaign}</td>
                           <td className="px-4 py-2.5 text-right text-gray-400">{fmtInt(r.clicks)}</td>
                           <td className="px-4 py-2.5 text-right text-emerald-400">{fmtInt(r.conversions)}</td>
-                          <td className="px-4 py-2.5 text-right text-indigo-400">{fmt(r.cost)}€</td>
-                          <td className="px-4 py-2.5 text-right text-emerald-400">{fmt(r.revenue)}€</td>
-                          <td className={`px-4 py-2.5 text-right ${profitColor}`}>{fmt(r.profit)}€</td>
+                          <td className="px-4 py-2.5 text-right text-indigo-400">{money(r.cost, ccy)}</td>
+                          <td className="px-4 py-2.5 text-right text-emerald-400">{money(r.revenue, ccy)}</td>
+                          <td className={`px-4 py-2.5 text-right ${profitColor}`}>{money(r.profit, ccy)}</td>
                           <td className="px-5 py-2.5 text-right text-yellow-400">{fmtPct(r.roi)}</td>
                         </tr>
                       );
