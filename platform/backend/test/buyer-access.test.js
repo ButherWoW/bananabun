@@ -54,6 +54,10 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     INSERT INTO scrape_jobs(id,workspace_id,created_by,type,status,params) VALUES ('ja','w1','a','search','done','{}'),('jb','w1','b','search','done','{}'),('jo','w2','other','search','done','{}'),('legacy','w1',NULL,'search','done','{}');
     INSERT INTO campaigns(id,workspace_id,created_by,name,spend,revenue) VALUES ('cmpa','w1','a','A',10,20),('cmpb','w1','b','B',100,200),('cmpo','w2','other','Other',1000,2000);
     INSERT INTO tiktok_accounts(id,workspace_id,advertiser_id,access_token,name,created_by) VALUES ('tta','w1','adv1','test-token','TT','b');
+    INSERT INTO ap_profiles(id,workspace_id,group_name) VALUES ('apa','w1','a@test.invalid'),('apb','w1','b@test.invalid');
+    INSERT INTO fb_accounts(id,workspace_id,ap_profile_id) VALUES ('fba','w1','apa'),('fbb','w1','apb');
+    INSERT INTO fb_cabinets(id,workspace_id,fb_account_id,external_id,name) VALUES
+      ('cab_a1','w1','fba','act_111','A1'),('cab_a2','w1','fba','act_222','A2'),('cab_b','w1','fbb','act_333','B');
   `);
   const users = Object.fromEntries((await db.query('SELECT id,workspace_id AS ws,role,email FROM users')).rows.map(u => [u.id, u]));
   app.decorate('authenticate', async (req, reply) => {
@@ -114,6 +118,30 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     }
     assert.equal(Number((await db.query('SELECT COUNT(*) FROM pushes')).rows[0].count),0);
     assert.equal(Number((await db.query('SELECT COUNT(*) FROM agent_jobs')).rows[0].count),0);
+  });
+  await t.test('a batch push checks every cabinet before writing and creates one push per cabinet', async () => {
+    const common = { product_id:'pa',creative_ids:['ca'],countries:['FR'] };
+    const cab = (ext, extra = {}) => ({ cabinet_external_id:ext,pixel_id:'px',page_external_id:'pg',daily_budget:10,bid_amount:2,...extra });
+    const count = async () => Number((await db.query('SELECT COUNT(*) FROM pushes')).rows[0].count);
+    const foreign = await req('POST','/api/push/batch','a',{ ...common,cabinets:[cab('act_111'),cab('act_333')] });
+    assert.equal(foreign.statusCode,403,foreign.body);
+    assert.match(foreign.json().message,/act_333/);
+    const noBudget = await req('POST','/api/push/batch','a',{ ...common,daily_budget:50,cabinets:[cab('act_111'),cab('act_222',{ daily_budget:undefined })] });
+    assert.equal(noBudget.statusCode,400,noBudget.body);
+    assert.equal((await req('POST','/api/push/batch','a',{ ...common,cabinets:[cab('act_111'),cab('111')] })).statusCode,400,'same cabinet twice');
+    assert.equal((await req('POST','/api/push/batch','a',{ ...common,cabinets:[] })).statusCode,400);
+    assert.equal((await req('POST','/api/push','owner',{ ...common,...cab('act_999') })).statusCode,403,'unknown cabinet even for the owner');
+    assert.equal(await count(),0);
+    const ok = await req('POST','/api/push/batch','a',{ ...common,cabinets:[cab('act_111'),cab('act_222',{ daily_budget:15,bid_amount:3 })] });
+    assert.equal(ok.statusCode,200,ok.body);
+    const results = ok.json().results;
+    assert.equal(results.length,2);
+    assert.ok(results.every(r => r.push_id && !r.error));
+    const rows = (await db.query('SELECT params,created_by FROM pushes ORDER BY params->>\'cabinet_external_id\'')).rows;
+    assert.deepEqual(rows.map(r => [r.params.cabinet_external_id,r.params.daily_budget,r.params.bid_amount,r.params.run_now,r.created_by]),
+      [['act_111',10,2,false,'a'],['act_222',15,3,false,'a']]);
+    await new Promise(r => setTimeout(r,100));
+    await db.query('DELETE FROM pushes');
   });
   await t.test('folder and preset references cannot cross a team or private author', async () => {
     for (const folder_id of ['private_b','foreign_folder']) {
