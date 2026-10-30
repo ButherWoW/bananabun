@@ -43,7 +43,16 @@
   }
   .again:active { transform: translateY(1px); }
   .again:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
-  .quiz { width: min(920px, calc(100% - 32px)); margin: 0 auto 42px; padding: 28px; border: 1px solid rgba(255,255,255,.14); border-radius: 24px; background: rgba(20,8,10,.86); box-shadow: 0 20px 70px rgba(0,0,0,.45); }
+  /* Flow: one centred "Ты знаешь кто ты?" button → the song starts and the quiz opens over the dimmed art → verdict. */
+  .veil { position: fixed; inset: 0; z-index: 4; background: rgba(8,3,4,.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+  .ask { position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: calc(100vw - 32px);
+    border: 0; padding: 22px 46px; border-radius: 18px; cursor: pointer; color: #fff; font: 800 clamp(22px, 4.4vw, 38px)/1.05 Inter, system-ui, sans-serif;
+    background: linear-gradient(180deg, var(--red-hi), var(--red)); text-shadow: 0 2px 0 rgba(0,0,0,.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 18px 50px rgba(0,0,0,.6), 0 0 40px rgba(255,45,58,.55); animation: throb 1.8s ease-in-out infinite; }
+  .ask:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+  @keyframes throb { 50% { box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 18px 50px rgba(0,0,0,.6), 0 0 70px rgba(255,45,58,.9); } }
+  .quiz { position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); max-height: calc(100svh - 32px); overflow: auto;
+    width: min(680px, calc(100% - 32px)); padding: 28px; border: 1px solid rgba(255,255,255,.14); border-radius: 24px; background: rgba(20,8,10,.86); box-shadow: 0 20px 70px rgba(0,0,0,.45); }
   .quiz[hidden] { display: none; }
   .quiz-kicker { margin: 0 0 8px; color: #ff6b72; font-size: 13px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
   .quiz h2 { margin: 0; font-size: clamp(28px, 5vw, 48px); line-height: .98; text-transform: uppercase; }
@@ -53,11 +62,19 @@
   .progress i { display: block; height: 100%; width: 20%; border-radius: inherit; background: linear-gradient(90deg, #ff2d3a, #ff8b5d); transition: width .25s ease; }
   .question { margin: 0 0 18px; font-size: clamp(20px, 3vw, 28px); line-height: 1.1; }
   .answers { display: grid; gap: 10px; }
-  .answer { width: 100%; padding: 15px 17px; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; color: #fff; background: rgba(255,255,255,.07); font: inherit; text-align: left; cursor: pointer; transition: transform .15s ease, background .15s ease, border-color .15s ease; }
+  .answer { animation: pop .38s cubic-bezier(.2,.9,.3,1.25) both; animation-delay: calc(var(--i, 0) * 160ms); width: 100%; padding: 15px 17px; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; color: #fff; background: rgba(255,255,255,.07); font: inherit; text-align: left; cursor: pointer; transition: transform .15s ease, background .15s ease, border-color .15s ease; }
   .answer:hover, .answer:focus-visible { border-color: #ff6b72; background: rgba(255,45,58,.18); transform: translateY(-1px); outline: none; }
   .answer.correct { border-color: #5ce6a0; background: rgba(42,170,104,.22); }
   .answer.wrong { border-color: #ff6b72; background: rgba(217,67,74,.25); }
+  @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
   .quiz-result { text-align: center; }
+  .result-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+  a.quiz-button { display: inline-block; text-decoration: none; }
+  .quiz-button.ghost { background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+  .mute { position: fixed; z-index: 6; right: max(16px, env(safe-area-inset-right, 0px)); bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    width: 48px; height: 48px; border-radius: 50%; border: 0; cursor: pointer; font: 22px/1 system-ui, sans-serif; color: #fff;
+    background: rgba(20,8,10,.7); box-shadow: 0 0 0 1px rgba(255,107,114,.6), 0 6px 18px rgba(0,0,0,.5); }
+  @media (prefers-reduced-motion: reduce) { .ask, .answer { animation: none; } }
   .quiz-result h3 { margin: 0 0 10px; color: #ff6b72; font-size: clamp(28px, 6vw, 58px); line-height: .95; text-transform: uppercase; }
   .score { margin: 0 0 18px; font-size: 20px; }
   .result-art { display: block; width: min(100%, 540px); max-height: 330px; object-fit: cover; object-position: center; margin: 0 auto 20px; border-radius: 18px; }
@@ -94,14 +111,10 @@
   <p>Похоже, ты не из наших…</p>
   <a class="again" href="/" aria-label="Попробовать еще раз" aria-disabled="true" tabindex="-1">Попробовать еще раз</a>
 </div>
-<main class="quiz" id="quiz" aria-live="polite">
-  <section id="quiz-start">
-    <p class="quiz-kicker">А раз уж ты здесь</p>
-    <h2>Тест «Толстый сиськастый»</h2>
-    <p class="quiz-intro">Пять вопросов по великому цветовому конфликту. Выбери продолжение фразы — и узнай свой уровень авторитета.</p>
-    <button class="quiz-button" id="start-quiz" type="button">Начать тест</button>
-  </section>
-  <section id="quiz-game" hidden>
+<div class="veil" id="veil"></div>
+<button class="ask" id="ask" type="button">Ты знаешь кто ты?</button>
+<main class="quiz" id="quiz" aria-live="polite" hidden>
+  <section id="quiz-game">
     <div class="quiz-top"><span id="question-count">Вопрос 1 из 5</span><span id="score-label">Счёт: 0</span></div>
     <div class="progress"><i id="progress-bar"></i></div>
     <h3 class="question" id="question"></h3>
@@ -112,9 +125,14 @@
     <h3 id="result-title"></h3>
     <p class="score" id="result-score"></p>
     <img class="result-art" src="/_stub/wrong-pin.jpg" alt="Злой банан" id="result-image">
-    <button class="quiz-button" id="restart-quiz" type="button">Пройти ещё раз</button>
+    <div class="result-actions">
+      <a class="quiz-button" href="/">Попробовать еще раз</a>
+      <button class="quiz-button ghost" id="restart-quiz" type="button">Пройти ещё раз</button>
+    </div>
   </section>
 </main>
+<button class="mute" id="mute" type="button" aria-label="Выключить музыку" hidden>🔊</button>
+<audio id="song" src="/_stub/quiz-song.mp3" preload="auto" loop></audio>
 <script>
   const questions = [
     { q: '«Тебя не трогать, я говорю. Ты ___ мне дай сейчас»', a: ['цветы', 'телефон', 'банан', 'пиццу'], correct: 0 },
@@ -123,7 +141,7 @@
     { q: '«Лох, цветочный, толстый, ___»', a: ['сиськастый', 'квадратный', 'смешной', 'громкий'], correct: 0 },
     { q: 'Что нужно сделать, когда тебя зовут «Иди сюда»?', a: ['Пойти нахуй', 'Дать цветы', 'Отдать телефон', 'Сказать «Понял?»'], correct: 0 }
   ];
-  const start = document.querySelector('#quiz-start'), game = document.querySelector('#quiz-game'), result = document.querySelector('#quiz-result');
+  const game = document.querySelector('#quiz-game'), result = document.querySelector('#quiz-result');
   const questionEl = document.querySelector('#question'), answersEl = document.querySelector('#answers'), countEl = document.querySelector('#question-count'), scoreEl = document.querySelector('#score-label'), progress = document.querySelector('#progress-bar');
   let current = 0, score = 0;
   function renderQuestion() {
@@ -132,7 +150,7 @@
     scoreEl.textContent = `Счёт: ${score}`;
     progress.style.width = `${((current + 1) / questions.length) * 100}%`;
     questionEl.textContent = item.q; answersEl.innerHTML = '';
-    item.a.forEach((answer, index) => { const button = document.createElement('button'); button.className = 'answer'; button.type = 'button'; button.textContent = answer; button.addEventListener('click', () => choose(button, index)); answersEl.append(button); });
+    item.a.forEach((answer, index) => { const button = document.createElement('button'); button.className = 'answer'; button.style.setProperty('--i', index); button.type = 'button'; button.textContent = answer; button.addEventListener('click', () => choose(button, index)); answersEl.append(button); });
   }
   function choose(button, index) {
     const item = questions[current], buttons = [...answersEl.children]; buttons.forEach(b => b.disabled = true); buttons[item.correct].classList.add('correct');
@@ -146,8 +164,25 @@
     else if (score < 5) { title.textContent = 'ЦВЕТОЧНЫЙ АВТОРИТЕТ'; image.alt = 'Банан-маскот'; }
     else { title.textContent = 'ТЫ ЛЕГЕНДА, СИСЬКАСТЫЙ'; image.alt = 'Банан-маскот'; }
   }
-  function reset() { current = 0; score = 0; start.hidden = true; result.hidden = true; game.hidden = false; renderQuestion(); }
-  document.querySelector('#start-quiz').addEventListener('click', reset); document.querySelector('#restart-quiz').addEventListener('click', reset);
+  function reset() { current = 0; score = 0; result.hidden = true; game.hidden = false; renderQuestion(); }
+  document.querySelector('#restart-quiz').addEventListener('click', reset);
+
+  // The song starts on the "Ты знаешь кто ты?" click: browsers allow sound only after the visitor presses something.
+  // The 🔊/🔇 choice is shared with the main page (same localStorage key).
+  const song = document.querySelector('#song'), mute = document.querySelector('#mute'), ask = document.querySelector('#ask'), quiz = document.querySelector('#quiz');
+  let muted = false;
+  try { muted = localStorage.getItem('stub-muted') === '1'; } catch {}
+  const drawMute = () => { mute.textContent = muted ? '🔇' : '🔊'; mute.setAttribute('aria-label', muted ? 'Включить музыку' : 'Выключить музыку'); };
+  ask.addEventListener('click', () => {
+    ask.hidden = true; quiz.hidden = false; mute.hidden = false; drawMute();
+    song.volume = 0.7; if (!muted) song.play().catch(() => {});
+    reset();
+  });
+  mute.addEventListener('click', () => {
+    muted = !muted; drawMute();
+    try { localStorage.setItem('stub-muted', muted ? '1' : '0'); } catch {}
+    if (muted) song.pause(); else song.play().catch(() => {});
+  });
 </script>
 </body>
 </html>
