@@ -568,7 +568,6 @@ const GET = [
     .sort((a, b) => b.created_at.localeCompare(a.created_at))],
   [/^\/api\/creatives\/source$/, () => ({ fa_available: false, active: 'local', engine: 'own', renderer: 'html-templates', generative_ai: false, supported_scrapers: ['amazon'] })],
   [/^\/api\/creatives\/spend$/, () => ({ total_usd: null, count: 0, source: 'local' })],
-  [/^\/api\/creatives\/fa-ready$/, () => ({ ready: [], pending: [], disabled: true })],
   [/^\/api\/presets\/bundles$/, () => BUNDLE_PRESETS],
   [/^\/api\/presets\/creatives$/, () => CREATIVE_PRESETS],
   [/^\/api\/analytics\/overview$/, () => ({ products_count: PRODUCTS.length, creatives_count: CREATIVES.length, campaigns_count: PUSHES.length })],

@@ -186,6 +186,20 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
       assert.equal(row.params.campaign_id,undefined);
     }
   });
+  await t.test('TikTok: a failed push resumes with the ids it already has instead of a new campaign', async () => {
+    const body = { product_id:'pa',tiktok_account_id:'tta',video_url:'https://example.invalid/v.mp4',ad_text:'Text',landing_page_url:'https://example.invalid/',daily_budget:20 };
+    const saved = { tiktok:true,tiktok_account_id:'tta',advertiser_id:'adv1',video_id:'v1',campaign_id:'c1',adgroup_id:'g1',ad_id:'ad1' };
+    const failed = await db.insert('pushes',{ workspace_id:'w1',product_id:'pa',params:saved,status:'failed',created_by:'a',log:JSON.stringify([]) });
+    assert.equal((await req('POST','/api/tiktok/push','b',{ ...body,product_id:'pb',resume_push_id:failed.id })).statusCode,409,'another buyer cannot resume it');
+    const response = await req('POST','/api/tiktok/push','a',{ ...body,resume_push_id:failed.id });
+    assert.equal(response.statusCode,200,response.body);
+    assert.equal(response.json().campaign_id,'c1');
+    assert.equal(response.json().push_id,failed.id);
+    const row = await db.findOne('pushes',{ id:failed.id });
+    assert.equal(row.status,'done');
+    assert.equal(Number((await db.query("SELECT COUNT(*) FROM pushes WHERE params->>'campaign_id'='c1'")).rows[0].count),1);
+    assert.equal((await req('POST','/api/tiktok/push','a',{ ...body,resume_push_id:failed.id })).statusCode,409,'a finished push is not resumed again');
+  });
   await t.test('nobody changes their own role through the team page', async () => {
     const response = await req('PATCH','/api/team/members/owner','owner',{ role:'buyer' });
     assert.equal(response.statusCode,400,response.body);

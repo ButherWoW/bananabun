@@ -182,11 +182,6 @@ export async function creativeRoutes(app) {
 
   // Template rendering has no FA usage bill. Null means not measured, not zero cost.
   app.get('/spend', auth, async () => ({ total_usd: null, count: 0, source: fluxEnabled() ? 'flux' : 'local' }));
-  // Legacy URLs are explicit retired features; never contact an external service.
-  const retired = async (req, reply) => reply.status(410).send({ error: 'FA отключён. Используйте собственные креативы.', code: 'FA_DISABLED' });
-  app.get('/ready-images', auth, retired);
-  app.post('/import-ready/:genId', auth, retired);
-  app.get('/fa-ready', auth, async () => ({ ready: [], pending: [], disabled: true }));
 
   // Delete creatives (bulk)
   // Buyers delete only their own creatives.

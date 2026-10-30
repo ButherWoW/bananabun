@@ -58,15 +58,12 @@ test('quantity 8 creates eight plans; boundaries and unsupported input are rejec
   assert.throws(() => creativePlan({ styles: ['unknown'] }), { statusCode: 400 });
   assert.equal(creativePlan({ format: '3:2' }).format, '3x2');
 });
-test('source metadata tells the truth and retired imports are explicit', async () => {
+test('source metadata tells the truth and FA imports are gone', async () => {
   const source = await routes.get('get /source')();
   assert.equal(source.active, 'local');
   assert.equal(source.generative_ai, false);
-  for (const key of ['get /ready-images', 'post /import-ready/:genId']) {
-    let status;
-    const result = await routes.get(key)({}, { status(n) { status = n; return this; }, send(data) { return data; } });
-    assert.equal(status, 410);
-    assert.equal(result.code, 'FA_DISABLED');
+  for (const key of ['get /ready-images', 'post /import-ready/:genId', 'get /fa-ready']) {
+    assert.equal(routes.get(key), undefined, key);
   }
 });
 

@@ -98,7 +98,7 @@ function AccountRow({ account, onOpen, onEditBM }) {
             onClick={handleCheck}
             disabled={checking}
             className="text-xs px-3 py-1.5 rounded-lg bg-[color:var(--c1e2240)] hover:bg-emerald-700/40 text-gray-300 hover:text-emerald-300 transition-colors disabled:opacity-50"
-            title="Проверить профиль через FA"
+            title="Проверить профиль через агента на Mac"
           >
             {checking ? 'Проверяю через агента, до 5 мин…' : '⚡ Проверить'}
           </button>

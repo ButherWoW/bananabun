@@ -1,7 +1,6 @@
 import { adminOnly, ownUser, assertProductAccess, assertRecordAccess } from '../../middleware/access.js';
 import { db } from '../../db/client.js';
 import { nanoid } from 'nanoid';
-import { faAvailable, faListLandingTemplates } from '../../services/fa-client.js';
 
 export async function landingRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
@@ -319,48 +318,6 @@ function handleSubmit(e) {
     return template;
   });
 
-  app.post('/templates/sync-fa', auth, async (req, reply) => {
-    if (!faAvailable()) return reply.status(410).send({ error: 'Этот старый маршрут FA отключён. Используйте собственный раздел.', code: 'FA_DISABLED' });
-    try {
-      const templates = await faListLandingTemplates();
-      const list = Array.isArray(templates) ? templates : (templates.templates || templates.items || []);
-      let created = 0, updated = 0;
-      for (const t of list) {
-        const fa_id = String(t.id || t.template_id || '');
-        if (!fa_id) continue;
-        // Keep everything the push wizard and the card need: store, readiness and one version per geo.
-        const versions = (Array.isArray(t.versions) ? t.versions : []).map(v => ({
-          id: v.id, geo: String(v.geo || '').toUpperCase(), country: v.country || '', language: v.language || '',
-          language_name: v.language_name || '', version: v.version ?? null, size_bytes: v.size_bytes ?? null,
-          files_count: v.files_count ?? null, updated_at: v.updated_at || null,
-        })).filter(v => v.geo);
-        const fields = {
-          name: String(t.name || t.title || `FA Template ${fa_id}`).slice(0, 255),
-          store: t.store ? String(t.store).slice(0, 50) : null,
-          state: t.ready === false ? (t.state || 'not_ready').slice(0, 20) : 'ready',
-          geos: JSON.stringify(versions.map(v => v.geo)),
-          versions: JSON.stringify(versions),
-          geo: versions[0]?.geo || '',
-          synced_at: new Date().toISOString(),
-        };
-        const { rows } = await db.query(
-          `UPDATE landing_templates SET name=$1, store=$2, state=$3, geos=$4::jsonb, versions=$5::jsonb, geo=$6, synced_at=$7, updated_at=NOW()
-            WHERE workspace_id=$8 AND fa_id=$9 RETURNING id`,
-          [fields.name, fields.store, fields.state, fields.geos, fields.versions, fields.geo, fields.synced_at, req.user.ws, fa_id]
-        );
-        if (rows.length) { updated++; continue; }
-        await db.query(
-          `INSERT INTO landing_templates (id, workspace_id, name, fa_id, type, html, store, state, geos, versions, geo, synced_at, created_by)
-           VALUES ($1,$2,$3,$4,'fa','', $5,$6,$7::jsonb,$8::jsonb,$9,$10,$11)`,
-          [`lt_${nanoid(12)}`, req.user.ws, fields.name, fa_id, fields.store, fields.state, fields.geos, fields.versions, fields.geo, fields.synced_at, req.user.id]
-        );
-        created++;
-      }
-      return { ok: true, synced: list.length, created, updated };
-    } catch (e) {
-      return reply.status(502).send({ error: e.message });
-    }
-  });
   app.post('/generate', auth, async (req, reply) => {
     const {
       product_id, group_id, name, type = 'cdiscount',
