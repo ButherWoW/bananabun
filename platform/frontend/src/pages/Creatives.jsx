@@ -113,10 +113,15 @@ export default function CreativesPage() {
     },
   });
 
+  const [spendDays, setSpendDays] = useState(30);
+  const [showSpend, setShowSpend] = useState(false);
   const { data: spendData } = useQuery({
-    queryKey: ['creatives', 'spend'],
-    queryFn: creativesApi.spend,
-    staleTime: 300000,
+    queryKey: ['creatives', 'spend', spendDays],
+    queryFn: () => {
+      const day = (ms) => new Date(ms).toISOString().slice(0, 10);
+      return creativesApi.spend({ from: day(Date.now() - (spendDays - 1) * 864e5), to: day(Date.now()) });
+    },
+    staleTime: 60000,
   });
 
   const { data: sourceInfo } = useQuery({
@@ -613,10 +618,58 @@ export default function CreativesPage() {
             </select>
 
             <span className="text-xs text-gray-600">{allCreatives.length}</span>
-            {spendData?.total_usd != null && (
-              <span className="text-xs text-gray-500">
-                ${spendData.total_usd.toFixed(2)} · {spendData.count} ген.
-              </span>
+            {spendData && (
+              <div className="relative flex items-center gap-1.5 text-xs text-gray-500">
+                <span>AI-расход</span>
+                <select
+                  value={spendDays}
+                  onChange={e => setSpendDays(Number(e.target.value))}
+                  className="bg-[color:var(--c13162b)] border border-[color:var(--c2d3148)] text-gray-400 text-xs px-2 py-0.5 rounded-lg focus:outline-none"
+                >
+                  <option value={1}>сегодня</option>
+                  <option value={7}>7 дней</option>
+                  <option value={30}>30 дней</option>
+                  <option value={90}>90 дней</option>
+                </select>
+                <button type="button" onClick={() => setShowSpend(v => !v)} className="hover:text-gray-300" title="Подробнее">
+                  {spendData.total_usd != null ? `$${spendData.total_usd.toFixed(2)}` : '—'} · {spendData.count} ген.
+                  {spendData.count_unmeasured > 0 && ` · ${spendData.count_unmeasured} без цены`}
+                </button>
+                {showSpend && (
+                  <div className="absolute right-0 top-full mt-1 z-20 w-64 rounded-lg border border-[color:var(--c2d3148)] bg-[color:var(--c13162b)] p-3 text-gray-400 shadow-lg">
+                    {spendData.count === 0 ? (
+                      <div>За период AI-генераций нет</div>
+                    ) : (
+                      <>
+                        {spendData.count_cached > 0 && <div className="mb-2">Из кэша, бесплатно: {spendData.count_cached}</div>}
+                        {spendData.by_author?.length > 0 && (
+                          <div className="mb-2">
+                            <div className="mb-1 text-gray-500">По авторам</div>
+                            {spendData.by_author.map(a => (
+                              <div key={a.user_id || 'none'} className="flex justify-between gap-2">
+                                <span className="truncate">{a.name || 'удалённый'}</span>
+                                <span>${a.total_usd.toFixed(2)} · {a.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mb-1 text-gray-500">По дням</div>
+                        <div className="max-h-40 overflow-y-auto">
+                          {spendData.by_day.map(d => (
+                            <div key={d.day} className="flex justify-between gap-2">
+                              <span>{d.day}</span>
+                              <span>${d.total_usd.toFixed(2)} · {d.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {spendData.count_unmeasured > 0 && (
+                      <div className="mt-2 text-gray-500">Без цены — генерации до учёта расхода или модель с неизвестной ценой.</div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

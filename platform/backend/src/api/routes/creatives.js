@@ -180,8 +180,49 @@ export async function creativeRoutes(app) {
     return { favorite: rows[0].favorite };
   });
 
-  // Template rendering has no FA usage bill. Null means not measured, not zero cost.
-  app.get('/spend', auth, async () => ({ total_usd: null, count: 0, source: fluxEnabled() ? 'flux' : 'local' }));
+  // AI generation spend for a period (UTC days, both ends included). Local renders cost nothing and are not listed.
+  // Generations made before cost was recorded, or with a model of unknown price, are counted as unmeasured.
+  app.get('/spend', auth, async (req, reply) => {
+    const day = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
+    const today = day(new Date());
+    const from = req.query?.from || day(new Date(Date.now() - 29 * 864e5));
+    const to = req.query?.to || today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+      return reply.status(400).send({ error: 'from и to — даты YYYY-MM-DD, from не позже to' });
+    }
+    const own = req.user.role === 'buyer' ? req.user.id : null;
+    const { rows } = await db.query(`
+      SELECT c.created_by, u.name AS author_name, to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+             (c.metadata->>'cost_usd')::numeric AS cost, c.metadata->>'cost_usd' IS NULL AS unmeasured,
+             COALESCE((c.metadata->>'cached')::boolean, false) AS cached
+      FROM creatives c LEFT JOIN users u ON u.id = c.created_by
+      WHERE c.workspace_id = $1 AND c.metadata->>'source' = 'flux'
+        AND (c.status = 'done' OR c.metadata ? 'cost_usd')
+        AND c.created_at >= ($2::date::timestamp AT TIME ZONE 'UTC') AND c.created_at < (($3::date + 1)::timestamp AT TIME ZONE 'UTC')
+        AND ($4::text IS NULL OR c.created_by = $4)`,
+    [req.user.ws, from, to, own]);
+    const round = (n) => Math.round(n * 1e4) / 1e4;
+    const add = (map, key, init, r) => {
+      const g = map.get(key) || { ...init, total_usd: 0, count: 0, count_unmeasured: 0 };
+      g.count++; if (r.unmeasured) g.count_unmeasured++; else g.total_usd = round(g.total_usd + Number(r.cost));
+      map.set(key, g);
+    };
+    const days = new Map(), authors = new Map();
+    let total = 0, unmeasured = 0, cached = 0;
+    for (const r of rows) {
+      if (r.unmeasured) unmeasured++; else total = round(total + Number(r.cost));
+      if (r.cached) cached++;
+      add(days, r.day, { day: r.day }, r);
+      if (!own) add(authors, r.created_by || '', { user_id: r.created_by, name: r.author_name || null }, r);
+    }
+    return {
+      from, to, source: fluxEnabled() ? 'flux' : 'local',
+      total_usd: rows.length - unmeasured ? total : (rows.length ? null : 0),
+      count: rows.length, count_measured: rows.length - unmeasured, count_unmeasured: unmeasured, count_cached: cached,
+      by_day: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
+      ...(own ? {} : { by_author: [...authors.values()].sort((a, b) => b.total_usd - a.total_usd) }),
+    };
+  });
 
   // Delete creatives (bulk)
   // Buyers delete only their own creatives.

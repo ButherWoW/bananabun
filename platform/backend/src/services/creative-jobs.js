@@ -29,6 +29,12 @@ async function pruneFluxCache(maxAgeMs = 30 * 24 * 3600 * 1000) {
 
 const SOURCES = "'local','flux','banner'";
 
+// Paid AI generations carry what they cost; local renders have no such fields.
+function spendFields(r) {
+  if (!r || !('cost_usd' in r)) return {};
+  return { cost_usd: r.cost_usd, model: r.model || null, cached: !!r.cached, fal_requests: r.fal_requests || [] };
+}
+
 // A renderer holds a five-minute lease. Interrupted jobs resume after the lease expires;
 // three interrupted attempts fail visibly instead of retrying forever.
 export async function runCreativeJobs({ render = generateCreative, limit = 2 } = {}) {
@@ -60,11 +66,11 @@ export async function runCreativeJobs({ render = generateCreative, limit = 2 } =
       if (!result?.url || !result?.thumbnail) throw new Error('Движок не создал файл изображения');
       await db.query(`UPDATE creatives SET status='done', file_url=$1, thumbnail_url=$2, render_token=NULL,
         metadata=metadata || $3::jsonb WHERE id=$4 AND render_token=$5 AND status='processing'`,
-      [result.url,result.thumbnail,JSON.stringify({ source,style:result.style,language:result.language,error:null }),record.id,token]);
+      [result.url,result.thumbnail,JSON.stringify({ source,style:result.style,language:result.language,error:null,...spendFields(result) }),record.id,token]);
     } catch (error) {
       await db.query(`UPDATE creatives SET status='failed',render_token=NULL,metadata=metadata || $1::jsonb
         WHERE id=$2 AND render_token=$3 AND status='processing'`,
-      [JSON.stringify({ error:String(error.message || 'Ошибка рендера').slice(0,500) }),record.id,token]);
+      [JSON.stringify({ error:String(error.message || 'Ошибка рендера').slice(0,500),...spendFields(error) }),record.id,token]);
     }
   }
 }

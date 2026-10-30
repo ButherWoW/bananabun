@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
 import sharp from 'sharp';
 import { localImageData } from './creative-assets.js';
+import { falOutputCost, totalCost } from './fal-pricing.js';
 
 const FAL_BASE = 'https://fal.run';
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
@@ -191,21 +192,38 @@ export async function generateFluxCreative(product, logoKey, format = '1x1', opt
   const cachedPath = path.join(UPLOADS_DIR, cachedFilename);
   try {
     await fs.access(cachedPath);
-    return { url: `/uploads/${cachedFilename}`, thumbnail: `/uploads/${cachedFilename}`, style: 'flux', language: options.language || 'fr', prompt, slot, cached: true };
+    return { url: `/uploads/${cachedFilename}`, thumbnail: `/uploads/${cachedFilename}`, style: 'flux', language: options.language || 'fr', prompt, slot, cached: true,
+      model: photo ? REMIX_MODEL : FAL_MODEL, cost_usd: 0, fal_requests: [] };
   } catch { /* cache miss */ }
 
   const FLUX_SIZE = {
     '1:1': { width: 1024, height: 1024 }, '4:5': { width: 1024, height: 1280 }, '9:16': { width: 720, height: 1280 },
     '3:2': { width: 1536, height: 1024 }, '2:3': { width: 1024, height: 1536 }, '16:9': { width: 1280, height: 720 },
   };
-  const textToImage = () => callFal(key, FAL_MODEL, IS_FLUX
-    ? { prompt, image_size: FLUX_SIZE[aspectRatio] || 'square_hd', num_images: 1, enable_safety_checker: false }
-    : { prompt, aspect_ratio: aspectRatio, style_type: 'DESIGN', magic_prompt_option: 'OFF', negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text' });
+  // Every request is recorded; a failed one costs 0 because fal.ai bills only successful outputs (fal-pricing.js).
+  const falRequests = [];
+  const billed = async (model, body, size) => {
+    try {
+      const url = await callFal(key, model, body);
+      falRequests.push({ model, ok: true, cost_usd: falOutputCost(model, size) });
+      return url;
+    } catch (e) {
+      falRequests.push({ model, ok: false, cost_usd: 0 });
+      throw e;
+    }
+  };
+  const fluxSize = FLUX_SIZE[aspectRatio] || { width: 1024, height: 1024 };
+  const textToImage = () => billed(FAL_MODEL, IS_FLUX
+    ? { prompt, image_size: fluxSize, num_images: 1, enable_safety_checker: false }
+    : { prompt, aspect_ratio: aspectRatio, style_type: 'DESIGN', magic_prompt_option: 'OFF', negative_prompt: 'blurry, low quality, watermark, ugly typography, misspelled text' },
+  IS_FLUX ? fluxSize : null);
 
   let imageUrl;
+  let model = FAL_MODEL;
   if (photo) {
     try {
-      imageUrl = await callFal(key, REMIX_MODEL, { prompt, image_url: photo.image_url, aspect_ratio: aspectRatio, strength: 0.65, style: 'design', enable_safety_checker: false });
+      imageUrl = await billed(REMIX_MODEL, { prompt, image_url: photo.image_url, aspect_ratio: aspectRatio, strength: 0.65, style: 'design', enable_safety_checker: false });
+      model = REMIX_MODEL;
     } catch (e) {
       console.error('[flux] remix failed, falling back to text-to-image:', e.message);
       imageUrl = await textToImage();
@@ -214,6 +232,15 @@ export async function generateFluxCreative(product, logoKey, format = '1x1', opt
     imageUrl = await textToImage();
   }
 
+  try {
+    return await saveFalImage(imageUrl, { logoKey, cachedPath, options, prompt, slot, model, falRequests });
+  } catch (e) {
+    // fal.ai already billed the output; keep the cost on the failed creative.
+    throw Object.assign(e, { model, cost_usd: totalCost(falRequests), fal_requests: falRequests });
+  }
+}
+
+async function saveFalImage(imageUrl, { logoKey, cachedPath, options, prompt, slot, model, falRequests }) {
   const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(60_000) });
   if (!imgRes.ok) throw new Error(`Ошибка загрузки изображения с fal.ai: ${imgRes.status}`);
   let imgBuf = Buffer.from(await imgRes.arrayBuffer());
@@ -237,5 +264,8 @@ export async function generateFluxCreative(product, logoKey, format = '1x1', opt
     language: options.language || 'fr',
     prompt,
     slot,
+    model,
+    cost_usd: totalCost(falRequests),
+    fal_requests: falRequests,
   };
 }
