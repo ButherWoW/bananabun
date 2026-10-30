@@ -17,6 +17,7 @@ const DIM_MAP = {
 };
 // Raw Keitaro metrics; every ratio is recomputed from them so rows can be summed (buyer dimension).
 const RAW = ['clicks', 'lp_clicks', 'sales', 'leads', 'revenue', 'cost'];
+const TIME_DIMS = new Set(['date', 'day', 'week', 'month']);
 const METRICS = new Set(['clicks', 'spend', 'cost', 'revenue', 'leads', 'sales', 'profit', 'roi', 'cr', 'lp_views', 'lp_ctr', 'cpc', 'cpa', 'roas', 'epc']);
 
 function finish(r) {
@@ -49,13 +50,37 @@ async function keitaroFor(req, reply) {
   return keitaroClient(ws.keitaro_url, ws.keitaro_api_key);
 }
 
-// Previous period of the same length
-function prevPeriod(from, to) {
-  const f = new Date(from), t = new Date(to);
-  const days = Math.round((t - f) / 86400000) + 1;
-  const pf = new Date(f); pf.setDate(pf.getDate() - days);
-  const pt = new Date(f); pt.setDate(pt.getDate() - 1);
-  return { from: pf.toISOString().slice(0, 10), to: pt.toISOString().slice(0, 10) };
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MS_DAY = 86400000;
+const utcDay = (s) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+const isDay = (s) => DAY_RE.test(s || '') && new Date(utcDay(s)).toISOString().slice(0, 10) === s;
+const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+// Previous period of the same length, ending the day before `from`. Pure UTC date arithmetic.
+export function prevPeriod(from, to) {
+  const f = utcDay(from), t = utcDay(to);
+  const days = Math.round((t - f) / MS_DAY) + 1;
+  return { from: iso(f - days * MS_DAY), to: iso(f - MS_DAY) };
+}
+
+// The comparison range a /query body asks for: compare:'previous' or explicit compare_from/compare_to.
+// Returns null (no comparison), a range, or { error }.
+export function compareRange(body, from, to) {
+  if (body.compare_from || body.compare_to) {
+    const cf = body.compare_from, ct = body.compare_to;
+    if (!isDay(cf) || !isDay(ct)) return { error: 'compare_from и compare_to — даты YYYY-MM-DD' };
+    if (cf > ct) return { error: 'compare_from позже compare_to' };
+    return { from: cf, to: ct };
+  }
+  if (body.compare === 'previous' || body.compare === true) return prevPeriod(from, to);
+  if (body.compare) return { error: 'compare: только "previous" или compare_from/compare_to' };
+  return null;
+}
+
+// Change of one metric between periods. Percent is null when the base is zero or a value is missing.
+export function changeOf(cur, prev) {
+  if (typeof cur !== 'number' || typeof prev !== 'number' || !Number.isFinite(cur) || !Number.isFinite(prev)) return { abs: null, pct: null };
+  return { abs: cur - prev, pct: prev === 0 ? null : (cur - prev) / Math.abs(prev) * 100 };
 }
 
 // Buyer name from campaign name tag [Buyer] or [hash][date][Buyer][…]
@@ -183,7 +208,10 @@ export async function analyticsRoutes(app) {
   app.post('/query', auth, async (req, reply) => {
     const body = req.body || {};
     const { from, to } = body;
-    if (!DAY.test(from || '') || !DAY.test(to || '')) return reply.status(400).send({ error: 'from и to — даты YYYY-MM-DD' });
+    if (!isDay(from) || !isDay(to)) return reply.status(400).send({ error: 'from и to — даты YYYY-MM-DD' });
+    if (from > to) return reply.status(400).send({ error: 'from позже to' });
+    const cmp = compareRange(body, from, to);
+    if (cmp?.error) return reply.status(400).send({ error: cmp.error });
     const dims = (Array.isArray(body.dimensions) ? body.dimensions : ['date']).filter(d => d === 'buyer' || own(DIM_MAP, d));
     const metrics = (Array.isArray(body.metrics) ? body.metrics : []).filter(m => METRICS.has(m));
     if (!dims.length) dims.push('date');
@@ -193,16 +221,39 @@ export async function analyticsRoutes(app) {
 
     const hasBuyer = dims.includes('buyer');
     const grouping = [...new Set(dims.filter(d => d !== 'buyer').map(d => DIM_MAP[d]))];
-    let raw;
+    let raw, rawPrev = null;
     try {
-      raw = await scopedRows(req, client, { from, to }, grouping, hasBuyer);
+      [raw, rawPrev] = await Promise.all([
+        scopedRows(req, client, { from, to }, grouping, hasBuyer),
+        cmp ? scopedRows(req, client, { from: cmp.from, to: cmp.to }, grouping, hasBuyer) : null,
+      ]);
     } catch {
       return reply.status(502).send({ error: 'Keitaro не ответил' });
     }
-    const who = hasBuyer ? await buyerResolver(req.user.ws, raw) : null;
+    const who = hasBuyer ? await buyerResolver(req.user.ws, [...raw, ...(rawPrev || [])]) : null;
     const label = (r) => Object.fromEntries(dims.map(d => [d, d === 'buyer' ? who(r) : r[DIM_MAP[d]] ?? null]));
-    let rows = aggregate(raw, (r) => JSON.stringify(label(r)), label)
-      .map(r => Object.fromEntries([...dims.map(d => [d, r[d]]), ...metrics.map(m => [m, r[m]])]));
+    const pick = (r) => Object.fromEntries([...dims.map(d => [d, r[d]]), ...metrics.map(m => [m, r[m]])]);
+    let rows = aggregate(raw, (r) => JSON.stringify(label(r)), label).map(pick);
+    const pickTotals = (r) => Object.fromEntries(metrics.map(m => [m, r[m]]));
+    const totals = pickTotals(aggregate(raw, () => 'all', () => ({}))[0] || finish(Object.fromEntries(RAW.map(m => [m, 0]))));
+
+    let comparison = null;
+    if (cmp) {
+      const prevTotals = pickTotals(aggregate(rawPrev, () => 'all', () => ({}))[0] || finish(Object.fromEntries(RAW.map(m => [m, 0]))));
+      const changes = (cur, prev) => Object.fromEntries(metrics.map(m => [m, changeOf(cur[m], prev?.[m])]));
+      // Rows match across periods by their non-time dimensions; a dated row has no counterpart in another period.
+      const keyDims = dims.filter(d => !TIME_DIMS.has(d));
+      const rowsComparable = keyDims.length === dims.length;
+      if (rowsComparable) {
+        const keyOf = (r) => JSON.stringify(keyDims.map(d => r[d]));
+        const before = new Map(aggregate(rawPrev, (r) => JSON.stringify(label(r)), label).map(pick).map(r => [keyOf(r), r]));
+        rows = rows.map(r => {
+          const p = before.get(keyOf(r));
+          return { ...r, compare: p ? pickTotals(p) : null, change: p ? changes(r, p) : null };
+        });
+      }
+      comparison = { period: { from: cmp.from, to: cmp.to }, totals: prevTotals, change: changes(totals, prevTotals), rows_compared: rowsComparable };
+    }
 
     const field = body.sort?.field;
     if (field && (dims.includes(field) || metrics.includes(field))) {
@@ -213,7 +264,7 @@ export async function analyticsRoutes(app) {
       });
     }
     const limit = Math.min(Math.max(Number(body.limit) || 50, 1), 500);
-    return { rows: rows.slice(0, limit), total: rows.length, period: { from, to } };
+    return { rows: rows.slice(0, limit), total: rows.length, totals, period: { from, to }, ...(comparison ? { compare: comparison } : {}) };
   });
 
   // Unified dashboard: Keitaro + FB + TikTok totals for a date range.

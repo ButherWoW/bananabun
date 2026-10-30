@@ -736,6 +736,7 @@ function QueryBuilderSection() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [compare, setCompare] = useState(false);
 
   const toggleMetric = (m) => setMetrics(prev =>
     prev.includes(m) ? prev.filter(x => x !== m) : prev.length < 6 ? [...prev, m] : prev
@@ -754,6 +755,7 @@ function QueryBuilderSection() {
         dimensions,
         sort: { field: sortField, direction: sortDir },
         limit,
+        ...(compare ? { compare: 'previous' } : {}),
       });
       setResult(res);
     } catch (e) {
@@ -777,6 +779,19 @@ function QueryBuilderSection() {
   };
 
   const rows = result ? (Array.isArray(result) ? result : (result.rows || result.data || result.items || [])) : [];
+  const cmp = result?.compare;
+
+  // Growth is good for most metrics; for unit costs it is bad; spend itself is neither.
+  const LOWER_BETTER = new Set(['cpc', 'cpa']);
+  const NEUTRAL = new Set(['spend', 'cost']);
+  const ChangeTag = ({ metric, change }) => {
+    if (!change || change.abs == null) return <div className="text-[10px] text-gray-600">—</div>;
+    const sign = change.abs > 0 ? 1 : change.abs < 0 ? -1 : 0;
+    const good = LOWER_BETTER.has(metric) ? -sign : sign;
+    const color = NEUTRAL.has(metric) || sign === 0 ? 'text-gray-500' : good > 0 ? 'text-emerald-400' : 'text-red-400';
+    const pct = change.pct == null ? '' : ` (${change.pct > 0 ? '+' : ''}${change.pct.toFixed(1)}%)`;
+    return <div className={`text-[10px] ${color}`}>{sign > 0 ? '▲ +' : sign < 0 ? '▼ −' : ''}{fmtCell(Math.abs(change.abs))}{pct}</div>;
+  };
 
   return (
     <div className="mt-8 bg-[color:var(--c0e1221)] border border-[color:var(--c1e2540)] rounded-xl p-5">
@@ -841,6 +856,10 @@ function QueryBuilderSection() {
             {[20,50,100,200].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
+        <label className="flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer select-none">
+          <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} className="accent-indigo-500" />
+          Сравнить с прошлым периодом
+        </label>
         <button onClick={run} disabled={loading || !metrics.length}
           className="ml-auto px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs rounded transition-colors font-medium">
           {loading ? 'Загрузка...' : '▶ Запустить'}
@@ -871,13 +890,30 @@ function QueryBuilderSection() {
                   {allCols.map(col => (
                     <td key={col} className={`py-2 px-3 ${
                       metrics.includes(col) ? 'text-white font-mono' : 'text-gray-400'
-                    }`}>{fmtCell(row[col])}</td>
+                    }`}>
+                      {fmtCell(row[col])}
+                      {cmp?.rows_compared && metrics.includes(col) && <ChangeTag metric={col} change={row.change?.[col]} />}
+                    </td>
                   ))}
                 </tr>
               ))}
+              {result?.totals && (
+                <tr className="border-t border-[color:var(--c1e2540)]">
+                  {allCols.map((col, i) => (
+                    <td key={col} className={`py-2 px-3 ${metrics.includes(col) ? 'text-white font-mono font-semibold' : 'text-gray-500'}`}>
+                      {metrics.includes(col) ? fmtCell(result.totals[col]) : i === 0 ? 'Итого' : ''}
+                      {cmp && metrics.includes(col) && <ChangeTag metric={col} change={cmp.change?.[col]} />}
+                    </td>
+                  ))}
+                </tr>
+              )}
             </tbody>
           </table>
-          <div className="text-[10px] text-gray-600 mt-2">{rows.length} строк</div>
+          <div className="text-[10px] text-gray-600 mt-2">
+            {rows.length} строк
+            {cmp && ` · сравнение с ${cmp.period.from} — ${cmp.period.to}`}
+            {cmp && !cmp.rows_compared && ' · по строкам с датой сравнивается только итог'}
+          </div>
         </div>
       )}
     </div>

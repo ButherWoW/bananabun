@@ -161,6 +161,47 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
       await new Promise(resolve => setTimeout(resolve,10));
     }
   });
+  await t.test('query comparison with the previous period keeps a buyer to their own campaigns', async () => {
+    await db.query("UPDATE workspaces SET keitaro_url='https://kt.test.invalid', keitaro_api_key='test' WHERE id='w1'");
+    await db.query("UPDATE users SET keitaro_tag='alice' WHERE id='a'");
+    // Fake Keitaro: the current week and the week before, two buyers' campaigns each. No real Keitaro is contacted.
+    const week = { '2026-10-08': [['[alice] Shoes', 10, 30], ['[bob] Bags', 100, 50]], '2026-10-01': [['[alice] Shoes', 10, 0], ['[bob] Bags', 80, 400]] };
+    const ranges = [];
+    const blocked = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+      assert.ok(String(url).startsWith('https://kt.test.invalid/admin_api/v1/report/build'), String(url));
+      const body = JSON.parse(opts.body);
+      ranges.push(body.range);
+      const rows = (week[body.range.from] || []).map(([campaign, cost, revenue]) => ({ campaign, campaign_group: '', clicks: 10, lp_clicks: 5, sales: 1, leads: 0, cost, revenue }));
+      return { ok: true, json: async () => ({ rows }), text: async () => '' };
+    };
+    try {
+      const plan = { from: '2026-10-08', to: '2026-10-14', dimensions: ['campaign'], metrics: ['revenue', 'profit'], compare: 'previous' };
+      const mine = await req('POST', '/api/analytics/query', 'a', plan);
+      assert.equal(mine.statusCode, 200, mine.body);
+      const data = mine.json();
+      assert.deepEqual(data.compare.period, { from: '2026-10-01', to: '2026-10-07' });
+      assert.deepEqual(data.rows.map(r => r.campaign), ['[alice] Shoes']);
+      assert.equal(data.totals.revenue, 30);
+      assert.equal(data.compare.totals.revenue, 0, 'bob\'s previous revenue must not leak into the buyer comparison');
+      assert.deepEqual(data.compare.change.revenue, { abs: 30, pct: null });
+      assert.deepEqual(data.rows[0].change.profit, { abs: 30, pct: 300 });
+      assert.deepEqual(ranges.slice(-2), [{ from: '2026-10-08', to: '2026-10-14' }, { from: '2026-10-01', to: '2026-10-07' }]);
+
+      const all = (await req('POST', '/api/analytics/query', 'owner', plan)).json();
+      assert.equal(all.rows.length, 2);
+      assert.equal(all.compare.totals.revenue, 400);
+
+      const dated = (await req('POST', '/api/analytics/query', 'owner', { ...plan, dimensions: ['date'] })).json();
+      assert.equal(dated.compare.rows_compared, false);
+      assert.equal(dated.rows[0].change, undefined);
+
+      assert.equal((await req('POST', '/api/analytics/query', 'a', { ...plan, compare_from: '2026-10-07', compare_to: '2026-10-01' })).statusCode, 400);
+      assert.equal((await req('POST', '/api/analytics/query', 'a', { ...plan, from: '2026-10-14', to: '2026-10-08' })).statusCode, 400);
+    } finally {
+      globalThis.fetch = blocked;
+    }
+  });
   await t.test('overview and daily totals do not leak colleague revenue', async () => {
     const data = await get('/api/analytics/overview');
     assert.equal(data.products_count,2);
