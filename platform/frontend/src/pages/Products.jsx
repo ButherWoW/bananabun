@@ -152,7 +152,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
           <h2 className="text-xl font-bold text-white uppercase tracking-wide mb-1">Соскрапить продукт по ссылке</h2>
           <p className="text-sm text-gray-400 mb-5">Вставь ссылку на сайт с товаром.</p>
 
-          <div className="mb-5">
+          <div className="mb-5" data-tour="scrape-platforms">
             <div className="text-xs text-gray-400 mb-2">Разбор работает с площадками:<Hint k="p.platforms" /></div>
             <div className="flex flex-wrap gap-2">
               {PLATFORMS.map(p => {
@@ -168,7 +168,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
             </div>
           </div>
 
-          <div className="mb-5">
+          <div className="mb-5" data-tour="scrape-links">
             <label className="block text-xs text-gray-400 mb-2">Ссылки<Hint k="p.links" /></label>
             <div className="flex flex-col gap-2">
               {urls.map((url, i) => (
@@ -195,7 +195,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
             >+ Ещё ссылка</button>
           </div>
 
-          <div className="mb-4">
+          <div className="mb-4" data-tour="scrape-bundle">
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs text-gray-400">Пресет комплектов<Hint k="p.bundlePreset" /></label>
               {!showNewBundle && (
@@ -224,7 +224,7 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
             )}
           </div>
 
-          <div className="mb-7">
+          <div className="mb-7" data-tour="scrape-creative-preset">
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs text-gray-400">Пресет креативов<Hint k="p.creativePreset" /></label>
               <button className="text-xs text-gray-500 hover:text-gray-300 border border-dashed border-[color:var(--c2d3148)] hover:border-[color:var(--c3d4168)] px-2.5 py-1 rounded-lg transition-colors">+ Новый пресет</button>
@@ -246,10 +246,11 @@ function ScrapeModal({ onClose, onScrape, isPending, error }) {
           )}
 
           <div className="flex items-center justify-end gap-3">
-            <button onClick={onClose} className="px-5 py-2.5 text-sm text-gray-400 hover:text-white bg-[color:var(--c1a1f3a)] hover:bg-[color:var(--c222847)] border border-[color:var(--c2d3148)] rounded-xl transition-colors">
+            <button data-tour="scrape-cancel" onClick={onClose} className="px-5 py-2.5 text-sm text-gray-400 hover:text-white bg-[color:var(--c1a1f3a)] hover:bg-[color:var(--c222847)] border border-[color:var(--c2d3148)] rounded-xl transition-colors">
               Отмена
             </button>
             <button
+              data-tour="scrape-submit"
               onClick={handleScrape}
               disabled={!canSubmit}
               title={!hasLink ? 'Вставь ссылку на товар' : ''}
@@ -387,6 +388,7 @@ export default function ProductsPage() {
           Создать вручную
         </button>
         <button
+          data-tour="scrape-open"
           onClick={() => setShowScrape(!showScrape)}
           className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
         >
@@ -584,6 +586,7 @@ function ProductCard({ product, selected, onToggle, onDelete, onCreatives, onGen
 
   return (
     <div
+      data-tour="product-card"
       onClick={() => onOpen()}
       className={clsx(
         'bg-[color:var(--c13162b)] border rounded-xl overflow-hidden cursor-pointer transition-all hover:border-[color:var(--c4a5080)] group',
@@ -686,6 +689,7 @@ function ProductCard({ product, selected, onToggle, onDelete, onCreatives, onGen
           🎨 Креативы
         </button>
         <button
+          data-tour="product-landing-btn"
           onClick={e => { e.stopPropagation(); onGenerateLanding(); }}
           className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 hover:text-emerald-300 transition-colors border border-emerald-600/30"
         >

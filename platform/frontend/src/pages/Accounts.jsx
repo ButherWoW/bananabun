@@ -88,7 +88,7 @@ function AccountRow({ account, onOpen, onEditBM }) {
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+        <div data-tour="account-actions" className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => onOpen(account.id)}
             className="text-xs px-3 py-1.5 rounded-lg bg-[color:var(--c1e2240)] hover:bg-indigo-600 text-gray-300 hover:text-white transition-colors"
@@ -321,6 +321,7 @@ export default function AccountsPage() {
           <option value="cabs">По кабинетам</option>
         </select>
         <button
+          data-tour="accounts-sync"
           onClick={() => syncMutation.mutate()}
           disabled={syncMutation.isPending}
           title="Синхронизировать с AdsPower"

@@ -102,13 +102,13 @@ export default function ProductSidePanel({ product, onClose, initialTab }) {
               </div>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-white text-xl w-7 h-7 flex items-center justify-center flex-shrink-0">
+          <button data-tour="product-panel-close" onClick={onClose} className="text-gray-600 hover:text-white text-xl w-7 h-7 flex items-center justify-center flex-shrink-0">
             ×
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-[color:var(--c1e2240)] flex-shrink-0">
+        <div data-tour="product-tabs" className="flex border-b border-[color:var(--c1e2240)] flex-shrink-0">
           {TABS.map(t => (
             <button
               key={t}
