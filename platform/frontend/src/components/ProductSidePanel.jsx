@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { products as productsApi, keitaro as keitaroApi, presets as presetsApi, scrape as scrapeApi, landings as landingsApi } from '../api/client.js';
 import clsx from 'clsx';
 import { Link } from 'react-router-dom';
+import { toast } from './Toaster.jsx';
 
 function RetryButton({ productId, qc }) {
   const mut = useMutation({
@@ -24,6 +25,12 @@ function RetryButton({ productId, qc }) {
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.BASE_URL.replace(/\/$/, '');
+
+// Raw fetch calls below: a refused request must show its reason instead of passing silently.
+async function failText(r, fallback) {
+  try { const d = await r.json(); return d?.error || d?.message || fallback; } catch { return fallback; }
+}
+
 const TABS = ['Карточка', 'Комплекты', 'Галерея', 'Отзывы', '✨ Похожие'];
 
 function SimilarProductsPanel({ productId }) {
@@ -264,11 +271,12 @@ function CardTab({ product, qc }) {
         },
         body: JSON.stringify({ field, text, target: 'ru' }),
       });
+      if (!r.ok) { toast(await failText(r, 'Не удалось перевести')); return; }
       const d = await r.json();
       // View-only: the translation must never replace the text that goes to the landing.
       if (d.translated) setTranslations(t => ({ ...t, [field]: d.translated }));
-    } catch {}
-    setTranslating(t => ({ ...t, [field]: false }));
+    } catch { toast('Не удалось перевести'); }
+    finally { setTranslating(t => ({ ...t, [field]: false })); }
   }
 
   function save() {
@@ -680,8 +688,8 @@ function GalleryTab({ product, qc }) {
       if (r.ok) {
         qc.invalidateQueries(['product', product.id]);
         qc.invalidateQueries(['products']);
-      }
-    } catch {}
+      } else toast(await failText(r, 'Не удалось загрузить фото'));
+    } catch { toast('Не удалось загрузить фото'); }
     setUploading(false);
   }
 
@@ -765,15 +773,16 @@ function ReviewsTab({ product, qc }) {
         setNewReview({ author: '', rating: null, text: '' });
         setAdding(false);
         qc.invalidateQueries(['products']);
-      }
-    } catch {}
+      } else toast(await failText(r, 'Не удалось добавить отзыв'));
+    } catch { toast('Не удалось добавить отзыв'); }
   }
 
   async function deleteReview(id) {
-    await fetch(`${API_BASE}/api/products/${product.id}/reviews/${id}`, {
+    const r = await fetch(`${API_BASE}/api/products/${product.id}/reviews/${id}`, {
       method: 'DELETE',
       headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
-    });
+    }).catch(() => null);
+    if (!r?.ok) { toast(r ? await failText(r, 'Не удалось удалить отзыв') : 'Не удалось удалить отзыв'); return; }
     setReviews(prev => prev.filter(r => r.id !== id));
     qc.invalidateQueries(['products']);
   }
@@ -790,9 +799,10 @@ function ReviewsTab({ product, qc }) {
                   method: 'POST',
                   headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
                 });
+                if (!r.ok) { toast(await failText(r, 'Не удалось загрузить отзывы')); return; }
                 const d = await r.json();
-                if (r.ok && d.length) setReviews(prev => [...prev, ...d]);
-              } catch {}
+                if (d.length) setReviews(prev => [...prev, ...d]);
+              } catch { toast('Не удалось загрузить отзывы'); }
             }}
             className="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 border border-emerald-600/30 rounded-lg"
           >

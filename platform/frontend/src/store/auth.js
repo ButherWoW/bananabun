@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { auth as authApi } from '../api/client.js';
 
+// The public demo has no accounts: it is always "logged in" as the made-up owner.
+const DEMO = import.meta.env.MODE === 'demo';
+
 export const useAuth = create((set) => ({
   user: null,
   workspace: null,
@@ -16,17 +19,17 @@ export const useAuth = create((set) => ({
   logout: () => {
     localStorage.removeItem('token');
     set({ user: null, workspace: null });
-    window.location.href = `${import.meta.env.BASE_URL}login`;
+    window.location.href = DEMO ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}login`;
   },
 
   loadMe: async () => {
-    const token = localStorage.getItem('token');
+    const token = DEMO || localStorage.getItem('token');
     if (!token) { set({ loading: false }); return; }
     try {
       const res = await authApi.me();
       set({ user: res.user, workspace: res.workspace, loading: false });
     } catch {
-      localStorage.removeItem('token');
+      if (!DEMO) localStorage.removeItem('token');
       set({ loading: false });
     }
   },

@@ -5,9 +5,11 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 3000",
     "build": "vite build",
+    "build:demo": "vite build --mode demo",
     "preview": "vite preview",
     "test": "npm run build && node test/standalone-smoke.mjs",
-    "test:ui": "node test/standalone-smoke.mjs"
+    "test:ui": "node test/standalone-smoke.mjs",
+    "test:demo": "npm run build:demo && node test/demo-smoke.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.56.2",

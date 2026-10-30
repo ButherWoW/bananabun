@@ -126,6 +126,9 @@ jobs:
           printf "VITE_API_URL=\n" > .env
           npx vite build --logLevel error
           echo "frontend built"
+          # Public demo under /banana/demo/: own build, made-up data, no API calls.
+          npx vite build --mode demo --logLevel error
+          echo "demo built"
 
           systemctl restart affiliate-backend
           for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -149,10 +152,10 @@ jobs:
           done
           [ "$c" != "000" ] || { echo "backend not listening on :4000"; journalctl -u affiliate-backend -n 50 --no-pager; exit 1; }'
 
-      - name: Wire nginx — stub on /, panel under /banana/ (backup, include once, test, rollback)
+      - name: Wire nginx — stub on /, panel under /banana/, demo under /banana/demo/ (backup, include once, test, rollback)
         run: |
           ssh root@148.230.98.232 'set -e
-            chmod -R a+rX /opt/affiliate/frontend/stub /opt/affiliate/frontend/dist
+            chmod -R a+rX /opt/affiliate/frontend/stub /opt/affiliate/frontend/dist /opt/affiliate/frontend/dist-demo
             install -m 644 /opt/affiliate/nginx-banana.conf /etc/nginx/snippets/banana.conf
             SITE=$(grep -lE "server_name[^;]*nespizdili\.lol" /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf 2>/dev/null | head -1)
             [ -n "$SITE" ] || { echo "nespizdili.lol server block not found"; exit 1; }
@@ -175,5 +178,18 @@ jobs:
             [ "$(code /banana/api/agent/status)" = "$(code /api/agent/status)" ] || { echo "/banana/api differs from /api"; exit 1; }
             ROOT=$(curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/)
             echo "$ROOT" | grep -q "<html" && ! echo "$ROOT" | grep -q "/banana/assets/" || { echo "stub not served on /"; exit 1; }
-            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/assets/" || { echo "panel not served under /banana/"; exit 1; }'
+            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/assets/" || { echo "panel not served under /banana/"; exit 1; }
+            echo "/banana/demo/ $(code /banana/demo/)  /banana/demo/campaigns $(code /banana/demo/campaigns)"
+            [ "$(code /banana/demo/)" = "200" ] && [ "$(code /banana/demo/campaigns)" = "200" ] || { echo "demo not served under /banana/demo/"; exit 1; }
+            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/demo/ | grep -q "/banana/demo/assets/" || { echo "/banana/demo/ is not the demo build"; exit 1; }
+            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/demo/assets/" && { echo "panel serves the demo build"; exit 1; } || true'
+
+      - name: Check the public demo from outside
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/demo.html -w "%{http_code}" https://nespizdili.lol/banana/demo/ || true)
+            [ "$code" = "200" ] && grep -q "/banana/demo/assets/" /tmp/demo.html && { echo "demo ok"; exit 0; }
+            echo "demo: $code, retry $i"; sleep 3
+          done
+          echo "https://nespizdili.lol/banana/demo/ is not the demo build"; exit 1
 
