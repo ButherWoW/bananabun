@@ -183,6 +183,7 @@ jobs:
             echo "$ROOT" | grep -q "<html" && ! echo "$ROOT" | grep -q "/banana/assets/" || { echo "stub not served on /"; exit 1; }
             curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/assets/" || { echo "panel not served under /banana/"; exit 1; }
             curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/login | grep -q "<title>Banana Platform</title>" || { echo "panel index.html is stale"; exit 1; }
+            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/wrong-pin | grep -q "wrong-pin.webp" || { echo "/wrong-pin not served"; exit 1; }
             [ "$(code /_stub/bg-desktop.webp)" = "200" ] && [ "$(code /_stub/bg-mobile.jpg)" = "200" ] || { echo "stub background not served under /_stub/"; exit 1; }
             echo "/banana/demo/ $(code /banana/demo/)  /banana/demo/campaigns $(code /banana/demo/campaigns)"
             [ "$(code /banana/demo/)" = "200" ] && [ "$(code /banana/demo/campaigns)" = "200" ] || { echo "demo not served under /banana/demo/"; exit 1; }

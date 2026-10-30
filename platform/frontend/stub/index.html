@@ -229,7 +229,7 @@
       } else {
         red.classList.add('on'); show('ТВОЙ РОТ ЕБАЛ', true); sound.error();
         pad.classList.remove('shake'); void pad.offsetWidth; pad.classList.add('shake');
-        setTimeout(() => { busy = false; reset(); }, 1600);
+        setTimeout(() => { window.location.href = '/wrong-pin'; }, 900); // platform/frontend/stub/wrong-pin.html
       }
       return;
     }

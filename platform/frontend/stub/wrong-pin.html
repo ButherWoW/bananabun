@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Неправильный пин-код</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800&display=swap">
+<style>
+  /* Wrong PIN page: the art already carries the heading and a drawn "Попробовать еще раз" button.
+     The whole frame is always visible (contain); a real link sits exactly over the drawn button.
+     On narrow screens the drawn button is too small, so a real button is shown under the picture. */
+  :root { color-scheme: dark; --red: #d9434a; --red-hi: #ef6a70; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  html { background: #0b0607; }
+  body {
+    min-height: 100vh; min-height: 100svh; display: grid; place-items: center; align-content: center; gap: 22px;
+    padding: 0 max(0px, env(safe-area-inset-right, 0px)) 0 max(0px, env(safe-area-inset-left, 0px));
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; color: #f1e9ea; position: relative; isolation: isolate;
+  }
+  /* blurred copy of the art fills the bars around the framed picture */
+  body::before { content: ""; position: fixed; inset: -40px; z-index: -1; pointer-events: none;
+    background: #0b0607 url("/_stub/wrong-pin.jpg") center / cover no-repeat;
+    background-image: image-set(url("/_stub/wrong-pin.webp") type("image/webp"), url("/_stub/wrong-pin.jpg") type("image/jpeg"));
+    filter: blur(28px) brightness(.35) saturate(1.2); }
+
+  .art { position: relative; width: min(100vw, calc(100svh * 1672 / 941)); aspect-ratio: 1672 / 941; max-width: 100%; }
+  .art picture, .art img { display: block; width: 100%; height: 100%; }
+  .art img { object-fit: contain; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  /* hit area over the drawn button: x 1200–1575, y 474–545 of 1672×941 */
+  .hit { position: absolute; left: 71.7%; top: 50.3%; width: 22.5%; height: 7.6%; border-radius: 999px; }
+  .hit:hover { box-shadow: 0 0 0 2px rgba(255,255,255,.55), 0 0 28px rgba(239,106,112,.7); }
+  .hit:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+  .again {
+    display: none; text-decoration: none; padding: 16px 40px; border-radius: 14px;
+    font-weight: 800; font-size: 18px; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.25);
+    background: linear-gradient(180deg, var(--red-hi), var(--red));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 10px 28px rgba(0,0,0,.55), 0 0 24px rgba(217,67,74,.45);
+  }
+  .again:active { transform: translateY(1px); }
+  .again:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .phone { display: none; }
+  /* Phones: a big crop around the banana, then the heading and the button as real text */
+  @media (max-width: 760px) {
+    body { align-content: start; gap: 0; }
+    .art { width: 100vw; aspect-ratio: auto; height: 58svh; min-height: 300px; }
+    .art img { object-fit: cover; object-position: 33% 45%; box-shadow: none;
+      -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent); mask-image: linear-gradient(180deg, #000 75%, transparent); }
+    .hit { display: none; }
+    .phone { display: grid; justify-items: center; gap: 12px; padding: 0 16px 28px; margin-top: -40px; text-align: center; position: relative; }
+    .phone h1 { margin: 0; font-weight: 800; font-style: italic; text-transform: uppercase; line-height: .95; letter-spacing: -.01em;
+      font-size: clamp(30px, 10vw, 44px); text-shadow: 0 3px 0 rgba(0,0,0,.5); }
+    .phone h1 span { display: block; color: #ff2d3a; font-size: 1.25em; }
+    .phone p { margin: 0; color: #b9aeb0; font-size: 15px; }
+    .again { display: inline-block; margin-top: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="art">
+  <picture>
+    <source srcset="/_stub/wrong-pin.webp" type="image/webp">
+    <img src="/_stub/wrong-pin.jpg" width="1672" height="941" alt="Неправильный пин-код. Похоже, ты не из наших…">
+  </picture>
+  <a class="hit" href="/" aria-label="Попробовать еще раз"></a>
+</div>
+<div class="phone">
+  <h1>Неправильный <span>пин-код</span></h1>
+  <p>Похоже, ты не из наших…</p>
+  <a class="again" href="/">Попробовать еще раз</a>
+</div>
+</body>
+</html>
