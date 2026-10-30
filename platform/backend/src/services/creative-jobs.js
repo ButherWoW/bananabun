@@ -48,7 +48,7 @@ export async function runCreativeJobs({ render = generateCreative, limit = 2 } =
     if (!record) break;
     try {
       const product = await db.findOne('products', { id: record.product_id, workspace_id: record.workspace_id });
-      if (!product) throw new Error('РўРѕРІР°СЂ Р±РѕР»СЊС€Рµ РЅРµ РґРѕСЃС‚СѓРїРµРЅ');
+      if (!product) throw new Error('Товар больше не доступен');
       const options = { ...record.metadata?.options, language: record.metadata?.language || 'fr', style: record.metadata?.style };
       const source = record.metadata?.source;
       const slot = typeof record.metadata?.auto_slot === 'number' ? record.metadata.auto_slot : 0;
@@ -57,14 +57,14 @@ export async function runCreativeJobs({ render = generateCreative, limit = 2 } =
         : source === 'banner'
           ? await renderBanner(product, record.format, options, slot)
           : await render(product, null, record.format, options);
-      if (!result?.url || !result?.thumbnail) throw new Error('Р”РІРёР¶РѕРє РЅРµ СЃРѕР·РґР°Р» С„Р°Р№Р» РёР·РѕР±СЂР°Р¶РµРЅРёСЏ');
+      if (!result?.url || !result?.thumbnail) throw new Error('Движок не создал файл изображения');
       await db.query(`UPDATE creatives SET status='done', file_url=$1, thumbnail_url=$2, render_token=NULL,
         metadata=metadata || $3::jsonb WHERE id=$4 AND render_token=$5 AND status='processing'`,
       [result.url,result.thumbnail,JSON.stringify({ source,style:result.style,language:result.language,error:null }),record.id,token]);
     } catch (error) {
       await db.query(`UPDATE creatives SET status='failed',render_token=NULL,metadata=metadata || $1::jsonb
         WHERE id=$2 AND render_token=$3 AND status='processing'`,
-      [JSON.stringify({ error:String(error.message || 'РћС€РёР±РєР° СЂРµРЅРґРµСЂР°').slice(0,500) }),record.id,token]);
+      [JSON.stringify({ error:String(error.message || 'Ошибка рендера').slice(0,500) }),record.id,token]);
     }
   }
 }

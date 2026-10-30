@@ -93,3 +93,43 @@ test('generateFluxCreative — logo is composited when logoKey provided', async 
     globalThis.fetch = savedFetch;
   }
 });
+
+test('generateFluxCreative — a local /uploads photo is sent as a data URI, {url} rows are read', async () => {
+  await fs.mkdir(path.join(TMP_DIR, 'images'), { recursive: true });
+  await fs.writeFile(path.join(TMP_DIR, 'images', 'local_photo.jpg'), TINY_JPG);
+  const savedFetch = globalThis.fetch;
+  try {
+    for (const images of [['/uploads/images/local_photo.jpg'], [{ url: '/uploads/images/local_photo.jpg' }]]) {
+      const calls = [];
+      globalThis.fetch = makeFetch(calls);
+      await generateFluxCreative({ id: `p-local-${calls.length}-${typeof images[0]}`, title: 'Local', specs: [], bundle_config: '[]', images }, null, '1x1', { language: 'fr' }, 3);
+      assert.ok(calls[0].url.includes('/remix'));
+      assert.match(calls[0].body.image_url, /^data:image\/jpeg;base64,/);
+    }
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
+
+test('generateFluxCreative — unreadable or non-https photos are not sent; a failed remix falls back', async () => {
+  const savedFetch = globalThis.fetch;
+  try {
+    const calls = [];
+    globalThis.fetch = makeFetch(calls);
+    await generateFluxCreative({ id: 'p-bad', title: 'Bad', specs: [], bundle_config: '[]', images: ['/uploads/../etc/passwd.jpg', 'http://127.0.0.1/x.jpg'] }, null, '1x1', { language: 'fr' }, 4);
+    assert.ok(!calls[0].url.includes('/remix'), 'no usable photo means text-to-image');
+
+    const fallback = [];
+    globalThis.fetch = async (url, opts) => {
+      fallback.push(String(url));
+      if (fallback.length === 1) return { ok: false, status: 422, text: async () => 'bad image' };
+      if (fallback.length === 2) return { ok: true, json: async () => ({ images: [{ url: 'https://fal-output/r.jpg' }] }) };
+      return { ok: true, arrayBuffer: async () => new Uint8Array(TINY_JPG).buffer };
+    };
+    const result = await generateFluxCreative({ id: 'p-fb', title: 'Fallback', specs: [], bundle_config: '[]', images: ['https://amazon.com/a.jpg'] }, null, '1x1', { language: 'fr' }, 4);
+    assert.ok(result.url);
+    assert.ok(fallback[0].includes('/remix') && !fallback[1].includes('/remix'));
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
