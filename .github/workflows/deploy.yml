@@ -173,6 +173,7 @@ jobs:
             code() { curl -s -o /dev/null -w "%{http_code}" -H "Host: nespizdili.lol" "https://127.0.0.1$1" -k; }
             echo "/ $(code /)  /banana/ $(code /banana/)  /banana/products $(code /banana/products)  /banana/api/agent/status $(code /banana/api/agent/status)  /api/agent/status $(code /api/agent/status)"
             [ "$(code /banana/api/agent/status)" = "$(code /api/agent/status)" ] || { echo "/banana/api differs from /api"; exit 1; }
-            curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/ | grep -q "а хули ты тут забыл" || { echo "stub not served"; exit 1; }
+            ROOT=$(curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/)
+            echo "$ROOT" | grep -q "<html" && ! echo "$ROOT" | grep -q "/banana/assets/" || { echo "stub not served on /"; exit 1; }
             curl -sk -H "Host: nespizdili.lol" https://127.0.0.1/banana/products | grep -q "/banana/assets/" || { echo "panel not served under /banana/"; exit 1; }'
 
