@@ -30,6 +30,7 @@ import { landingRoutes } from './api/routes/landings.js';
 import { adSettingsRoutes } from './api/routes/adSettings.js';
 import { trackRoutes } from './api/routes/track.js';
 import { tiktokRoutes } from './api/routes/tiktok.js';
+import { gateRoutes } from './api/routes/gate.js';
 import { startScrapeRecovery } from './services/scrape-jobs.js';
 import { db, pool } from './db/client.js';
 import { startCreativeWorker } from './services/creative-jobs.js';
@@ -85,6 +86,8 @@ app.register(landingRoutes, { prefix: '/api/landings' });
 app.register(adSettingsRoutes, { prefix: '/api/ad-settings' });
 app.register(trackRoutes, { prefix: '/api/t' });
 app.register(tiktokRoutes, { prefix: '/api/tiktok' });
+// PIN doors of the stub page: not under /api, reachable only through nginx (see routes/gate.js).
+app.register(gateRoutes, { prefix: '/gate' });
 
 app.get('/health', () => ({ ok: true, ts: new Date() }));
 
