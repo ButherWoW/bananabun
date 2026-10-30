@@ -95,7 +95,7 @@ export async function generateTikTokVideo(images, title, outputDir) {
       return null;
     }
 
-    const publicUrl = process.env.PUBLIC_URL || 'https://nespizdili.lol';
+    const publicUrl = (process.env.PUBLIC_BASE_URL || process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
     return {
       path: outPath,
       url: `${publicUrl}/uploads/tiktok-videos/${outId}.mp4`,

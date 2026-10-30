@@ -16,7 +16,8 @@ function asArray(raw) {
 }
 
 // The landing is served from a Keitaro domain: our own /uploads paths must be absolute.
-const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
+// Absolute links go under the panel's base (https://nespizdili.lol/banana); old /uploads and /api keep working.
+const PUBLIC_URL = (process.env.PUBLIC_BASE_URL || process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
 function imageUrl(img) {
   const u = typeof img === 'string' ? img : img?.url || img?.src || '';
   return u.startsWith('/') && !u.startsWith('//') ? PUBLIC_URL + u : u;

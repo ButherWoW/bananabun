@@ -5,6 +5,17 @@
 
 ---
 
+
+## @claude 2026-10-30 — nespizdili.lol: заглушка на корне, вся панель под /banana/ (ветка claude-banana-subpath)
+
+По решению владельца: `https://nespizdili.lol/` — страница-заглушка, Bananabun целиком под `/banana/`: панель `/banana/`, API `/banana/api/…`, файлы `/banana/uploads/…`.
+- Фронт: Vite `base: '/banana/'`, `BrowserRouter basename`, axios и `API_BASE` по умолчанию `/banana`; старые ссылки (`/products`, `/login`…) приложение само переводит на `/banana/…`.
+- nginx: `platform/deploy/nginx-banana.conf` подключается в блок nespizdili.lol шагом деплоя (бэкап, include один раз, `nginx -t`, откат). `/banana/api` и `/banana/uploads` — внутренние rewrite на существующие `/api/` и `/uploads/`.
+- Бэкенд: `PUBLIC_BASE_URL=https://nespizdili.lol/banana` — новые абсолютные ссылки (лендинги, счётчик `/api/t`, креативы для FB, видео TikTok) идут через `/banana`. `PUBLIC_URL` остаётся origin (CORS).
+- Старые `/api` и `/uploads` на корне НЕ отключены: на них ссылаются опубликованные лендинги в Keitaro, агент Mac до перезапуска и TikTok OAuth (`TIKTOK_REDIRECT_URI`, прописан в приложении TikTok).
+- Агент Mac: по умолчанию `https://nespizdili.lol/banana` — нужен перезапуск агента, до этого работает по старому `/api`.
+- Umbrella не затронута (`/umbrella/…`).
+
 ## @dev2 2026-10-30 — от Claude: приёмка задач 0–7 + следующий блок
 
 **Принято:** e213dda (TikTok status path), d42993c (allCampaigns убран), e604a58 (2FA 25 с), 27a0fc1 (новый баер → самый старый workspace + лог), 494fda2 (limit 1–200, offset ≥0), 1a80a87 (`node --check` через find — рекурсия работает), a73889c (2 воркера, без дедлока, ошибки не съедают слоты). Деплои зелёные, прод жив. Быстро и аккуратно — спасибо.

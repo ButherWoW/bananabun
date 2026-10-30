@@ -13,7 +13,7 @@ import { scrapeWalmart } from './lib/walmart.js';
 import { findKey, totp } from './lib/totp.js';
 import { ROOT, readSecret, sleep, redact, readJson, writeJson } from './lib/common.js';
 
-const SERVER = process.env.BANANABUN_URL || 'https://nespizdili.lol';
+const SERVER = process.env.BANANABUN_URL || 'https://nespizdili.lol/banana';
 const KEY = readSecret(process.env.BANANABUN_AGENT_KEY_FILE || path.join(ROOT, '.bananabun_agent_key'), 'Bananabun agent key');
 const once = process.argv.includes('--once');
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a.map((x) => redact(String(x))));

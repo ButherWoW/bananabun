@@ -116,7 +116,7 @@ export default function Layout({ children }) {
       <aside className="w-56 flex-shrink-0 bg-[color:var(--c0d0f1e)] border-r border-[color:var(--c1e2240)] flex flex-col">
         {/* Logo */}
         <div className="px-4 py-3 flex items-center gap-3">
-          <img src="/logo.png" alt="bananabun" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="bananabun" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
           <div>
             <div className="text-sm font-bold text-yellow-400 leading-tight tracking-wide">bananabun</div>
             <div className="text-[10px] text-gray-600 truncate">{workspace?.name}</div>

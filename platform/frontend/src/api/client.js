@@ -1,7 +1,8 @@
 ﻿import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '',
+  // Everything of the panel lives under /banana/ (API: /banana/api, files: /banana/uploads).
+  baseURL: import.meta.env.VITE_API_URL || import.meta.env.BASE_URL.replace(/\/$/, ''),
 });
 
 api.interceptors.request.use((config) => {
@@ -15,9 +16,10 @@ api.interceptors.response.use(
   (err) => {
     // A 401 from login itself is "wrong password": show it, don't reload the page.
     const authCall = String(err.config?.url || '').startsWith('/api/auth/login');
-    if (err.response?.status === 401 && !authCall && window.location.pathname !== '/login') {
+    const loginPath = `${import.meta.env.BASE_URL}login`;
+    if (err.response?.status === 401 && !authCall && window.location.pathname !== loginPath) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      window.location.href = loginPath;
     }
     const data = err.response?.data;
     // Fastify puts the readable text in `message` and the HTTP reason in `error`.

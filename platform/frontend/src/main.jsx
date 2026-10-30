@@ -12,6 +12,12 @@ import { applyTheme, getTheme } from './store/theme.js';
 
 applyTheme(getTheme());
 
+// Old links (/products, /login…) still reach this build through nginx's fallback: move them under /banana/.
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+if (BASE && !window.location.pathname.startsWith(BASE + '/') && window.location.pathname !== BASE) {
+  window.location.replace(BASE + window.location.pathname + window.location.search + window.location.hash);
+}
+
 // Every failed action surfaces its message, unless the mutation shows it inline (meta.inlineError).
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
@@ -25,7 +31,7 @@ const qc = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')).render(
   <QueryClientProvider client={qc}>
     <Toaster />
-    <BrowserRouter>
+    <BrowserRouter basename={BASE || undefined}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

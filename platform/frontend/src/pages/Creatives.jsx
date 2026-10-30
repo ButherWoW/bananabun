@@ -19,7 +19,7 @@ const COUNTS = [1, 2, 4, 8, 10];
 const STATUS_COLOR = { done: 'text-green-400', processing: 'text-yellow-400', failed: 'text-red-400', pending: 'text-gray-400' };
 const STATUS_LABEL = { done: 'Готов', processing: 'Генерация…', failed: 'Ошибка', pending: 'Ожидание' };
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export default function CreativesPage() {
   const qc = useQueryClient();

@@ -23,7 +23,7 @@ function RetryButton({ productId, qc }) {
   );
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.BASE_URL.replace(/\/$/, '');
 const TABS = ['Карточка', 'Комплекты', 'Галерея', 'Отзывы', '✨ Похожие'];
 
 function SimilarProductsPanel({ productId }) {

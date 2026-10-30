@@ -3,7 +3,8 @@ import { keitaroClient } from './keitaro.js';
 import { enqueueAgentJob } from '../api/routes/agent.js';
 import { logFbEvent } from './fb-campaigns.js';
 
-const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
+// Absolute links go under the panel's base (https://nespizdili.lol/banana); old /uploads and /api keep working.
+const PUBLIC_URL = (process.env.PUBLIC_BASE_URL || process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
 
 // Keitaro campaign parameters: FB fills the macros, and campaign_id lands in sub_id_2 —
 // the only key the FB↔Keitaro join uses.
