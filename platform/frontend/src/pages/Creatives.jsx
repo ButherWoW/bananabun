@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { products as productsApi, creatives as creativesApi, presets as presetsApi } from '../api/client.js';
+import { api, products as productsApi, creatives as creativesApi, presets as presetsApi } from '../api/client.js';
 import clsx from 'clsx';
 import Hint from '../components/Hint.jsx';
 
@@ -169,12 +169,11 @@ export default function CreativesPage() {
 
   async function uploadImage(file, endpoint) {
     const fd = new FormData(); fd.append('file',file);
-    const res = await fetch(API_BASE + '/api/creatives/' + endpoint, {
-      method:'POST', headers:{ Authorization:'Bearer ' + localStorage.getItem('token') }, body:fd,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Не удалось загрузить картинку');
-    return data.key;
+    try {
+      return (await api.post('/api/creatives/' + endpoint, fd)).key;
+    } catch (e) {
+      throw new Error(e?.error || 'Не удалось загрузить картинку');
+    }
   }
 
   async function handleGenerate() {

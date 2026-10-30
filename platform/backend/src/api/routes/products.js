@@ -6,6 +6,21 @@ import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { pipeline } from 'stream/promises';
 import { rasterType } from '../../services/creative-assets.js';
+import { withRealOldPrice, MARKET_CURRENCY } from '../../services/engine.js';
+function parseList(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw == null || raw === '') return [];
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v : null; } catch { return null; }
+}
+
+const OWN_IMAGE = /^\/uploads\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+$/;
+function isOwnOrHttpsImage(item) {
+  const src = typeof item === 'string' ? item : item?.url;
+  if (typeof src !== 'string' || src.length > 2000) return false;
+  if (src.startsWith('/uploads/')) return OWN_IMAGE.test(src) && !src.includes('..');
+  try { return new URL(src).protocol === 'https:'; } catch { return false; }
+}
+
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = process.env.UPLOADS_DIR ? resolve(process.env.UPLOADS_DIR) : join(__dirname, '..', '..', '..', 'uploads');
@@ -103,8 +118,10 @@ export async function productRoutes(app) {
     const product = await db.findOne('products', { id: req.params.id, workspace_id: req.user.ws });
     if (!product) return reply.status(404).send({ error: 'Not found' });
 
-    const allowed = ['title', 'description', 'source_price', 'bundle_config', 'bundle_preset_id',
-                     'folder_id', 'status', 'images', 'rating', 'reviews_count', 'specs'];
+    // Rating and review counts come only from the shop. The shop price is typed by hand only for a product made by
+    // hand; a scraped one keeps the price the scraper read.
+    const allowed = ['title', 'description', 'bundle_config', 'bundle_preset_id', 'folder_id', 'status', 'images', 'specs'];
+    if (!product.source_url) allowed.push('source_price');
     const data = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
@@ -112,6 +129,23 @@ export async function productRoutes(app) {
     if (data.folder_id) await assertFolderAccess(req, data.folder_id);
     if (data.bundle_preset_id) await assertRecordAccess(req, 'bundle_presets', data.bundle_preset_id);
     if (data.specs !== undefined) data.specs = JSON.stringify(cleanSpecs(data.specs));
+    if (data.images !== undefined) {
+      const list = parseList(data.images);
+      if (!list || !list.every(isOwnOrHttpsImage)) {
+        return reply.status(400).send({ error: 'Фото — только загруженные в платформу или ссылки https' });
+      }
+      data.images = JSON.stringify(list);
+    }
+    // The old price is never typed: it is the real shop price × paid units, as at scrape time (engine.js).
+    if (data.bundle_config !== undefined || data.source_price !== undefined) {
+      const bundles = data.bundle_config !== undefined ? parseList(data.bundle_config) : parseList(product.bundle_config);
+      if (!bundles) return reply.status(400).send({ error: 'Комплекты должны быть списком' });
+      const price = data.source_price !== undefined ? data.source_price : product.source_price;
+      const currency = product.source_currency || MARKET_CURRENCY[product.marketplace] || null;
+      const paid = (b) => parseInt(String(b?.qty ?? '').split('+')[0], 10) > 0;
+      const priced = Number(price) > 0 ? withRealOldPrice(bundles, price, currency) : bundles;
+      data.bundle_config = JSON.stringify(priced.map(b => (Number(price) > 0 && paid(b) ? b : { ...b, old_price: '' })));
+    }
 
     return db.update('products', product.id, data);
   });
