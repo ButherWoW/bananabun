@@ -1,0 +1,110 @@
+name: AdsPower on the server
+
+# Manual only. Installs or controls AdsPower (headless) and the Bananabun agent on the production server.
+# Secrets reach the server only through ssh stdin; nothing secret is put on a command line or printed.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'install | restart | stop | status | logs'
+        required: true
+        default: status
+        type: choice
+        options: [status, logs, install, restart, stop]
+      deb_url:
+        description: 'install: https link to the AdsPower Linux .deb (from the AdsPower download page). Empty = keep the installed client.'
+        required: false
+        default: ''
+      allowed_serials:
+        description: 'install: AdsPower profile numbers this agent may use, comma-separated. Empty = keep the current list.'
+        required: false
+        default: ''
+
+# Shares the queue with the site deploy: never two jobs on the server at once.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  adspower:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      HOST: 148.230.98.232
+      ACTION: ${{ inputs.action }}
+      DEB_URL: ${{ inputs.deb_url }}
+      ALLOWED: ${{ inputs.allowed_serials }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Check inputs
+        run: |
+          if [ -n "$DEB_URL" ] && ! printf '%s' "$DEB_URL" | grep -Eq '^https://([A-Za-z0-9-]+\.)*adspower\.(com|net|io)/[A-Za-z0-9._/%+-]+\.deb(\?[A-Za-z0-9=&._%-]*)?$'; then
+            echo "deb_url must be an https .deb link on an adspower domain"; exit 1
+          fi
+          if ! printf '%s' "$ALLOWED" | grep -Eq '^[0-9, ]*$'; then
+            echo "allowed_serials: numbers and commas only"; exit 1
+          fi
+
+      - name: Install / update
+        if: inputs.action == 'install'
+        env:
+          ADSPOWER_API_KEY: ${{ secrets.ADSPOWER_API_KEY }}
+          BANANABUN_AGENT_KEY: ${{ secrets.BANANABUN_AGENT_KEY }}
+        run: |
+          set -eu
+          [ -n "$ADSPOWER_API_KEY" ] && [ -n "$BANANABUN_AGENT_KEY" ] || { echo "Add ADSPOWER_API_KEY and BANANABUN_AGENT_KEY to GitHub Secrets"; exit 1; }
+          rm -rf bundle && mkdir -p bundle/agent
+          cp platform/deploy/adspower/* bundle/
+          cp -R mac-agent/. bundle/agent/
+          rm -rf bundle/agent/fb bundle/agent/push bundle/agent/logs bundle/agent/node_modules bundle/agent/test
+          tar -C bundle -czf adspower-bundle.tgz .
+          scp -q adspower-bundle.tgz root@"$HOST":/root/adspower-bundle.tgz
+          ARGS=""
+          [ -n "$DEB_URL" ] && ARGS="$ARGS --deb-url '$DEB_URL'"
+          ALLOWED_CLEAN="$(printf '%s' "$ALLOWED" | tr -d ' ')"
+          [ -n "$ALLOWED_CLEAN" ] && ARGS="$ARGS --allowed '$ALLOWED_CLEAN'"
+          printf '%s\n%s\n' "$ADSPOWER_API_KEY" "$BANANABUN_AGENT_KEY" | ssh root@"$HOST" "set -e
+            rm -rf /root/adspower-src && mkdir -p /root/adspower-src
+            tar -C /root/adspower-src -xzf /root/adspower-bundle.tgz && rm -f /root/adspower-bundle.tgz
+            bash /root/adspower-src/install.sh $ARGS"
+
+      - name: Restart
+        if: inputs.action == 'restart'
+        run: ssh root@"$HOST" 'systemctl restart bananabun-adspower-fw adspower && sleep 5 && systemctl restart bananabun-agent && systemctl is-active adspower bananabun-agent'
+
+      - name: Stop
+        if: inputs.action == 'stop'
+        run: ssh root@"$HOST" 'systemctl stop bananabun-agent adspower; systemctl is-active bananabun-agent adspower || true'
+
+      - name: Status
+        if: always() && (inputs.action == 'status' || inputs.action == 'install' || inputs.action == 'restart')
+        run: |
+          ssh root@"$HOST" bash -s <<'REMOTE'
+          hide() { sed -E 's/((api[_-]?key|token|secret|password|passwd|authorization)[^ =:]*[=: ]+)[^ ,;"]+/\1[скрыто]/Ig; s/EAA[A-Za-z0-9]{10,}/EAA…/g; s/bb_[A-Za-z0-9_-]{16,}/bb_…/g; s/\b[A-Fa-f0-9]{32,}\b/[скрыто]/g'; }
+          echo "== services"; for s in bananabun-adspower-fw adspower bananabun-agent; do printf '%-24s %s\n' "$s" "$(systemctl is-active "$s" 2>/dev/null)"; done
+          echo "== memory"; free -m
+          echo "== AdsPower Local API"; curl -s --max-time 5 http://127.0.0.1:50325/status | hide; echo
+          echo "== listeners of adsagent outside loopback (must be empty)"
+          UID_ADS="$(id -u adsagent 2>/dev/null || echo none)"
+          ss -ltnHe 2>/dev/null | grep "uid:$UID_ADS " | awk '{print $4}' | grep -Ev '^(127\.0\.0\.1|\[::1\]|\[::ffff:127\.0\.0\.1\]):' || echo "(none)"
+          echo "== firewall"; iptables -S BB_ADSPOWER 2>/dev/null || echo "chain missing"
+          echo "== agent, last lines"; journalctl -u bananabun-agent -n 15 --no-pager -o cat 2>/dev/null | hide
+          REMOTE
+
+      - name: Logs
+        if: inputs.action == 'logs'
+        run: |
+          ssh root@"$HOST" bash -s <<'REMOTE'
+          hide() { sed -E 's/((api[_-]?key|token|secret|password|passwd|authorization)[^ =:]*[=: ]+)[^ ,;"]+/\1[скрыто]/Ig; s/EAA[A-Za-z0-9]{10,}/EAA…/g; s/bb_[A-Za-z0-9_-]{16,}/bb_…/g; s/\b[A-Fa-f0-9]{32,}\b/[скрыто]/g'; }
+          echo "== adspower"; journalctl -u adspower -n 100 --no-pager -o short-iso 2>/dev/null | hide
+          echo "== bananabun-agent"; journalctl -u bananabun-agent -n 100 --no-pager -o short-iso 2>/dev/null | hide
+          REMOTE

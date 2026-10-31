@@ -1,0 +1,31 @@
+[Unit]
+Description=AdsPower (headless) for the Bananabun agent
+After=network-online.target bananabun-adspower-fw.service
+Wants=network-online.target
+Requires=bananabun-adspower-fw.service
+
+[Service]
+User=adsagent
+Group=adsagent
+EnvironmentFile=/etc/bananabun/adspower.env
+ExecStart=/usr/local/sbin/bananabun-run-adspower
+Restart=on-failure
+RestartSec=10
+MemoryMax=6G
+CPUQuota=200%
+TasksMax=2048
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/home/adsagent "@INSTALL_DIR@"
+ProtectHome=tmpfs
+BindPaths=/home/adsagent
+PrivateTmp=yes
+# The site, its .env and root's files are none of this service's business.
+InaccessiblePaths=-/opt/affiliate -/root -/var/lib/postgresql
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Keep AdsPower Local API on loopback only
+After=network-pre.target
+Before=adspower.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bananabun-adspower-fw
+
+[Install]
+WantedBy=multi-user.target

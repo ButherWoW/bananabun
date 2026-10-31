@@ -1,0 +1,31 @@
+[Unit]
+Description=Bananabun agent (AdsPower bridge)
+After=adspower.service affiliate-backend.service
+Requires=adspower.service
+
+[Service]
+User=adsagent
+Group=adsagent
+WorkingDirectory=/home/adsagent/scripts
+Environment=BANANABUN_URL=http://127.0.0.1:4000
+Environment=ADSPOWER_URL=http://127.0.0.1:50325
+EnvironmentFile=/etc/bananabun/agent.env
+ExecStart=@NODE@ @NODE_FLAGS@ /home/adsagent/scripts/bananabun_agent.js
+Restart=always
+RestartSec=30
+MemoryMax=1G
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/home/adsagent
+ProtectHome=tmpfs
+BindPaths=/home/adsagent
+PrivateTmp=yes
+# The site, its .env and root's files are none of this service's business.
+InaccessiblePaths=-/opt/affiliate -/root -/var/lib/postgresql
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target
