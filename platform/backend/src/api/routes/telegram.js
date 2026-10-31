@@ -2,7 +2,8 @@ import { db } from '../../db/client.js';
 import { adminOnly } from '../../middleware/access.js';
 import {
   EVENTS, botReady, botInfo, botApi, createLinkCode, redeemLinkCode, workspaceSettings, cleanSettings, cleanThreshold,
-  notify, statusText, siteUrl, maskChat, webhookUrl, secretMatches, postbackSecret, postbackUrl, acceptPostback, wakeTelegram,
+  notify, statusText, siteUrl, maskChat, webhookUrl, secretMatches, postbackSecretFor, workspaceForPostbackSecret, postbackUrl,
+  acceptPostback, postbackAllowed, postbackClickId, wakeTelegram,
   eventsFor, ALLOWED_UPDATES, SETTINGS_BUTTON,
 } from '../../services/telegram.js';
 import { handleCallback, sendSettings } from '../../services/telegram-bot.js';
@@ -62,12 +63,17 @@ export async function telegramRoutes(app) {
     return { ok: true };
   });
 
-  // Keitaro conversion postbacks: the secret is part of the path, the answer is immediate, sending goes through the queue.
+  // Keitaro conversion postbacks: the team's own secret is part of the path (the team is known only from it, never
+  // from the request), the answer is immediate, sending goes through the queue. The path is masked in our logs and
+  // nginx does not log it.
   const postback = async (req, reply) => {
-    if (!postbackSecret() || !secretMatches(String(req.params.secret || ''), postbackSecret())) return reply.status(404).send('Not found');
+    const ws = await workspaceForPostbackSecret(String(req.params.secret || ''));
+    if (!ws) return reply.status(404).send('Not found');
     const q = { ...(req.query || {}), ...(req.body && typeof req.body === 'object' ? req.body : {}) };
+    if (!postbackClickId(q)) return reply.status(400).send('click_id required');
+    if (!postbackAllowed(ws)) return reply.status(429).send('Too many postbacks');
     reply.status(200).send('OK');
-    acceptPostback(q).catch(e => req.log.error({ err: e.message }, 'keitaro postback'));
+    acceptPostback(ws, q).catch(e => req.log.error({ err: e.message }, 'keitaro postback'));
     return reply;
   };
   app.get('/keitaro-postback/:secret', postback);
@@ -111,10 +117,16 @@ export async function telegramRoutes(app) {
   });
 
   // A link for a team member to forward: Telegram lets a bot write only after the person presses Start themselves.
+  // Only for someone with no working Telegram yet; a lead may not make links for the owner or other leads.
   app.post('/admin/members/:id/link', lead, async (req, reply) => {
     if (!botReady()) return reply.status(503).send({ error: 'Бот ещё не подключён' });
-    const { rows: [u] } = await db.query('SELECT id, name FROM users WHERE id = $1 AND workspace_id = $2', [req.params.id, req.user.ws]);
+    const { rows: [u] } = await db.query(`SELECT u.id, u.name, u.role, l.chat_id, l.blocked_at FROM users u
+      LEFT JOIN telegram_links l ON l.user_id = u.id WHERE u.id = $1 AND u.workspace_id = $2`, [req.params.id, req.user.ws]);
     if (!u) return reply.status(404).send({ error: 'Участник не найден' });
+    if (req.user.role !== 'owner' && u.id !== req.user.id && (u.role === 'owner' || u.role === 'lead')) {
+      return reply.status(403).send({ error: 'Лид может выдать ссылку только байеру' });
+    }
+    if (u.chat_id && !u.blocked_at) return reply.status(409).send({ error: 'У участника Telegram уже привязан. Перепривязать он может сам на странице «Уведомления в Telegram».' });
     let bot;
     try { bot = await botInfo(); } catch (e) { return reply.status(502).send({ error: `Telegram не ответил: ${e.message}` }); }
     const code = await createLinkCode(u.id);
@@ -167,8 +179,8 @@ export async function telegramRoutes(app) {
 
   /* ───── admin (owner / lead) ───── */
 
-  app.get('/admin/status', lead, async () => {
-    const out = { token_set: botReady(), webhook_secret_set: !!process.env.TELEGRAM_WEBHOOK_SECRET, postback_secret_set: !!postbackSecret(),
+  app.get('/admin/status', lead, async (req) => {
+    const out = { token_set: botReady(), webhook_secret_set: !!process.env.TELEGRAM_WEBHOOK_SECRET,
       expected_webhook: webhookUrl(), bot: null, webhook: null, error: null };
     if (!botReady()) return out;
     try {
@@ -180,7 +192,8 @@ export async function telegramRoutes(app) {
     } catch (e) { out.error = e.message; }
     const { rows: [q] } = await db.query(`SELECT COUNT(*) FILTER (WHERE status='pending')::int AS pending,
       COUNT(*) FILTER (WHERE status='failed' AND created_at > NOW() - INTERVAL '1 day')::int AS failed_day,
-      COUNT(*) FILTER (WHERE status='sent' AND created_at > NOW() - INTERVAL '1 day')::int AS sent_day FROM telegram_outbox`);
+      COUNT(*) FILTER (WHERE status='sent' AND created_at > NOW() - INTERVAL '1 day')::int AS sent_day FROM telegram_outbox
+      WHERE workspace_id = $1`, [req.user.ws]);
     out.queue = q;
     return out;
   });
@@ -201,10 +214,12 @@ export async function telegramRoutes(app) {
 
   app.get('/admin/members', lead, async (req) => {
     const { rows } = await db.query(`
-      SELECT u.id, u.name, u.email, u.role, l.username, l.chat_id, l.linked_at, l.muted, l.blocked_at
+      SELECT u.id, u.name, u.email, u.role, u.keitaro_tag, l.username, l.chat_id, l.linked_at, l.muted, l.blocked_at
         FROM users u LEFT JOIN telegram_links l ON l.user_id = u.id
        WHERE u.workspace_id = $1 ORDER BY u.created_at`, [req.user.ws]);
-    return rows.map(({ chat_id, ...r }) => ({ ...r, linked: !!chat_id, chat: chat_id ? maskChat(chat_id) : null }));
+    // A buyer without a Keitaro nickname has no campaigns of their own in the tracker: their digest and money alerts stay empty.
+    return rows.map(({ chat_id, keitaro_tag, ...r }) => ({ ...r, linked: !!chat_id, chat: chat_id ? maskChat(chat_id) : null,
+      no_keitaro_tag: r.role === 'buyer' && !String(keitaro_tag || '').trim() }));
   });
 
   app.get('/admin/settings', lead, async (req) => ({
@@ -261,6 +276,12 @@ export async function telegramRoutes(app) {
       db.query(`SELECT received_at, status, payout, currency, campaign, offer, country, buyer, duplicate FROM telegram_postbacks
         WHERE workspace_id = $1 ORDER BY received_at DESC LIMIT 20`, [req.user.ws]),
     ]);
-    return { url: postbackSecret() ? postbackUrl(req.user.ws) : null, secret_set: !!postbackSecret(), counts: c, last };
+    return { url: postbackUrl(await postbackSecretFor(req.user.ws)), secret_set: true, counts: c, last };
+  });
+
+  // A new secret for this team's postback URL (the old one stops working at once; paste the new URL into Keitaro).
+  app.post('/admin/postbacks/rotate', lead, async (req, reply) => {
+    if (req.body?.confirm !== true) return reply.status(400).send({ error: 'Подтвердите замену ссылки' });
+    return { url: postbackUrl(await postbackSecretFor(req.user.ws, { rotate: true })) };
   });
 }

@@ -73,7 +73,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           GATE_PINS: ${{ secrets.GATE_PINS }}
         run: |
-          # Build env patch file on runner
+          # Build env patch file on runner (owner-only: it carries secrets)
+          umask 077
           cat > /tmp/env.patch << 'EOF'
           PUBLIC_URL=https://nespizdili.lol
           PUBLIC_BASE_URL=https://nespizdili.lol/banana
@@ -86,32 +87,30 @@ jobs:
           echo "GATE_PINS=$GATE_PINS" >> /tmp/env.patch
 
           # Push patch to server
-          rsync -az /tmp/env.patch root@148.230.98.232:/tmp/env.patch
+          rsync -az --chmod=F600 /tmp/env.patch root@148.230.98.232:/tmp/env.patch
+          rm -f /tmp/env.patch
 
-          # Merge into .env on server (add missing keys, update existing)
-          ssh root@148.230.98.232 '
-            ENV_FILE=/opt/affiliate/backend/.env
-            touch "$ENV_FILE"
-            while IFS="=" read -r key rest; do
-              key=$(echo "$key" | xargs)
-              [ -z "$key" ] && continue
-              val="${rest}"
-              if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-                sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
-              else
-                echo "${key}=${val}" >> "$ENV_FILE"
-              fi
-            done < /tmp/env.patch
-            rm /tmp/env.patch
-            # Key for the PIN pass cookies: made once on the server, never leaves it.
-            grep -q "^GATE_SECRET=" "$ENV_FILE" || echo "GATE_SECRET=$(openssl rand -hex 32)" >> "$ENV_FILE"
-            # Telegram: webhook header secret and the secret part of the Keitaro postback URL, made once on the server.
-            grep -q "^TELEGRAM_WEBHOOK_SECRET=" "$ENV_FILE" || echo "TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)" >> "$ENV_FILE"
-            grep -q "^KEITARO_POSTBACK_SECRET=" "$ENV_FILE" || echo "KEITARO_POSTBACK_SECRET=$(openssl rand -hex 24)" >> "$ENV_FILE"
-            chown affiliate:affiliate "$ENV_FILE"
-            chmod 600 "$ENV_FILE"
-            echo "env vars updated"
-          '
+          # Merge into .env on server (add missing keys, update existing). awk reads both files, so no secret value
+          # ever appears in a command line (ps); the new file is created owner-only.
+          ssh root@148.230.98.232 bash -s <<'REMOTE'
+          set -e
+          umask 077
+          ENV_FILE=/opt/affiliate/backend/.env
+          touch "$ENV_FILE"
+          awk 'NR==FNR { i = index($0, "="); if (i > 1) { k = substr($0, 1, i - 1); gsub(/^[ \t]+|[ \t]+$/, "", k); patch[k] = substr($0, i + 1); order[++n] = k } next }
+               { i = index($0, "="); k = i > 1 ? substr($0, 1, i - 1) : ""; if (k in patch) { print k "=" patch[k]; seen[k] = 1 } else print }
+               END { for (j = 1; j <= n; j++) if (!(order[j] in seen)) { print order[j] "=" patch[order[j]]; seen[order[j]] = 1 } }' \
+            /tmp/env.patch "$ENV_FILE" > "$ENV_FILE.new"
+          mv "$ENV_FILE.new" "$ENV_FILE"
+          rm -f /tmp/env.patch
+          # Key for the PIN pass cookies: made once on the server, never leaves it.
+          grep -q "^GATE_SECRET=" "$ENV_FILE" || echo "GATE_SECRET=$(openssl rand -hex 32)" >> "$ENV_FILE"
+          # Telegram webhook header secret, made once on the server. Keitaro postback secrets are per team, in the database.
+          grep -q "^TELEGRAM_WEBHOOK_SECRET=" "$ENV_FILE" || echo "TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)" >> "$ENV_FILE"
+          chown affiliate:affiliate "$ENV_FILE"
+          chmod 600 "$ENV_FILE"
+          echo "env vars updated"
+          REMOTE
 
       - name: Install ffmpeg if missing
         run: |

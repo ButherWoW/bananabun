@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { reqSerializer } from './services/log-redact.js';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import Fastify from 'fastify';
@@ -39,7 +40,7 @@ import { startScrapeRecovery } from './services/scrape-jobs.js';
 import { pool } from './db/client.js';
 import { startCreativeWorker } from './services/creative-jobs.js';
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: { serializers: { req: reqSerializer } } });
 
 await app.register(cors, {
   origin: (process.env.PUBLIC_URL || process.env.FRONTEND_URL || 'https://nespizdili.lol').split(',').map(s => s.trim()).filter(Boolean),

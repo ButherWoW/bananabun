@@ -14,7 +14,7 @@ export function Box({ title, hint, children }) {
 }
 
 const btn = 'text-sm px-4 py-2 rounded-lg disabled:opacity-50';
-const THRESHOLD_LABELS = { amount: 'Порог расхода', roi: 'ROI ниже, %', min_spend: 'При расходе от', minutes: 'Минут без связи' };
+const THRESHOLD_LABELS = { amount: 'Порог расхода', roi: 'ROI ниже, %', min_spend: 'При расходе от', min_clicks: 'При кликах от', minutes: 'Минут без связи' };
 
 function ThresholdInputs({ ev, onSave }) {
   const [vals, setVals] = useState(ev.threshold || {});

@@ -276,6 +276,7 @@ export const telegram = {
     memberLink: (id) => api.post(`/api/telegram/admin/members/${encodeURIComponent(id)}/link`, {}),
     broadcast: (text) => api.post('/api/telegram/admin/broadcast', { text, confirm: true }),
     postbacks: () => api.get('/api/telegram/admin/postbacks'),
+    rotatePostback: () => api.post('/api/telegram/admin/postbacks/rotate', { confirm: true }),
   },
 };
 
