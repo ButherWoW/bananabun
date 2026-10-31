@@ -45,6 +45,8 @@ const USER_MENU = [
   { path: '/admin', label: 'Команда', roles: ['owner', 'lead'] },
   { path: '/settings', label: 'Настройки', roles: ['owner'] },
   { path: '/mcp', label: 'Подключение ИИ (MCP)' },
+  { path: '/telegram', label: 'Уведомления в Telegram' },
+  { path: '/telegram-admin', label: 'Telegram-бот', roles: ['owner', 'lead'] },
 ];
 
 function NavLink({ item, active }) {

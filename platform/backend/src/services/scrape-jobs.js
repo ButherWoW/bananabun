@@ -1,5 +1,6 @@
 import { db } from '../db/client.js';
 import { enqueueAgentJob } from '../api/routes/agent.js';
+import { emit } from './telegram.js';
 import { amazonUrl, withRealOldPrice, MARKET_CURRENCY, parseProductLink } from './engine.js';
 import { AMAZON_MARKETS, productFromAgentData } from './scraper.js';
 import { scrapeWalmartViaScraperApi, scrapeAmazonViaScraperApi, scraperApiEnabled } from './scraper-walmart-api.js';
@@ -86,9 +87,12 @@ export async function enqueueOwnScrape(ws, productId, asin, marketplace, source 
 }
 
 async function fail(ws, productId, jobId, message) {
-  await db.query(`UPDATE products SET scrape_status = 'failed', scrape_error = $1
-                   WHERE id = $2 AND workspace_id = $3 AND scrape_job_id = $4 AND scrape_status = 'processing'`,
+  const { rows: [p] } = await db.query(`UPDATE products SET scrape_status = 'failed', scrape_error = $1
+                   WHERE id = $2 AND workspace_id = $3 AND scrape_job_id = $4 AND scrape_status = 'processing'
+                   RETURNING created_by, title, source_url`,
     [String(message || 'Неизвестная ошибка').slice(0, 500), productId, ws, jobId]);
+  if (p) emit('scrape_failed', { workspace_id: ws, owner_user_id: p.created_by, dedupe_key: `scrape:${productId}:${jobId}:failed`,
+    payload: { title: p.title, url: p.source_url, error: message } });
 }
 
 async function saveReviews(productId, reviews) {
@@ -130,7 +134,11 @@ export async function applyScrapeResult(ws, jobId, ok, data, error) {
      // null = unknown: Amazon shows the photo-review count only to signed-in visitors.
      d.photo_reviews_count ?? null, !!d.has_photo_reviews,
      bundles.length ? JSON.stringify(withRealOldPrice(bundles, d.price, d.currency || MARKET_CURRENCY[p.marketplace])) : null, p.id, ws, jobId, d.currency || MARKET_CURRENCY[p.marketplace] || null]);
-  if (rowCount) { await runPresetCreatives(ws, p.id); saveReviews(p.id, data?.reviews).catch(() => {}); }
+  if (rowCount) {
+    await runPresetCreatives(ws, p.id); saveReviews(p.id, data?.reviews).catch(() => {});
+    const { rows: [o] } = await db.query('SELECT created_by FROM products WHERE id = $1', [p.id]);
+    emit('scrape_done', { workspace_id: ws, owner_user_id: o?.created_by, dedupe_key: `scrape:${p.id}:${jobId}:done`, payload: { title: d.title } });
+  }
 }
 
 // Queues the scrape preset's creatives once. The «due» mark is set with scrape_status='done';

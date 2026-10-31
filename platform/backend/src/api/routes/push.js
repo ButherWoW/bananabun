@@ -1,5 +1,6 @@
 import { db } from '../../db/client.js';
 import { runPush } from '../../services/push.js';
+import { emit } from '../../services/telegram.js';
 import { keitaroClient } from '../../services/keitaro.js';
 import { assertProductAccess, assertCreativeAccess, assertRecordAccess, ownUser } from '../../middleware/access.js';
 
@@ -240,15 +241,16 @@ export async function pushRoutes(app) {
       adset_ids: Array.isArray(p.fb_adset_ids) ? p.fb_adset_ids : [],
       ad_ids: Array.isArray(p.fb_ad_ids) ? p.fb_ad_ids : [],
     };
+    const blocked = (error) => {
+      emit('push_retry_blocked', { workspace_id: req.user.ws, owner_user_id: req.user.id, dedupe_key: `retry_blocked:${p.id}:${Date.now()}`, payload: { reason: error } });
+      return reply.status(409).send({ error, created });
+    };
     if (p.job_status === 'pending' || p.job_status === 'taken') {
-      return reply.status(409).send({ error: 'Задача этого залива ещё у агента на Mac — дождитесь её итога, повтор создал бы второй набор', created });
+      return blocked('Задача этого залива ещё у агента — дождитесь её итога, повтор создал бы второй набор');
     }
     const reaped = p.job_status === 'failed' && (p.job_result?.reaped || /^Агент не выполнил задачу/.test(p.job_result?.error || ''));
     if (reaped) {
-      return reply.status(409).send({
-        error: 'Агент не сообщил итог этого залива — в кабинете уже могут быть созданные кампания, адсеты или объявления. Проверьте кабинет; если там пусто, запустите новый залив',
-        created,
-      });
+      return blocked('Агент не сообщил итог этого залива — в кабинете уже могут быть созданные кампания, адсеты или объявления. Проверьте кабинет; если там пусто, запустите новый залив');
     }
     const { rows } = await db.query(
       `UPDATE pushes SET status='pending', error=NULL, started_at=NULL, finished_at=NULL

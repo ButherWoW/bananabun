@@ -32,6 +32,8 @@ import { trackRoutes } from './api/routes/track.js';
 import { tiktokRoutes } from './api/routes/tiktok.js';
 import { gateRoutes } from './api/routes/gate.js';
 import { mcpRoutes, mcpTokenRoutes } from './api/routes/mcp.js';
+import { telegramRoutes } from './api/routes/telegram.js';
+import { startTelegramWorker } from './services/telegram.js';
 import { registerAuthenticate } from './middleware/authenticate.js';
 import { startScrapeRecovery } from './services/scrape-jobs.js';
 import { pool } from './db/client.js';
@@ -78,13 +80,14 @@ app.register(trackRoutes, { prefix: '/api/t' });
 app.register(tiktokRoutes, { prefix: '/api/tiktok' });
 app.register(mcpTokenRoutes, { prefix: '/api/mcp-tokens' });
 app.register(mcpRoutes, { prefix: '/api/mcp' });
+app.register(telegramRoutes, { prefix: '/api/telegram' });
 // PIN doors of the stub page: not under /api, reachable only through nginx (see routes/gate.js).
 app.register(gateRoutes, { prefix: '/gate' });
 
 app.get('/health', () => ({ ok: true, ts: new Date() }));
 
-let stopCreatives;
-app.addHook('onClose', async () => { await stopCreatives?.(); });
+let stopCreatives, stopTelegram;
+app.addHook('onClose', async () => { await stopCreatives?.(); stopTelegram?.(); });
 for (const signal of ['SIGTERM','SIGINT']) process.once(signal, async () => {
   await app.close();
   await pool.end();
@@ -96,6 +99,7 @@ try {
   console.log('Backend running on port 4000');
   startScrapeRecovery();
   stopCreatives = startCreativeWorker();
+  stopTelegram = startTelegramWorker();
 } catch (err) {
   app.log.error(err);
   process.exit(1);

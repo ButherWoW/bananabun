@@ -70,6 +70,7 @@ jobs:
         env:
           TIKTOK_APP_ID: ${{ secrets.TIKTOK_APP_ID }}
           TIKTOK_APP_SECRET: ${{ secrets.TIKTOK_APP_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           GATE_PINS: ${{ secrets.GATE_PINS }}
         run: |
           # Build env patch file on runner
@@ -81,6 +82,7 @@ jobs:
           EOF
           [ -n "$TIKTOK_APP_ID" ]     && echo "TIKTOK_APP_ID=$TIKTOK_APP_ID"         >> /tmp/env.patch
           [ -n "$TIKTOK_APP_SECRET" ] && echo "TIKTOK_APP_SECRET=$TIKTOK_APP_SECRET" >> /tmp/env.patch
+          [ -n "$TELEGRAM_BOT_TOKEN" ] && echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN" >> /tmp/env.patch
           echo "GATE_PINS=$GATE_PINS" >> /tmp/env.patch
 
           # Push patch to server
@@ -103,6 +105,9 @@ jobs:
             rm /tmp/env.patch
             # Key for the PIN pass cookies: made once on the server, never leaves it.
             grep -q "^GATE_SECRET=" "$ENV_FILE" || echo "GATE_SECRET=$(openssl rand -hex 32)" >> "$ENV_FILE"
+            # Telegram: webhook header secret and the secret part of the Keitaro postback URL, made once on the server.
+            grep -q "^TELEGRAM_WEBHOOK_SECRET=" "$ENV_FILE" || echo "TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)" >> "$ENV_FILE"
+            grep -q "^KEITARO_POSTBACK_SECRET=" "$ENV_FILE" || echo "KEITARO_POSTBACK_SECRET=$(openssl rand -hex 24)" >> "$ENV_FILE"
             chown affiliate:affiliate "$ENV_FILE"
             chmod 600 "$ENV_FILE"
             echo "env vars updated"

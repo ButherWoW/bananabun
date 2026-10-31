@@ -257,6 +257,26 @@ export const admin = {
   resetPassword: (id, password) => api.post(`/api/admin/users/${id}/reset-password`, { password }),
 };
 
+export const telegram = {
+  me: () => api.get('/api/telegram/me'),
+  link: () => api.post('/api/telegram/me/link', {}),
+  unlink: () => api.delete('/api/telegram/me/link'),
+  mute: (muted) => api.post('/api/telegram/me/mute', { muted }),
+  setPref: (data) => api.put('/api/telegram/me/prefs', data),
+  test: () => api.post('/api/telegram/me/test', {}),
+  admin: {
+    status: () => api.get('/api/telegram/admin/status'),
+    setWebhook: () => api.post('/api/telegram/admin/webhook', {}),
+    members: () => api.get('/api/telegram/admin/members'),
+    settings: () => api.get('/api/telegram/admin/settings'),
+    saveSettings: (data) => api.put('/api/telegram/admin/settings', data),
+    log: (params) => api.get('/api/telegram/admin/log', { params }),
+    test: (user_id) => api.post('/api/telegram/admin/test', { user_id }),
+    broadcast: (text) => api.post('/api/telegram/admin/broadcast', { text, confirm: true }),
+    postbacks: () => api.get('/api/telegram/admin/postbacks'),
+  },
+};
+
 export const mcpTokens = {
   list: () => api.get('/api/mcp-tokens'),
   create: (name) => api.post('/api/mcp-tokens', { name }),
