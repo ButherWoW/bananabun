@@ -134,7 +134,7 @@ export default function Layout({ children }) {
       <aside className="w-56 flex-shrink-0 bg-[color:var(--c0d0f1e)] border-r border-[color:var(--c1e2240)] flex flex-col">
         {/* Logo */}
         <div className="px-4 pt-4 pb-3 flex flex-col items-center gap-2 text-center">
-          <img src={`${import.meta.env.BASE_URL}logo-320.png?v=2`} alt="Banana Platform" className="w-40 h-40 rounded-2xl object-cover flex-shrink-0" />
+          <img src={`${import.meta.env.BASE_URL}logo-320.png?v=3`} alt="Banana Platform" className="w-40 h-40 object-contain flex-shrink-0" />
           <div className="min-w-0 max-w-full">
             <div className="text-base font-bold text-yellow-400 leading-tight tracking-wide">Banana Platform</div>
             <div className="text-[10px] text-gray-600 truncate">{workspace?.name}</div>
