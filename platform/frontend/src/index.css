@@ -29,3 +29,19 @@ a[role="button"]:hover {
 button:not(:disabled):active {
   box-shadow: 0 0 0 3px rgba(129, 216, 208, 0.18);
 }
+
+/* Banana cursor: angry while moving around, happy over anything clickable; text fields keep the text cursor.
+   The hotspot is the tip of the stem (top-left). The url() line is the fallback for browsers without image-set. */
+html, body {
+  cursor: url('./assets/cursors/banana-angry.png') 5 0, auto;
+  cursor: -webkit-image-set(url('./assets/cursors/banana-angry.png') 1x, url('./assets/cursors/banana-angry@2x.png') 2x) 5 0, auto;
+}
+a, button, summary, label, select, [role='button'], [role='tab'], [role='menuitem'], [role='option'], .cursor-pointer,
+input[type='checkbox'], input[type='radio'], input[type='submit'], input[type='button'], input[type='file'], input[type='range'] {
+  cursor: url('./assets/cursors/banana-happy.png') 4 1, pointer !important;
+  cursor: -webkit-image-set(url('./assets/cursors/banana-happy.png') 1x, url('./assets/cursors/banana-happy@2x.png') 2x) 4 1, pointer !important;
+}
+input:not([type='checkbox']):not([type='radio']):not([type='submit']):not([type='button']):not([type='file']):not([type='range']), textarea, [contenteditable='true'] {
+  cursor: text;
+}
+button:disabled, [aria-disabled='true'], .cursor-not-allowed { cursor: not-allowed !important; }
