@@ -2,7 +2,7 @@
 // Buttons only change what this person receives and when — nothing else can be done from the chat.
 import { db } from '../db/client.js';
 import {
-  EVENTS, EVENT_KEYS, eventsFor, botApi, workspaceSettings, userWants, cleanThreshold, siteUrl, esc,
+  EVENTS, eventsFor, botApi, workspaceSettings, userWants, cleanThreshold, siteUrl, esc,
 } from './telegram.js';
 
 // Ready-made thresholds for events that have one: field, values and how a value reads.
@@ -44,9 +44,9 @@ export async function settingsView(user) {
   const rows = [];
   for (const [key, e] of eventsFor(user.role)) {
     const w = await userWants(user.id, key, s);
-    const i = EVENT_KEYS.indexOf(key);
-    const row = [btn(`${w.enabled ? '✅' : '▫️'} ${e.label}`, `t:${i}`)];
-    if (THRESHOLD_PRESETS[key]) row.push(btn(`⚙ ${thresholdLabel(key, w.threshold)}`, `th:${i}`));
+    // Buttons name the event by its key (never by position), so a later change of the list cannot flip another event.
+    const row = [btn(`${w.enabled ? '✅' : '▫️'} ${e.label}`, `t:${key}`)];
+    if (THRESHOLD_PRESETS[key]) row.push(btn(`⚙ ${thresholdLabel(key, w.threshold)}`, `th:${key}`));
     rows.push(row);
   }
   rows.push([btn(user.muted ? '▶️ Возобновить' : '⏸ Пауза', 'p'), btn('🕒 Время', 'tm')]);
@@ -65,11 +65,10 @@ async function thresholdView(user, event) {
   const s = await workspaceSettings(user.workspace_id);
   const w = await userWants(user.id, event, s);
   const p = THRESHOLD_PRESETS[event];
-  const i = EVENT_KEYS.indexOf(event);
   return {
     text: `⚙ <b>${esc(EVENTS[event].label)}</b>\nСейчас: ${esc(thresholdLabel(event, w.threshold) || 'по умолчанию')}\nВыберите порог:`,
     reply_markup: { inline_keyboard: [
-      p.values.map((v, k) => btn(`${w.threshold[p.field] === v ? '• ' : ''}${p.label(v)}`, `tv:${i}:${k}`)),
+      p.values.map((v, k) => btn(`${w.threshold[p.field] === v ? '• ' : ''}${p.label(v)}`, `tv:${event}:${k}`)),
       [urlBtn('Свой порог — на сайте', `${siteUrl()}/telegram`)],
       [btn('← Назад', 's')],
     ] },
@@ -107,23 +106,23 @@ export async function handleCallback(cb) {
   const data = String(cb.data || '');
   const s = await workspaceSettings(user.workspace_id);
   const allowed = new Set(eventsFor(user.role).map(([k]) => k));
-  const eventAt = (i) => { const k = EVENT_KEYS[Number(i)]; return k && allowed.has(k) ? k : null; };
+  const eventAt = (k) => (EVENTS[k] && allowed.has(k) ? k : null);
   let view = null, note = '';
   let m;
   if (data === 's') {
     view = await settingsView(user);
-  } else if ((m = /^t:(\d{1,2})$/.exec(data))) {
+  } else if ((m = /^t:([a-z_]{2,40})$/.exec(data))) {
     const ev = eventAt(m[1]);
     if (!ev) return answer('Кнопка устарела — откройте /settings заново.');
     const on = !(await userWants(user.id, ev, s)).enabled;
     await setPref(user, ev, { enabled: on }, s);
     note = on ? 'Включено' : 'Выключено';
     view = await settingsView(user);
-  } else if ((m = /^th:(\d{1,2})$/.exec(data))) {
+  } else if ((m = /^th:([a-z_]{2,40})$/.exec(data))) {
     const ev = eventAt(m[1]);
     if (!ev || !THRESHOLD_PRESETS[ev]) return answer('Кнопка устарела — откройте /settings заново.');
     view = await thresholdView(user, ev);
-  } else if ((m = /^tv:(\d{1,2}):(\d)$/.exec(data))) {
+  } else if ((m = /^tv:([a-z_]{2,40}):(\d)$/.exec(data))) {
     const ev = eventAt(m[1]);
     const p = ev && THRESHOLD_PRESETS[ev];
     const v = p?.values[Number(m[2])];

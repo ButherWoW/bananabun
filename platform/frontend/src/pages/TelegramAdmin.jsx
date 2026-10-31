@@ -9,8 +9,8 @@ const ghost = `${btn} bg-[color:var(--c2d3148)] text-gray-300 hover:bg-[color:va
 const input = 'bg-[color:var(--c0d0f1f)] border border-[color:var(--c2d3148)] rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500';
 const fmt = (d) => (d ? new Date(d).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const TZ = ['UTC', 'Europe/Moscow', 'Europe/Kyiv', 'Europe/Paris', 'Europe/Madrid', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Almaty', 'Asia/Bangkok', 'Asia/Makassar', 'Asia/Singapore'];
-const THRESHOLD_LABELS = { amount: 'Порог расхода', roi: 'ROI ниже, %', min_spend: 'При расходе от', minutes: 'Минут без связи' };
-const STATUS = { pending: 'в очереди', sent: 'отправлено', failed: 'не ушло' };
+const THRESHOLD_LABELS = { amount: 'Порог расхода', roi: 'ROI ниже, %', min_spend: 'При расходе от', min_clicks: 'При кликах от', minutes: 'Минут без связи' };
+const STATUS = { pending: 'в очереди', sending: 'отправляется', sent: 'отправлено', failed: 'не ушло', skipped: 'пропущено (отвязан / пауза)' };
 
 function CopyLine({ value }) {
   const [copied, setCopied] = useState(false);
@@ -58,11 +58,24 @@ function StatusBox() {
 }
 
 function PostbackBox() {
+  const qc = useQueryClient();
   const { data: p } = useQuery({ queryKey: ['tg-postbacks'], queryFn: telegram.admin.postbacks, refetchInterval: 20000 });
+  const [ask, setAsk] = useState(false);
+  const rotate = useMutation({ mutationFn: telegram.admin.rotatePostback, onSuccess: () => { setAsk(false); qc.invalidateQueries({ queryKey: ['tg-postbacks'] }); } });
   if (!p) return null;
   return (
     <Box title="Конверсии из Keitaro" hint="tg.admin.postback">
-      {p.url ? <CopyLine value={p.url} /> : <p className="text-xs text-amber-300">Секрет постбека появится на сервере после следующего деплоя.</p>}
+      {p.url && <CopyLine value={p.url} />}
+      {!ask ? (
+        <button className="text-xs text-gray-500 hover:text-gray-300 underline" onClick={() => setAsk(true)}>Выпустить новую ссылку</button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-amber-300">Старая ссылка сразу перестанет работать — новую нужно вставить в Keitaro.</span>
+          <button className="text-red-300 hover:text-red-200" disabled={rotate.isPending} onClick={() => rotate.mutate()}>Да, заменить</button>
+          <button className="text-gray-400 hover:text-gray-200" onClick={() => setAsk(false)}>Отмена</button>
+        </div>
+      )}
+      {rotate.isError && <p className="text-xs text-red-400">{rotate.error?.error}</p>}
       <p className="text-xs text-gray-500">Получено всего: <span className="text-gray-300">{p.counts?.total ?? 0}</span>, за сутки: <span className="text-gray-300">{p.counts?.day ?? 0}</span>, повторов: <span className="text-gray-300">{p.counts?.duplicates ?? 0}</span></p>
       {p.last?.length > 0 && (
         <div className="overflow-x-auto">
@@ -167,7 +180,7 @@ function MembersBox() {
           <tbody>
             {members.map(m => (
               <tr key={m.id} className="border-t border-[color:var(--c1e2240)] text-gray-300">
-                <td className="py-2 pr-3">{m.name || m.email}</td>
+                <td className="py-2 pr-3">{m.name || m.email}{m.no_keitaro_tag && <div className="text-[11px] text-amber-300">у байера не задан «Ник в Keitaro» — итог дня и деньги будут пустыми</div>}</td>
                 <td className="py-2 pr-3 text-gray-500">{m.role}</td>
                 <td className="py-2 pr-3">{m.linked ? `${m.username ? '@' + m.username : m.chat}${m.blocked_at ? ' · бот заблокирован' : m.muted ? ' · пауза' : ''}` : <span className="text-gray-600">не привязан</span>}</td>
                 <td className="py-2 pr-3">{fmt(m.linked_at)}</td>
