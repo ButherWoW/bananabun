@@ -4,8 +4,9 @@ import { CodeDisplay, cleanSecret, secondsLeft, totpCode, useTick } from '../com
 // One key per line: a bare key, «KEY» with spaces, or a 2FA-site link (…/KEY).
 function parseLines(text) {
   return String(text || '').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 50).map(line => {
-    const runs = line.toUpperCase().match(/[A-Z2-7]{4}(?: ?[A-Z2-7]{4}){3,31}/g) || [];
-    const key = runs.length ? cleanSecret(runs[runs.length - 1]) : '';
+    // Any length and any grouping: a key of 26 or 31 letters must not be cut to a multiple of 4.
+    const runs = (line.toUpperCase().match(/[A-Z2-7]+(?: [A-Z2-7]+)*/g) || []).map(cleanSecret).filter(r => r.length >= 16);
+    const key = runs.length ? runs[runs.length - 1] : '';
     return { line, key };
   });
 }

@@ -34,7 +34,8 @@ export function totp(secret, now = Date.now(), period = 30) {
 // Where a profile keeps its 2FA key: AdsPower's own 2FA field first, then the remark —
 // only when the key is labelled («2FA: …») or is part of a 2FA-site link. Unlabelled runs
 // in «login|password|…» lines are not guessed: a password or mail token must never be taken for a key.
-const B32 = '[A-Z2-7]{4}(?: ?[A-Z2-7]{4}){3,15}';
+// Unspaced of any length, or groups of 4 with a shorter last group: a key is never cut to a multiple of 4.
+const B32 = '[A-Z2-7]{16,128}|[A-Z2-7]{4}(?: [A-Z2-7]{4}){3,31}(?: [A-Z2-7]{1,3})?';
 const LABELLED = [
   new RegExp(`2\\s?fa\\s*[:=\\-–]\\s*(${B32})`, 'i'),
   new RegExp(`(?:2fa\\.(?:fb\\.tools|live|cn)|fb\\.tools/2fa)/(${B32})`, 'i'),
