@@ -33,6 +33,60 @@ function ThresholdInputs({ ev, onSave }) {
   );
 }
 
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const ZONES = ['Europe/Moscow', 'Europe/Kyiv', 'Europe/Berlin', 'Europe/Paris', 'Asia/Makassar', 'Asia/Dubai', 'UTC'];
+const hourSelect = 'bg-[color:var(--c0d0f1f)] border border-[color:var(--c2d3148)] rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500';
+
+function ScheduleBox({ schedule, onSave, saving, error }) {
+  const [v, setV] = useState(schedule);
+  useEffect(() => { setV(schedule); }, [schedule]);
+  const always = v.deliver_from == null || v.deliver_to == null;
+  const num = (x) => (x === '' ? null : Number(x));
+  const zones = v.timezone && !ZONES.includes(v.timezone) ? [v.timezone, ...ZONES] : ZONES;
+  return (
+    <Box title="Время доставки" hint="tg.schedule">
+      <label className="flex items-center gap-2 text-sm text-gray-300">
+        <input type="checkbox" checked={always} onChange={e => setV(s => ({ ...s, deliver_from: e.target.checked ? null : 9, deliver_to: e.target.checked ? null : 21 }))} />
+        Присылать круглосуточно
+      </label>
+      {!always && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+          с
+          <select className={hourSelect} value={v.deliver_from} onChange={e => setV(s => ({ ...s, deliver_from: num(e.target.value) }))}>
+            {HOURS.map(h => <option key={h} value={h}>{h}:00</option>)}
+          </select>
+          до
+          <select className={hourSelect} value={v.deliver_to} onChange={e => setV(s => ({ ...s, deliver_to: num(e.target.value) }))}>
+            {HOURS.map(h => <option key={h} value={h}>{h}:00</option>)}
+          </select>
+          <Hint k="tg.window" />
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+        Часовой пояс
+        <select className={hourSelect} value={v.timezone || ''} onChange={e => setV(s => ({ ...s, timezone: e.target.value || null }))}>
+          <option value="">как у команды ({schedule.team_timezone})</option>
+          {zones.map(z => <option key={z} value={z}>{z}</option>)}
+        </select>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+        Итог дня в
+        <select className={hourSelect} value={v.digest_hour ?? ''} onChange={e => setV(s => ({ ...s, digest_hour: num(e.target.value) }))}>
+          <option value="">как у команды ({schedule.team_digest_hour}:00)</option>
+          {HOURS.map(h => <option key={h} value={h}>{h}:00</option>)}
+        </select>
+      </div>
+      <div>
+        <button className={`${btn} bg-indigo-600 hover:bg-indigo-500 text-white`} disabled={saving}
+          onClick={() => onSave({ deliver_from: v.deliver_from, deliver_to: v.deliver_to, timezone: v.timezone, digest_hour: v.digest_hour })}>
+          {saving ? 'Сохраняю…' : 'Сохранить'}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </Box>
+  );
+}
+
 export default function TelegramPage() {
   const qc = useQueryClient();
   const { data: me, isLoading, error } = useQuery({ queryKey: ['telegram-me'], queryFn: telegram.me });
@@ -45,6 +99,7 @@ export default function TelegramPage() {
   const mute = useMutation({ mutationFn: telegram.mute, onSuccess: refresh });
   const setPref = useMutation({ mutationFn: telegram.setPref, onSuccess: refresh });
   const test = useMutation({ mutationFn: telegram.test });
+  const saveSchedule = useMutation({ mutationFn: telegram.setSchedule, onSuccess: refresh });
 
   useEffect(() => {
     if (!deepLink) { setQr(null); return; }
@@ -136,7 +191,13 @@ export default function TelegramPage() {
             ))}
           </div>
           {setPref.isError && <p className="text-xs text-red-400">{setPref.error?.error}</p>}
+          <p className="text-[11px] text-gray-500">То же самое можно менять прямо в боте: команда /settings или кнопка «⚙️ Настройки» под любым уведомлением.</p>
         </Box>
+
+        {me.linked && me.schedule && (
+          <ScheduleBox schedule={me.schedule} onSave={(v) => saveSchedule.mutate(v)} saving={saveSchedule.isPending}
+            error={saveSchedule.isError ? saveSchedule.error?.error : null} />
+        )}
       </div>
     </div>
   );

@@ -263,6 +263,7 @@ export const telegram = {
   unlink: () => api.delete('/api/telegram/me/link'),
   mute: (muted) => api.post('/api/telegram/me/mute', { muted }),
   setPref: (data) => api.put('/api/telegram/me/prefs', data),
+  setSchedule: (data) => api.put('/api/telegram/me/schedule', data),
   test: () => api.post('/api/telegram/me/test', {}),
   admin: {
     status: () => api.get('/api/telegram/admin/status'),
