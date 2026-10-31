@@ -67,7 +67,6 @@ export default function Dashboard() {
   });
 
   const keitaro = data?.keitaro || {};
-  const fb = data?.fb || {};
   const tt = data?.tiktok || {};
   const totals = data?.totals || {};
   const ccy = data?.currency || totals.currency;
@@ -144,20 +143,6 @@ export default function Dashboard() {
 
       {/* Platform rows */}
       <div className="flex flex-col gap-4">
-        <PlatformRow
-          icon="🔵"
-          name="Facebook Ads"
-          color="text-blue-400"
-          loading={isLoading}
-          notConnected={!isLoading && !fb.spend && !fb.clicks && !fb.impressions && !fb.leads}
-          metrics={[
-            { label: 'Расход', value: otherCurrencies(fb.other_currency) ? `${cash(fb.spend)} + ${otherCurrencies(fb.other_currency)}` : cash(fb.spend) },
-            { label: 'Клики', value: fmt(fb.clicks) },
-            { label: 'Показы', value: fmt(fb.impressions) },
-            { label: 'Лиды', value: fmt(fb.leads) },
-          ]}
-        />
-
         <PlatformRow
           icon="🎵"
           name="TikTok Ads"

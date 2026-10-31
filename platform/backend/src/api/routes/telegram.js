@@ -99,6 +99,17 @@ export async function telegramRoutes(app) {
     return { url: `https://t.me/${bot.username}?start=${code}`, expires_in: 900 };
   });
 
+  // A link for a team member to forward: Telegram lets a bot write only after the person presses Start themselves.
+  app.post('/admin/members/:id/link', lead, async (req, reply) => {
+    if (!botReady()) return reply.status(503).send({ error: 'Бот ещё не подключён' });
+    const { rows: [u] } = await db.query('SELECT id, name FROM users WHERE id = $1 AND workspace_id = $2', [req.params.id, req.user.ws]);
+    if (!u) return reply.status(404).send({ error: 'Участник не найден' });
+    let bot;
+    try { bot = await botInfo(); } catch (e) { return reply.status(502).send({ error: `Telegram не ответил: ${e.message}` }); }
+    const code = await createLinkCode(u.id);
+    return { url: `https://t.me/${bot.username}?start=${code}`, expires_in: 900, name: u.name };
+  });
+
   app.delete('/me/link', auth, async (req) => {
     await db.query('DELETE FROM telegram_links WHERE user_id = $1', [req.user.id]);
     return { ok: true };

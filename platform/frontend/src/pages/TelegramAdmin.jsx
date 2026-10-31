@@ -154,6 +154,9 @@ function SettingsBox() {
 function MembersBox() {
   const { data: members = [] } = useQuery({ queryKey: ['tg-members'], queryFn: telegram.admin.members });
   const test = useMutation({ mutationFn: telegram.admin.test });
+  const [invite, setInvite] = useState(null);
+  const link = useMutation({ mutationFn: telegram.admin.memberLink, onSuccess: (d) => setInvite(d) });
+  const copy = async (text) => { try { await navigator.clipboard.writeText(text); } catch { /* select manually */ } };
   return (
     <Box title="Кто подключил бота" hint="tg.admin.members">
       <div className="overflow-x-auto">
@@ -168,14 +171,29 @@ function MembersBox() {
                 <td className="py-2 pr-3 text-gray-500">{m.role}</td>
                 <td className="py-2 pr-3">{m.linked ? `${m.username ? '@' + m.username : m.chat}${m.blocked_at ? ' · бот заблокирован' : m.muted ? ' · пауза' : ''}` : <span className="text-gray-600">не привязан</span>}</td>
                 <td className="py-2 pr-3">{fmt(m.linked_at)}</td>
-                <td className="py-2 text-right">{m.linked && !m.blocked_at && (
-                  <button className="text-indigo-400 hover:text-indigo-300 disabled:opacity-50" disabled={test.isPending} onClick={() => test.mutate(m.id)}>Тест</button>
-                )}</td>
+                <td className="py-2 text-right whitespace-nowrap">
+                  {m.linked && !m.blocked_at && (
+                    <button className="text-indigo-400 hover:text-indigo-300 disabled:opacity-50" disabled={test.isPending} onClick={() => test.mutate(m.id)}>Тест</button>
+                  )}
+                  {(!m.linked || m.blocked_at) && (
+                    <button className="text-indigo-400 hover:text-indigo-300 disabled:opacity-50" disabled={link.isPending} onClick={() => link.mutate(m.id)}>Ссылка для привязки</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {invite && (
+        <div className="text-xs bg-[color:var(--c0f1117)] border border-[color:var(--c2d3148)] rounded-lg p-2.5 space-y-1.5">
+          <div className="text-gray-400">Перешлите {invite.name || 'участнику'} — откроет бота и нажмёт Start. Ссылка одноразовая, действует 15 минут.</div>
+          <div className="flex items-center gap-2">
+            <input readOnly value={invite.url} onFocus={e => e.target.select()} className={input + ' flex-1 min-w-0'} />
+            <button className="text-indigo-400 hover:text-indigo-300" onClick={() => copy(invite.url)}>Копировать</button>
+          </div>
+        </div>
+      )}
+      {link.isError && <p className="text-xs text-red-400">{link.error?.error}</p>}
       {test.isError && <p className="text-xs text-red-400">{test.error?.error}</p>}
       {test.isSuccess && <p className="text-xs text-emerald-400">Тестовое сообщение в очереди.</p>}
     </Box>

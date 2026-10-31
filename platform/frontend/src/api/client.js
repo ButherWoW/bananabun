@@ -272,6 +272,7 @@ export const telegram = {
     saveSettings: (data) => api.put('/api/telegram/admin/settings', data),
     log: (params) => api.get('/api/telegram/admin/log', { params }),
     test: (user_id) => api.post('/api/telegram/admin/test', { user_id }),
+    memberLink: (id) => api.post(`/api/telegram/admin/members/${encodeURIComponent(id)}/link`, {}),
     broadcast: (text) => api.post('/api/telegram/admin/broadcast', { text, confirm: true }),
     postbacks: () => api.get('/api/telegram/admin/postbacks'),
   },

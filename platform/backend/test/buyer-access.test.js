@@ -329,7 +329,7 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     assert.equal(running.statusCode,409,running.body);
     assert.match(running.json().error,/ещё у агента/);
   });
-  await t.test('dashboard counts each expense once and gives a buyer only their own TikTok and FB spend', async () => {
+  await t.test('dashboard spend is the tracker cost (no FB cabinet spend) and a buyer gets only their own TikTok', async () => {
     await db.query("UPDATE workspaces SET keitaro_url='https://kt.test.invalid', keitaro_api_key='test' WHERE id='w1'");
     await db.query("UPDATE users SET keitaro_tag='alice' WHERE id='a'");
     await db.query("UPDATE tiktok_accounts SET currency='USD' WHERE id='tta'");
@@ -354,17 +354,16 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     };
     try {
       const mine = await get('/api/analytics/dashboard?range=last_7_days','a');
-      assert.equal(mine.fb.spend,40,'FB spend from the cabinets of the buyer\'s own profiles');
-      assert.equal(mine.fb.spend_unknown,1);
-      assert.equal(mine.keitaro.cost_counted,20,'linked FB campaign cost is not added again; unread FB spend falls back to the tracker');
+      assert.equal(mine.fb,undefined,'FB cabinet spend is not shown');
+      assert.equal(mine.keitaro.cost_counted,60,'every tracker cost of the buyer\'s campaigns counts');
       assert.equal(mine.tiktok.spend,3,'only campaigns of the buyer\'s own TikTok pushes');
       assert.equal(mine.totals.spend,63);
       assert.equal(mine.totals.revenue,110);
 
       const all = await get('/api/analytics/dashboard?range=last_7_days','owner');
-      assert.equal(all.fb.spend,110);
+      assert.equal(all.fb,undefined);
       assert.equal(all.keitaro.cost,130);
-      assert.equal(all.keitaro.cost_counted,20);
+      assert.equal(all.keitaro.cost_counted,130);
       assert.equal(all.tiktok.spend,53);
       assert.equal(all.totals.spend,183);
     } finally {
@@ -391,12 +390,11 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     try {
       const all = await get('/api/analytics/dashboard?range=last_7_days','owner');
       assert.equal(all.currency,'USD');
-      assert.equal(all.fb.spend,40,'only the cabinet in the tracker currency');
-      assert.deepEqual(all.fb.other_currency,{ EUR:70 });
-      assert.equal(all.keitaro.cost_counted,70,'the EUR cabinet traffic keeps the tracker cost (65) plus unlinked traffic (5)');
+      assert.equal(all.fb,undefined,'FB cabinet spend is not used on the dashboard');
+      assert.equal(all.keitaro.cost_counted,110,'tracker cost of every campaign');
       assert.equal(all.tiktok.spend,0);
-      assert.deepEqual(all.totals.other_currency,{ EUR:120 });
-      assert.equal(all.totals.spend,110,'40 USD + 70 USD tracker cost, nothing in EUR');
+      assert.deepEqual(all.totals.other_currency,{ EUR:50 },'the EUR TikTok account is kept apart');
+      assert.equal(all.totals.spend,110,'tracker cost only, nothing in EUR added');
 
       const stats = await get('/api/keitaro/stats?range=last_7_days','owner');
       assert.equal(stats.currency,'USD');
