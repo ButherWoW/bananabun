@@ -159,4 +159,11 @@ test('Telegram bot: linking, webhook secret, recipients, queue, postbacks', { sk
     const s = await app.inject({ method: 'PUT', url: '/api/telegram/admin/settings', headers: as('owner'), payload: { digest_hour: 25 } });
     assert.equal(s.statusCode, 400);
   });
+  await t.test('owner gets a one-time link for a member of the team only', async () => {
+    const own = await app.inject({ method: 'POST', url: '/api/telegram/admin/members/b/link', headers: as('owner'), payload: {} });
+    assert.equal(own.statusCode, 200, own.body);
+    assert.match(own.json().url, /^https:\/\/t\.me\/bb_test_bot\?start=[A-Za-z0-9_-]+$/);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/telegram/admin/members/b/link', headers: as('a'), payload: {} })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/telegram/admin/members/nobody/link', headers: as('owner'), payload: {} })).statusCode, 404);
+  });
 });

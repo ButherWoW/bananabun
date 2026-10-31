@@ -258,7 +258,6 @@ export async function analyticsRoutes(app) {
   });
 
   // Unified dashboard: Keitaro + FB + TikTok totals for a date range.
-  const DASH_SPEND_COL = { today: 'spend_today', yesterday: 'spend_yesterday', last_7_days: 'spend_7d', last_30_days: 'spend_30d' };
   app.get('/dashboard', auth, async (req) => {
     const { range = 'today' } = req.query;
     const { ws } = req.user;
@@ -282,40 +281,13 @@ export async function analyticsRoutes(app) {
     const result = {
       currency: cur,
       keitaro: { clicks: 0, conversions: 0, revenue: 0, cost: 0 },
-      fb: { spend: 0, clicks: 0, impressions: 0, leads: 0 },
       tiktok: { spend: 0, clicks: 0, impressions: 0, conversions: 0 },
       totals: { spend: 0, revenue: 0, profit: 0, roi: null },
       period: { from, to, range },
     };
 
-    // Every expense is counted once. Facebook spend comes from the cabinets (fb_campaigns, read by the agent);
-    // a Keitaro campaign linked to one of them by sub_id_2 brings its clicks and leads, but its Keitaro cost is that
-    // same Facebook money, so it is not added again. Keitaro cost counts only for traffic not linked to Facebook
-    // (or when the Facebook spend for this period has not been read yet).
-    // Amounts are never converted: totals are in the tracker's currency; a cabinet in another currency keeps
-    // Keitaro's cost for its traffic, and its own spend is reported apart in `other_currency`.
-    const fbSpend = new Map();
-    const fbOther = {};
-    const fbOtherIds = new Set();
-    const addOther = (bucket, ccy, v) => { bucket[ccy] = Math.round(((bucket[ccy] || 0) + v) * 100) / 100; };
-    try {
-      const col = DASH_SPEND_COL[range] || 'spend_today';
-      const { rows } = await db.query(
-        `SELECT c.id, c.${col} AS spend, UPPER(COALESCE(c.currency, '')) AS currency FROM fb_campaigns c
-           JOIN fb_accounts fa ON fa.id = c.fb_account_id
-           LEFT JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
-          WHERE c.workspace_id = $1 AND ($2::text IS NULL OR LOWER(ap.group_name) = $2)`,
-        [ws, req.user.role === 'buyer' ? String(req.user.email || '').toLowerCase() : null]);
-      for (const r of rows) {
-        const spend = r.spend === null || r.spend === undefined ? null : Number(r.spend) || 0;
-        // Linked Keitaro cost stands in for it (null = «not usable here»), counted apart from unread spend.
-        if (spend !== null && r.currency && r.currency !== cur) { addOther(fbOther, r.currency, spend); fbSpend.set(String(r.id), null); fbOtherIds.add(String(r.id)); continue; }
-        fbSpend.set(String(r.id), spend);
-      }
-    } catch { /* FB data unavailable */ }
-    let fbTotal = 0, fbUnknown = 0, fbClicks = 0, fbLeads = 0;
-    for (const [id, v] of fbSpend) { if (v === null) { if (!fbOtherIds.has(id)) fbUnknown++; } else fbTotal += v; }
-
+    // Spend is the tracker's cost: the Facebook spend read from the cabinets is not reliable enough for the dashboard
+    // (owner's decision, 31.10), so it is neither shown nor added. Amounts are never converted.
     let keitaroCounted = 0;
     try {
       const wsData = await db.findOne('workspaces', { id: ws });
@@ -323,17 +295,13 @@ export async function analyticsRoutes(app) {
         const client = keitaroClient(wsData.keitaro_url, wsData.keitaro_api_key);
         const rows = await scopedRows(req, client, { from, to }, ['sub_id_2'], false);
         const tot = Object.fromEntries(RAW.map(m => [m, 0]));
-        for (const r of rows) {
-          for (const m of RAW) tot[m] += Number(r[m]) || 0;
-          const fbId = String(r.sub_id_2 ?? '');
-          const linked = fbSpend.has(fbId);
-          if (linked) { fbClicks += Number(r.clicks) || 0; fbLeads += (Number(r.leads) || 0) + (Number(r.sales) || 0); }
-          if (!linked || fbSpend.get(fbId) === null) keitaroCounted += Number(r.cost) || 0;
-        }
+        for (const r of rows) for (const m of RAW) tot[m] += Number(r[m]) || 0;
+        keitaroCounted = tot.cost;
         result.keitaro = { clicks: tot.clicks, conversions: tot.sales, revenue: tot.revenue, cost: tot.cost, cost_counted: keitaroCounted };
       }
     } catch { /* Keitaro unavailable */ }
-    result.fb = { spend: fbTotal, clicks: fbClicks, impressions: null, leads: fbLeads, campaigns: fbSpend.size, spend_unknown: fbUnknown, other_currency: fbOther };
+    delete result.fb;
+    const addOther = (bucket, ccy, v) => { bucket[ccy] = Math.round(((bucket[ccy] || 0) + v) * 100) / 100; };
 
     // TikTok via the Marketing API. A buyer gets only campaigns created by their own TikTok pushes.
     try {
@@ -370,11 +338,11 @@ export async function analyticsRoutes(app) {
       result.tiktok = { spend: ttSpend, clicks: ttClicks, impressions: ttImpressions, conversions: ttConversions, other_currency: ttOther };
     } catch { /* TikTok data unavailable */ }
 
-    const totalSpend = result.fb.spend + result.tiktok.spend + keitaroCounted;
+    const totalSpend = result.tiktok.spend + keitaroCounted;
     const revenue = result.keitaro.revenue;
     const profit = revenue - totalSpend;
     const otherCurrency = {};
-    for (const b of [result.fb.other_currency || {}, result.tiktok.other_currency || {}]) for (const [c, v] of Object.entries(b)) addOther(otherCurrency, c, v);
+    for (const [c, v] of Object.entries(result.tiktok.other_currency || {})) otherCurrency[c] = Math.round(((otherCurrency[c] || 0) + v) * 100) / 100;
     result.totals = { spend: totalSpend, revenue, profit, roi: totalSpend > 0 ? profit / totalSpend * 100 : null, currency: cur, other_currency: otherCurrency };
 
     return result;
