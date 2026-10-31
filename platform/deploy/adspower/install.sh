@@ -69,10 +69,15 @@ if [ -n "$DEB_URL" ]; then
   rm -rf "$DL"
 fi
 
-BIN="$(command -v adspower_global || true)"
-[ -n "$BIN" ] || BIN="$(find /opt /usr -maxdepth 4 -type f -name adspower_global 2>/dev/null | head -n1 || true)"
+# Our own link /usr/local/bin/adspower_global must never be taken for the client (it would point at itself).
+rm -f /usr/local/bin/adspower_global
+BIN=""
+for c in /usr/bin/adspower_global $(find /opt /usr/lib /usr/share -maxdepth 4 -name adspower_global \( -type f -o -type l \) 2>/dev/null); do
+  REAL="$(readlink -f "$c" 2>/dev/null || true)"
+  if [ -n "$REAL" ] && [ -f "$REAL" ] && [ -x "$REAL" ]; then BIN="$REAL"; break; fi
+done
 [ -n "$BIN" ] || { echo "adspower_global not found — run install with --deb-url" >&2; exit 1; }
-ln -sfn "$BIN" /usr/local/bin/adspower_global
+ln -s "$BIN" /usr/local/bin/adspower_global
 INSTALL_DIR="$(dirname "$(readlink -f "$BIN")")"
 echo "AdsPower: $BIN"
 
