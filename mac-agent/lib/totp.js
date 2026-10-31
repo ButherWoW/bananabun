@@ -32,8 +32,8 @@ export function totp(secret, now = Date.now(), period = 30) {
 }
 
 // Where a profile keeps its 2FA key: AdsPower's own 2FA field first, then the remark —
-// only when the key is labelled («2FA: …») or is part of a 2FA-site link. Unlabelled runs
-// in «login|password|…» lines are not guessed: a password or mail token must never be taken for a key.
+// when the key is labelled («2FA: …»), is part of a 2FA-site link, or is a whole field of an account line.
+// Runs inside other fields are not guessed: a password or mail token must never be taken for a key.
 // Unspaced of any length, or groups of 4 with a shorter last group: a key is never cut to a multiple of 4.
 const B32 = '[A-Z2-7]{16,128}|[A-Z2-7]{4}(?: [A-Z2-7]{4}){3,31}(?: [A-Z2-7]{1,3})?';
 const LABELLED = [
@@ -51,5 +51,9 @@ export function findKey(profile) {
     const m = r.match(re);
     if (m && base32(m[1])) return { key: m[1], source: 'заметка профиля (подписан как 2FA)' };
   }
+  // Account line «id|password|mail|…|token|id|KEY|…»: a whole field of 16–64 capital letters A–Z and digits 2–7.
+  // Passwords and tokens mix in lowercase or other symbols, so they are not taken for a key.
+  const fields = r.split(/[|;\t\r\n]/).map(f => f.trim()).filter(f => /^[A-Z2-7]{16,64}$/.test(f) && !/^[2-7]+$/.test(f));
+  if (fields.length) return { key: fields[fields.length - 1], source: 'заметка профиля (строка аккаунта)' };
   return null;
 }

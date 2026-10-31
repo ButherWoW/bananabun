@@ -17,3 +17,10 @@ test('a labelled key whose length is not a multiple of 4 is taken whole', () => 
   const spaced = 'GEZD GNBV GY3T QOJQ GEZD GNBV GY';
   assert.equal(findKey({ remark: `2fa: ${spaced}` }).key, spaced);
 });
+
+test('key found as a field of an AdsPower account line, not in the password or token', () => {
+  const line = `100000000000001|pw9xyz|someone@outlook.com|Pa55word@|x@inbox.com|Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/153.0 Safari/537.36|EAABsbCSabcDEFghiJKLMNOPQRSTUVWXYZ234567abcZDZD|100000000000001|${KEY}|1 авто: https://fex.net/ru/s/abc`;
+  assert.deepEqual(findKey({ remark: line }), { key: KEY, source: 'заметка профиля (строка аккаунта)' });
+  assert.equal(findKey({ remark: '100000000000001|Pa55word@|EAABsbCSabcDEFghiJKLMNOPQRSTUVWXYZ' }), null);
+  assert.equal(findKey({ remark: `login|pass|2FA: ${KEY.slice(0, 26)}` }).source, 'заметка профиля (подписан как 2FA)');
+});
