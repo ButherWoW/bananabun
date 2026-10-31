@@ -166,4 +166,94 @@ test('Telegram bot: linking, webhook secret, recipients, queue, postbacks', { sk
     assert.equal((await app.inject({ method: 'POST', url: '/api/telegram/admin/members/b/link', headers: as('a'), payload: {} })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/telegram/admin/members/nobody/link', headers: as('owner'), payload: {} })).statusCode, 404);
   });
+
+  const press = (chatId, data, fromId = chatId) => app.inject({ method: 'POST', url: '/api/telegram/webhook',
+    headers: { 'x-telegram-bot-api-secret-token': 'hook-secret-0123456789' },
+    payload: { update_id: 9, callback_query: { id: 'cb' + data, from: { id: fromId }, data, message: { message_id: 77, chat: { id: chatId, type: 'private' } } } } });
+
+  await t.test('a button toggles the event for that person and edits the same message', async () => {
+    const i = tg.EVENT_KEYS.indexOf('scrape_done');
+    calls.length = 0;
+    assert.equal((await press(1001, `t:${i}`)).statusCode, 200);
+    const [p] = (await db.query("SELECT enabled FROM telegram_prefs WHERE user_id='a' AND event='scrape_done'")).rows;
+    assert.equal(p.enabled, true, 'scrape_done is off by default, the press turns it on');
+    const edit = calls.find(c => c.method === 'editMessageText');
+    assert.ok(edit && String(edit.body.chat_id) === '1001' && edit.body.message_id === 77);
+    assert.ok(edit.body.reply_markup.inline_keyboard.flat().some(b => b.callback_data === `t:${i}` && b.text.startsWith('✅')));
+    assert.ok(calls.some(c => c.method === 'answerCallbackQuery'));
+    assert.ok(edit.body.reply_markup.inline_keyboard.flat().every(b => !b.callback_data || Buffer.byteLength(b.callback_data) <= 64));
+    const ti = tg.EVENT_KEYS.indexOf('spend_over');
+    await press(1001, `tv:${ti}:2`);
+    const [th] = (await db.query("SELECT threshold FROM telegram_prefs WHERE user_id='a' AND event='spend_over'")).rows;
+    assert.equal(th.threshold.amount, 100);
+  });
+
+  await t.test('buttons from a foreign or unlinked chat change nothing', async () => {
+    const before = (await db.query('SELECT COUNT(*)::int AS n FROM telegram_prefs')).rows[0].n;
+    const i = tg.EVENT_KEYS.indexOf('creatives_done');
+    calls.length = 0;
+    await press(5555, `t:${i}`);
+    await press(1001, `t:${i}`, 4444);
+    assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM telegram_prefs')).rows[0].n, before);
+    assert.ok(!calls.some(c => c.method === 'editMessageText'));
+    assert.equal(calls.filter(c => c.method === 'answerCallbackQuery' && c.body.show_alert).length, 2);
+    const agent = tg.EVENT_KEYS.indexOf('agent_offline');
+    await press(1001, `t:${agent}`);
+    assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM telegram_prefs WHERE user_id='a' AND event='agent_offline'")).rows[0].n, 0, 'a buyer cannot switch lead-only events');
+  });
+
+  await t.test('outside the window non-urgent messages wait and leave as one; urgent ones go at once', async () => {
+    await db.query('DELETE FROM telegram_outbox');
+    const h = new Date().getUTCHours();
+    const r = await app.inject({ method: 'PUT', url: '/api/telegram/me/schedule', headers: as('a'),
+      payload: { deliver_from: (h + 2) % 24, deliver_to: (h + 3) % 24, timezone: 'UTC' } });
+    assert.equal(r.statusCode, 200, r.body);
+    await tg.notify('scrape_failed', { workspace_id: 'test-ws', owner_user_id: 'a', dedupe_key: 'w1', payload: { error: 'one' } });
+    await tg.notify('push_failed', { workspace_id: 'test-ws', owner_user_id: 'a', dedupe_key: 'w2', payload: { title: 'two', error: 'x' } });
+    await tg.notify('conversion', { workspace_id: 'test-ws', owner_user_id: 'a', dedupe_key: 'w3', urgent: true, payload: { status: 'sale' } });
+    const rows = (await outbox()).filter(m => m.user_id === 'a');
+    const held = rows.filter(m => m.held);
+    assert.equal(held.length, 2);
+    assert.ok(held.every(m => new Date(m.next_at).getTime() > Date.now() + 60 * 60000), 'held until the window opens');
+    assert.ok(!rows.find(m => m.event === 'conversion').held);
+    calls.length = 0;
+    const later = new Date(held[0].next_at).getTime() + 120_000;
+    await tg.processOutbox({ now: later });
+    const toA = calls.filter(c => c.method === 'sendMessage' && String(c.body.chat_id) === '1001');
+    assert.equal(toA.length, 1, 'the urgent one first; the held ones go out on the next second');
+    await tg.processOutbox({ now: later + 2000 });
+    const all = calls.filter(c => c.method === 'sendMessage' && String(c.body.chat_id) === '1001');
+    assert.equal(all.length, 2);
+    assert.match(all[1].body.text, /Накопилось/);
+    assert.ok(all[1].body.text.includes('one') && all[1].body.text.includes('two'));
+    assert.equal((await outbox()).filter(m => m.user_id === 'a' && m.status === 'sent').length, 3);
+    assert.equal(all[0].body.reply_markup.inline_keyboard[0][0].callback_data, 's', 'every message carries the settings button');
+    await app.inject({ method: 'PUT', url: '/api/telegram/me/schedule', headers: as('a'), payload: { deliver_from: null, deliver_to: null } });
+    assert.equal((await app.inject({ method: 'PUT', url: '/api/telegram/me/schedule', headers: as('a'), payload: { deliver_from: 9 } })).statusCode, 400);
+  });
+
+  await t.test('a personal time zone moves the window', async () => {
+    const at = new Date(Date.UTC(2026, 9, 31, 1, 30));
+    assert.equal(tg.inWindow({ from: 9, to: 10, timezone: 'Asia/Makassar' }, 'UTC', at), true, '01:30 UTC is 09:30 in Makassar');
+    assert.equal(tg.inWindow({ from: 9, to: 10 }, 'UTC', at), false);
+    assert.equal(tg.inWindow({ from: 22, to: 2 }, 'UTC', at), true, 'a window across midnight');
+    assert.equal(tg.digestDue({ timezone: 'Asia/Makassar', digest_hour: 9 }, { timezone: 'UTC', digest_hour: 22 }, at), '2026-10-31');
+  });
+
+  await t.test('the webhook asks for button presses and an old webhook is fixed by itself', async () => {
+    calls.length = 0;
+    const r = await app.inject({ method: 'POST', url: '/api/telegram/admin/webhook', headers: as('owner'), payload: {} });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.deepEqual(calls.find(c => c.method === 'setWebhook').body.allowed_updates, ['message', 'callback_query']);
+    const saved = answer;
+    answer = (method) => method === 'getWebhookInfo' ? { ok: true, result: { url: tg.webhookUrl(), allowed_updates: ['message'] } } : { ok: true, result: true };
+    calls.length = 0;
+    assert.equal(await tg.ensureWebhookUpdates(), true);
+    assert.deepEqual(calls.find(c => c.method === 'setWebhook').body.allowed_updates, ['message', 'callback_query']);
+    answer = (method) => method === 'getWebhookInfo' ? { ok: true, result: { url: tg.webhookUrl(), allowed_updates: ['message', 'callback_query'] } } : { ok: true, result: true };
+    calls.length = 0;
+    assert.equal(await tg.ensureWebhookUpdates(), false);
+    assert.ok(!calls.some(c => c.method === 'setWebhook'));
+    answer = saved;
+  });
 });

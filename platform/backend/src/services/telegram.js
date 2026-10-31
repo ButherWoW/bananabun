@@ -31,6 +31,9 @@ export const EVENTS = {
   conversion: { label: 'Конверсия (постбек Keitaro)', roles: 'all', default: true },
 };
 
+export const EVENT_KEYS = Object.keys(EVENTS);
+export const eventsFor = (role) => Object.entries(EVENTS).filter(([, e]) => e.roles === 'all' || role !== 'buyer');
+
 // Events owner/lead also receive for every member of the team (besides their own).
 const DEFAULT_TEAM_EVENTS = ['push_failed', 'account_problem', 'agent_offline', 'conversion'];
 
@@ -187,7 +190,11 @@ export async function botInfo() {
   return me;
 }
 
-export const sendText = (chatId, text) => botApi('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
+export const sendText = (chatId, text, markup) => botApi('sendMessage', {
+  chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...(markup ? { reply_markup: markup } : {}),
+});
+// Under every notification: one tap to the settings menu.
+export const SETTINGS_BUTTON = { inline_keyboard: [[{ text: '⚙️ Настройки', callback_data: 's' }]] };
 
 /* ───── linking ───── */
 
@@ -224,14 +231,29 @@ function inQuiet(s, date = new Date()) {
   const h = localHour(s.timezone, date);
   return s.quiet_from < s.quiet_to ? h >= s.quiet_from && h < s.quiet_to : h >= s.quiet_from || h < s.quiet_to;
 }
-function quietEnd(s, date = new Date()) {
+// Personal delivery window «from … to …» in the person's zone (team zone by default); empty = around the clock.
+export function inWindow(sched = {}, teamTz = 'UTC', date = new Date()) {
+  const { from, to } = sched || {};
+  if (from == null || to == null || from === to) return true;
+  const h = localHour((sched && sched.timezone) || teamTz, date);
+  return from < to ? h >= from && h < to : h >= from || h < to;
+}
+// First moment a non-urgent message may go out: outside team quiet hours and inside the personal window.
+export function nextAllowed(s, sched = {}, date = new Date()) {
   let t = new Date(date);
-  for (let i = 0; i < 24 * 4 && inQuiet(s, t); i++) t = new Date(t.getTime() + 15 * 60000);
+  if (!inQuiet(s, t) && inWindow(sched, s.timezone, t)) return t;
+  t = new Date(Math.ceil(t.getTime() / (15 * 60000)) * 15 * 60000);
+  for (let i = 0; i < 24 * 4 * 2 && (inQuiet(s, t) || !inWindow(sched, s.timezone, t)); i++) t = new Date(t.getTime() + 15 * 60000);
   return t;
+}
+export async function userSchedules(userIds) {
+  if (!userIds.length) return new Map();
+  const { rows } = await db.query(`SELECT user_id, deliver_from, deliver_to, timezone, digest_hour FROM telegram_links WHERE user_id = ANY($1)`, [userIds]);
+  return new Map(rows.map(r => [r.user_id, { from: r.deliver_from, to: r.deliver_to, timezone: r.timezone, digest_hour: r.digest_hour }]));
 }
 
 // Effective personal setting for one user and event: personal override, else the team default.
-async function userWants(userId, event, s) {
+export async function userWants(userId, event, s) {
   const { rows: [p] } = await db.query('SELECT enabled, threshold FROM telegram_prefs WHERE user_id = $1 AND event = $2', [userId, event]);
   return {
     enabled: p ? p.enabled : !!s.events[event],
@@ -271,13 +293,16 @@ export async function notify(event, { workspace_id, owner_user_id = null, payloa
     const s = await workspaceSettings(workspace_id);
     const text = messageFor(event, payload);
     const key = dedupe_key || `${event}:${crypto.randomUUID()}`;
+    const scheds = await userSchedules(list.map(r => r.user_id));
+    const now = new Date();
     let n = 0;
     for (const r of list) {
-      const next = !urgent && inQuiet(s) ? quietEnd(s) : new Date();
+      const next = urgent ? now : nextAllowed(s, scheds.get(r.user_id), now);
+      const held = next.getTime() > now.getTime();
       const { rowCount } = await db.query(`
-        INSERT INTO telegram_outbox (workspace_id, user_id, chat_id, event, text, dedupe_key, urgent, next_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (dedupe_key) DO NOTHING`,
-      [workspace_id, r.user_id, r.chat_id, event, text, `${key}:${r.user_id}`.slice(0, 200), !!urgent, next]);
+        INSERT INTO telegram_outbox (workspace_id, user_id, chat_id, event, text, dedupe_key, urgent, next_at, held)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (dedupe_key) DO NOTHING`,
+      [workspace_id, r.user_id, r.chat_id, event, text, `${key}:${r.user_id}`.slice(0, 200), !!urgent, next, held]);
       n += rowCount;
     }
     if (n) wakeTelegram();
@@ -296,35 +321,56 @@ const MAX_ATTEMPTS = 5;
 const lastByChat = new Map();
 
 // Sends due messages: ~25/s in total, 1/s per chat; 429 waits retry_after; 403 (bot blocked) unlinks the chat.
+// Messages held outside a person's delivery window go out together as one summary when the window opens.
+const MAX_TEXT = 3900;
+export function batchText(texts) {
+  let out = `🕒 <b>Накопилось, пока было не время доставки: ${texts.length}</b>`, used = 0;
+  for (const t of texts) {
+    const next = `${out}\n\n— — —\n${t}`;
+    if (next.length > MAX_TEXT) break;
+    out = next; used++;
+  }
+  return used < texts.length ? `${out}\n\n…и ещё ${texts.length - used}. Подробности — на сайте.` : out;
+}
 export async function processOutbox({ now = Date.now(), sleep = (ms) => new Promise(r => setTimeout(r, ms)) } = {}) {
   if (!botReady()) return 0;
   const { rows } = await db.query(`
     SELECT * FROM telegram_outbox WHERE status = 'pending' AND next_at <= $1
-     ORDER BY urgent DESC, next_at, id LIMIT ${MAX_PER_SECOND * 2}`, [new Date(now)]);
+     ORDER BY urgent DESC, next_at, id LIMIT ${MAX_PER_SECOND * 4}`, [new Date(now)]);
+  const heldByChat = new Map();
+  for (const m of rows) if (m.held && !m.urgent) heldByChat.set(String(m.chat_id), [...(heldByChat.get(String(m.chat_id)) || []), m]);
+  const done = new Set();
   let sent = 0;
   const started = Date.now();
   for (const m of rows) {
     if (sent >= MAX_PER_SECOND) break;
+    if (done.has(m.id)) continue;
     const chat = String(m.chat_id);
     if (now - (lastByChat.get(chat) || 0) < 1000) continue;
-    const { rowCount } = await db.query(`UPDATE telegram_outbox SET attempts = attempts + 1 WHERE id = $1 AND status = 'pending' AND attempts = $2`, [m.id, m.attempts]);
-    if (!rowCount) continue;
+    const group = m.held && !m.urgent && (heldByChat.get(chat) || []).length > 1 ? heldByChat.get(chat) : [m];
+    group.forEach(g => done.add(g.id));
+    const { rows: claimed } = await db.query(`UPDATE telegram_outbox SET attempts = attempts + 1
+      WHERE id = ANY($1) AND status = 'pending' RETURNING id, attempts`, [group.map(g => g.id)]);
+    if (!claimed.length) continue;
+    const ids = claimed.map(c => c.id);
+    const mine = new Set(ids.map(String));
+    const texts = group.filter(g => mine.has(String(g.id))).map(g => g.text);
     lastByChat.set(chat, now);
     try {
-      await sendText(m.chat_id, m.text);
-      await db.query(`UPDATE telegram_outbox SET status = 'sent', sent_at = NOW(), error = NULL WHERE id = $1`, [m.id]);
+      await sendText(m.chat_id, texts.length > 1 ? batchText(texts) : texts[0], SETTINGS_BUTTON);
+      await db.query(`UPDATE telegram_outbox SET status = 'sent', sent_at = NOW(), error = NULL WHERE id = ANY($1)`, [ids]);
       sent++;
     } catch (e) {
       if (e.status === 429) {
         const wait = (Number(e.retryAfter) || 5) * 1000;
-        await db.query(`UPDATE telegram_outbox SET next_at = $2, error = $3, attempts = attempts - 1 WHERE id = $1`, [m.id, new Date(now + wait), String(e.message).slice(0, 300)]);
+        await db.query(`UPDATE telegram_outbox SET next_at = $2, error = $3, attempts = attempts - 1 WHERE id = ANY($1)`, [ids, new Date(now + wait), String(e.message).slice(0, 300)]);
       } else if (e.status === 403) {
-        await db.query(`UPDATE telegram_outbox SET status = 'failed', error = $2 WHERE id = $1`, [m.id, 'Бот заблокирован пользователем — привязка отключена']);
+        await db.query(`UPDATE telegram_outbox SET status = 'failed', error = $2 WHERE id = ANY($1)`, [ids, 'Бот заблокирован пользователем — привязка отключена']);
         await db.query(`UPDATE telegram_links SET blocked_at = NOW() WHERE chat_id = $1`, [m.chat_id]);
       } else {
-        const done = m.attempts + 1 >= MAX_ATTEMPTS;
-        await db.query(`UPDATE telegram_outbox SET status = $2, next_at = $3, error = $4 WHERE id = $1`,
-          [m.id, done ? 'failed' : 'pending', new Date(now + 5000 * 2 ** m.attempts), String(e.message).slice(0, 300)]);
+        const tries = Math.max(...claimed.map(c => c.attempts));
+        await db.query(`UPDATE telegram_outbox SET status = $2, next_at = $3, error = $4 WHERE id = ANY($1)`,
+          [ids, tries >= MAX_ATTEMPTS ? 'failed' : 'pending', new Date(now + 5000 * 2 ** (tries - 1)), String(e.message).slice(0, 300)]);
       }
     }
   }
@@ -429,19 +475,25 @@ async function checkMoney(ws, s, client) {
   }
 }
 
+// Each person gets the digest at their own hour in their own zone (the team's by default).
+export function digestDue(link, s, date = new Date()) {
+  const tz = link.timezone || s.timezone;
+  const hour = link.digest_hour ?? s.digest_hour;
+  return localHour(tz, date) === Number(hour) ? dayIn(tz, date) : null;
+}
 async function checkDigest(ws, s, client) {
-  if (!client || localHour(s.timezone) !== Number(s.digest_hour)) return;
-  const date = dayIn(s.timezone);
+  if (!client) return;
   const { rows: users } = await db.query(`
-    SELECT u.id, u.name, u.email, u.role, l.chat_id FROM telegram_links l JOIN users u ON u.id = l.user_id
+    SELECT u.id, u.name, u.email, u.role, l.chat_id, l.timezone, l.digest_hour FROM telegram_links l JOIN users u ON u.id = l.user_id
      WHERE u.workspace_id = $1 AND l.muted = false AND l.blocked_at IS NULL`, [ws]);
-  if (!users.length) return;
-  // Runs every 5 minutes during the digest hour; the per-user dedupe key keeps it to one message a day.
-  let all;
-  try { all = await buyerDay(ws, client); } catch { return; }
+  // Runs every 5 minutes; during a person's digest hour the per-user dedupe key keeps it to one message a day.
+  let all = null;
   for (const u of users) {
+    const date = digestDue(u, s);
+    if (!date) continue;
     const w = await userWants(u.id, 'daily_digest', s);
     if (!w.enabled) continue;
+    if (!all) { try { all = await buyerDay(ws, client); } catch { return; } }
     await notify('daily_digest', { workspace_id: ws, only: [{ user_id: u.id, chat_id: u.chat_id }], dedupe_key: `daily_digest:${ws}:${date}`,
       payload: digestFor(u, all, date) });
   }
@@ -513,8 +565,19 @@ async function tick() {
   try { await processOutbox(); } catch (e) { console.error('[telegram] outbox', e.message); } finally { busy = false; }
 }
 export function wakeTelegram() { if (timer) queueMicrotask(tick); }
+export const ALLOWED_UPDATES = ['message', 'callback_query'];
+// The webhook already points at us but was set without button presses: set it again, so nobody has to press anything.
+export async function ensureWebhookUpdates() {
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!botReady() || !secret) return false;
+  const w = await botApi('getWebhookInfo');
+  if (w.url !== webhookUrl() || !Array.isArray(w.allowed_updates) || w.allowed_updates.includes('callback_query')) return false;
+  await botApi('setWebhook', { url: webhookUrl(), secret_token: secret, allowed_updates: ALLOWED_UPDATES, drop_pending_updates: false });
+  return true;
+}
 export function startTelegramWorker() {
   if (timer) return () => {};
+  ensureWebhookUpdates().catch(e => console.error('[telegram] webhook check', e.message));
   timer = setInterval(tick, 1000); timer.unref?.();
   checkTimer = setInterval(() => runChecks().catch(() => {}), 5 * 60 * 1000); checkTimer.unref?.();
   return () => { clearInterval(timer); clearInterval(checkTimer); timer = null; };

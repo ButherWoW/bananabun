@@ -3,17 +3,18 @@ import { adminOnly } from '../../middleware/access.js';
 import {
   EVENTS, botReady, botInfo, botApi, createLinkCode, redeemLinkCode, workspaceSettings, cleanSettings, cleanThreshold,
   notify, statusText, siteUrl, maskChat, webhookUrl, secretMatches, postbackSecret, postbackUrl, acceptPostback, wakeTelegram,
+  eventsFor, ALLOWED_UPDATES, SETTINGS_BUTTON,
 } from '../../services/telegram.js';
+import { handleCallback, sendSettings } from '../../services/telegram-bot.js';
 
 const HELP = [
   'Я присылаю уведомления Bananabun: заливы, модерация, деньги, скрап, креативы, конверсии.',
   '/status — мои цифры за сегодня',
   '/stop — поставить уведомления на паузу, /start — снова включить',
-  '/settings — что присылать',
+  '/settings — что присылать и когда (кнопками)',
   '/help — это сообщение',
 ].join('\n');
 
-const eventsFor = (role) => Object.entries(EVENTS).filter(([, e]) => e.roles === 'all' || role !== 'buyer');
 
 export async function telegramRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
@@ -28,20 +29,25 @@ export async function telegramRoutes(app) {
   app.post('/webhook', async (req, reply) => {
     const want = process.env.TELEGRAM_WEBHOOK_SECRET || '';
     if (!secretMatches(String(req.headers['x-telegram-bot-api-secret-token'] || ''), want)) return reply.status(401).send({ ok: false });
+    if (req.body?.callback_query) {
+      await handleCallback(req.body.callback_query).catch(e => req.log.warn({ err: e.message }, 'telegram button'));
+      return { ok: true };
+    }
     const msg = req.body?.message;
     const chatId = msg?.chat?.id;
     const text = String(msg?.text || '').trim();
     if (!chatId || !text.startsWith('/') || msg.chat.type !== 'private') return { ok: true };
     const [cmdRaw, arg] = text.split(/\s+/, 2);
     const cmd = cmdRaw.split('@')[0].toLowerCase();
-    const say = (t) => botApi('sendMessage', { chat_id: chatId, text: t, parse_mode: 'HTML', disable_web_page_preview: true }).catch(e => req.log.warn({ err: e.message }, 'telegram reply'));
+    const say = (t, markup) => botApi('sendMessage', { chat_id: chatId, text: t, parse_mode: 'HTML', disable_web_page_preview: true, ...(markup ? { reply_markup: markup } : {}) }).catch(e => req.log.warn({ err: e.message }, 'telegram reply'));
     const { rows: [linked] } = await db.query('SELECT user_id, muted FROM telegram_links WHERE chat_id = $1', [chatId]);
 
     if (cmd === '/start' && arg) {
       const userId = await redeemLinkCode(arg, chatId, msg.from?.username);
-      await say(userId ? `Готово, Telegram привязан. Настройки: ${siteUrl()}/telegram\n\n${HELP}` : 'Код не подошёл: он одноразовый и живёт 15 минут. Создайте новый на сайте: меню профиля → «Telegram».');
+      if (userId) await say(`Готово, Telegram привязан.\n\n${HELP}`, SETTINGS_BUTTON);
+      else await say('Код не подошёл: он одноразовый и живёт 15 минут. Создайте новый на сайте: меню профиля → «Telegram».');
     } else if (cmd === '/start') {
-      if (linked) { await db.query('UPDATE telegram_links SET muted = false, blocked_at = NULL WHERE chat_id = $1', [chatId]); await say('Уведомления снова включены.'); }
+      if (linked) { await db.query('UPDATE telegram_links SET muted = false, blocked_at = NULL WHERE chat_id = $1', [chatId]); await say('Уведомления снова включены.', SETTINGS_BUTTON); }
       else await say(`Чтобы получать уведомления, привяжите Telegram на сайте: ${siteUrl()}/telegram`);
     } else if (cmd === '/stop') {
       if (linked) { await db.query('UPDATE telegram_links SET muted = true WHERE chat_id = $1', [chatId]); await say('Уведомления на паузе. /start — включить снова.'); }
@@ -49,7 +55,7 @@ export async function telegramRoutes(app) {
     } else if (cmd === '/status') {
       await say(linked ? await statusText(linked.user_id) : 'Этот чат не привязан.');
     } else if (cmd === '/settings') {
-      await say(`Что присылать — на сайте: ${siteUrl()}/telegram`);
+      if (!linked || !(await sendSettings(chatId).catch(() => false))) await say(`Чтобы настроить уведомления, привяжите Telegram на сайте: ${siteUrl()}/telegram`);
     } else {
       await say(HELP);
     }
@@ -72,7 +78,7 @@ export async function telegramRoutes(app) {
   app.get('/me', auth, async (req) => {
     const s = await workspaceSettings(req.user.ws);
     const [{ rows: [link] }, { rows: prefs }] = await Promise.all([
-      db.query('SELECT username, linked_at, muted, blocked_at FROM telegram_links WHERE user_id = $1', [req.user.id]),
+      db.query('SELECT username, linked_at, muted, blocked_at, deliver_from, deliver_to, timezone, digest_hour FROM telegram_links WHERE user_id = $1', [req.user.id]),
       db.query('SELECT event, enabled, threshold FROM telegram_prefs WHERE user_id = $1', [req.user.id]),
     ]);
     const mine = new Map(prefs.map(p => [p.event, p]));
@@ -81,6 +87,11 @@ export async function telegramRoutes(app) {
     return {
       bot_ready: botReady(), bot_username: bot?.username || null,
       linked: !!link, username: link?.username || null, linked_at: link?.linked_at || null, muted: !!link?.muted, blocked: !!link?.blocked_at,
+      schedule: {
+        deliver_from: link?.deliver_from ?? null, deliver_to: link?.deliver_to ?? null,
+        timezone: link?.timezone || null, digest_hour: link?.digest_hour ?? null,
+        team_timezone: s.timezone, team_digest_hour: s.digest_hour,
+      },
       events: eventsFor(req.user.role).map(([key, e]) => ({
         key, label: e.label,
         enabled: mine.has(key) ? mine.get(key).enabled : !!s.events[key],
@@ -117,6 +128,22 @@ export async function telegramRoutes(app) {
 
   app.post('/me/mute', auth, async (req) => {
     await db.query('UPDATE telegram_links SET muted = $2 WHERE user_id = $1', [req.user.id, !!req.body?.muted]);
+    return { ok: true };
+  });
+
+  // Personal delivery time. null = around the clock / as the team.
+  app.put('/me/schedule', auth, async (req, reply) => {
+    const { rows: [l] } = await db.query('SELECT user_id FROM telegram_links WHERE user_id = $1', [req.user.id]);
+    if (!l) return reply.status(400).send({ error: 'Сначала привяжите Telegram' });
+    const b = req.body || {};
+    const hour = (v) => (v === null || v === '' || v === undefined ? null : Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 23 ? Number(v) : NaN);
+    const from = hour(b.deliver_from), to = hour(b.deliver_to), dh = hour(b.digest_hour);
+    if ([from, to, dh].some(Number.isNaN)) return reply.status(400).send({ error: 'Час — от 0 до 23' });
+    if ((from === null) !== (to === null)) return reply.status(400).send({ error: 'Укажите и начало, и конец окна (или оставьте оба пустыми)' });
+    let tz = b.timezone ? String(b.timezone) : null;
+    if (tz) { try { new Intl.DateTimeFormat('ru', { timeZone: tz }); } catch { return reply.status(400).send({ error: 'Неизвестный часовой пояс' }); } }
+    await db.query('UPDATE telegram_links SET deliver_from = $2, deliver_to = $3, timezone = $4, digest_hour = $5 WHERE user_id = $1',
+      [req.user.id, from, to, tz, dh]);
     return { ok: true };
   });
 
@@ -163,10 +190,10 @@ export async function telegramRoutes(app) {
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (!secret) return reply.status(503).send({ error: 'Нет секрета webhook на сервере' });
     try {
-      await botApi('setWebhook', { url: webhookUrl(), secret_token: secret, allowed_updates: ['message'], drop_pending_updates: false });
+      await botApi('setWebhook', { url: webhookUrl(), secret_token: secret, allowed_updates: ALLOWED_UPDATES, drop_pending_updates: false });
       await botApi('setMyCommands', { commands: [
         { command: 'status', description: 'Мои цифры за сегодня' }, { command: 'stop', description: 'Пауза уведомлений' },
-        { command: 'start', description: 'Включить уведомления' }, { command: 'settings', description: 'Что присылать' }, { command: 'help', description: 'Помощь' },
+        { command: 'start', description: 'Включить уведомления' }, { command: 'settings', description: 'Что присылать и когда' }, { command: 'help', description: 'Помощь' },
       ] }).catch(() => {});
       return { ok: true, url: webhookUrl() };
     } catch (e) { return reply.status(502).send({ error: e.message }); }
