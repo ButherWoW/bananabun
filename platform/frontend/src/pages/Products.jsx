@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { products as productsApi, scrape as scrapeApi, presets as presetsApi, keitaro as keitaroApi, folders as foldersApi } from '../api/client.js';
 import ProductSidePanel, { NewProductPanel } from '../components/ProductSidePanel.jsx';
-import GenerateCreativesModal from '../components/GenerateCreativesModal.jsx';
 import GenerateLandingModal from '../components/GenerateLandingModal.jsx';
 import clsx from 'clsx';
 import Hint from '../components/Hint.jsx';
@@ -279,7 +278,6 @@ export default function ProductsPage() {
   const [sortOrder, setSortOrder] = useState('new');
   const [shown, setShown] = useState(24);
   const [showNew, setShowNew] = useState(false);
-  const [creativesFor, setCreativesFor] = useState(null);
   const [generateLandingFor, setGenerateLandingFor] = useState(null);
   const { data: folderList = [] } = useQuery({ queryKey: ['folders'], queryFn: foldersApi.list });
 
@@ -424,7 +422,7 @@ export default function ProductsPage() {
                 selected={selected.includes(product.id)}
                 onToggle={() => toggleSelect(product.id)}
                 onDelete={() => { if (window.confirm(`Удалить товар «${(product.title || '').slice(0, 60)}»?`)) deleteMutation.mutate([product.id]); }}
-                onCreatives={() => setCreativesFor(product.id)}
+                onCreatives={() => navigate(`/creatives?product_id=${encodeURIComponent(product.id)}`)}
                 onGenerateLanding={() => setGenerateLandingFor({ id: product.id, title: product.title || '' })}
                 onRetry={() => retryMutation.mutate(product.id)}
                 retrying={retryMutation.isPending && retryMutation.variables === product.id}
@@ -449,13 +447,6 @@ export default function ProductsPage() {
           product={activeProduct}
           onClose={() => setActiveProduct(null)}
           initialTab={initialTab}
-        />
-      )}
-      {creativesFor && (
-        <GenerateCreativesModal
-          productId={creativesFor}
-          onClose={() => setCreativesFor(null)}
-          onDone={() => navigate(`/creatives?product_id=${creativesFor}`)}
         />
       )}
       {generateLandingFor && (
