@@ -1,4 +1,5 @@
 import { db } from '../db/client.js';
+import { botReady, fbSnapshot, moderationChanges } from './telegram.js';
 
 // Moderation of one ad, in words: approved | review | rejected | issues, with Facebook's reason.
 export function adModeration(ad) {
@@ -54,6 +55,8 @@ export async function saveFbCampaigns(ws, userId, data) {
   const readActs = Array.isArray(data?.read_acts) ? data.read_acts.map(String) : [];
   await db.query(`DELETE FROM fb_campaigns WHERE fb_account_id = $1 AND act_id = ANY($2) AND NOT (id = ANY($3))`,
     [accountId, readActs, ids]);
+  // Telegram: compare moderation and cabinet status with the previous snapshot to report only new problems.
+  const before = botReady() ? await fbSnapshot(ws, ids).catch(() => null) : null;
   for (const c of campaigns) {
     if (!/^\d+$/.test(String(c.id))) continue;
     const adsets = Array.isArray(c.adsets) ? c.adsets : [];
@@ -74,6 +77,10 @@ export async function saveFbCampaigns(ws, userId, data) {
        c.account_status != null ? Number(c.account_status) : null, Number(c.spend_cap) > 0 ? Number(c.spend_cap) : null,
        // An older agent doesn't read 3/30 days: unknown, not zero.
        c.spend_3d !== undefined ? Number(c.spend_3d) || 0 : null, c.spend_30d !== undefined ? Number(c.spend_30d) || 0 : null]);
+  }
+  if (before) {
+    const after = await fbSnapshot(ws, ids).catch(() => null);
+    if (after) await moderationChanges(ws, before, [...after.values()]).catch(() => {});
   }
   // Cabinet limits for the «where to push» hint.
   for (const a of Array.isArray(data?.accounts_info) ? data.accounts_info : []) {

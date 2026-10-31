@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { generateCreative, closeCreativeBrowser } from './creative-generator.js';
 import { generateFluxCreative } from './flux-generator.js';
 import { renderBanner } from './banner-renderer.js';
+import { creativeBatchFinished } from './telegram.js';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 async function pruneFluxCache(maxAgeMs = 30 * 24 * 3600 * 1000) {
@@ -72,6 +73,7 @@ export async function runCreativeJobs({ render = generateCreative, limit = 2 } =
         WHERE id=$2 AND render_token=$3 AND status='processing'`,
       [JSON.stringify({ error:String(error.message || 'Ошибка рендера').slice(0,500),...spendFields(error) }),record.id,token]);
     }
+    await creativeBatchFinished(record).catch(() => {});
   }
 }
 

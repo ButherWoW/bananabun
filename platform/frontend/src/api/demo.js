@@ -622,6 +622,7 @@ const GET = [
   [/^\/api\/admin\/users$/, () => PEOPLE],
   [/^\/api\/tiktok\/accounts$/, () => TIKTOK_ACCOUNTS],
   [/^\/api\/mcp-tokens$/, () => []],
+  [/^\/api\/telegram\/me$/, () => ({ bot_ready: false, bot_username: null, linked: false, events: [] })],
   [/^\/api\/tiktok\/pixels\/[^/]+$/, () => []],
 ];
 

@@ -27,6 +27,8 @@ import TikTokPage from './pages/TikTok.jsx';
 import GooglePage from './pages/Google.jsx';
 import DashboardPage from './pages/Dashboard.jsx';
 import McpPage from './pages/Mcp.jsx';
+import TelegramPage from './pages/Telegram.jsx';
+import TelegramAdminPage from './pages/TelegramAdmin.jsx';
 
 export default function App() {
   const { user, loading, loadMe } = useAuth();
@@ -65,6 +67,8 @@ export default function App() {
         <Route path="/google" element={<GooglePage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/mcp" element={<McpPage />} />
+        <Route path="/telegram" element={<TelegramPage />} />
+        <Route path="/telegram-admin" element={<RoleRoute roles={['owner', 'lead']} element={<TelegramAdminPage />} />} />
       </Routes>
     </Layout>
   );

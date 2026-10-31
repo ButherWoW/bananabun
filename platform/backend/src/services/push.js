@@ -2,6 +2,7 @@ import { db } from '../db/client.js';
 import { keitaroClient } from './keitaro.js';
 import { enqueueAgentJob } from '../api/routes/agent.js';
 import { logFbEvent } from './fb-campaigns.js';
+import { emit } from './telegram.js';
 
 // Absolute links go under the panel's base (https://nespizdili.lol/banana); old /uploads and /api keep working.
 const PUBLIC_URL = (process.env.PUBLIC_BASE_URL || process.env.PUBLIC_URL || 'https://nespizdili.lol').replace(/\/$/, '');
@@ -31,6 +32,20 @@ async function log(pushId, step, data = {}) {
 
 async function fail(pushId, error) {
   await db.query(`UPDATE pushes SET status='failed', error=$1, finished_at=NOW() WHERE id=$2`, [error, pushId]);
+  await pushEvent(pushId, false, error);
+}
+
+// Telegram: the push's author (and owner/lead for failures) hears how it ended. One message per attempt end.
+async function pushEvent(pushId, ok, error, ads) {
+  const { rows: [p] } = await db.query(`
+    SELECT p.workspace_id, p.created_by, p.params, p.finished_at, pr.title FROM pushes p LEFT JOIN products pr ON pr.id = p.product_id
+     WHERE p.id = $1`, [pushId]);
+  if (!p) return;
+  emit(ok ? 'push_done' : 'push_failed', {
+    workspace_id: p.workspace_id, owner_user_id: p.created_by,
+    dedupe_key: `push:${pushId}:${ok ? 'done' : 'failed'}:${new Date(p.finished_at || Date.now()).getTime()}`,
+    payload: { title: p.title || p.params?.campaign_name, cabinet: p.params?.cabinet_external_id, error, ads },
+  });
 }
 
 function translit(s) {
@@ -234,6 +249,7 @@ export async function applyPushResult(ws, pushId, ok, error, data, jobId) {
      data?.adset_ids ? JSON.stringify(data.adset_ids) : null, data?.ad_ids ? JSON.stringify(data.ad_ids) : null, pushId, ws, jobId ?? null]);
   if (!rowCount) return;
   await log(pushId, ok ? 'done' : 'fb_failed', { campaign_id: data?.campaign_id, ads: data?.ad_ids?.length || 0, ...(ok ? {} : { error }) });
+  await pushEvent(pushId, ok, error, data?.ad_ids?.length || 0).catch(() => {});
   if (data?.campaign_id) {
     const { rows: [p] } = await db.query(`SELECT created_by FROM pushes WHERE id=$1 AND workspace_id=$2`, [pushId, ws]);
     await logFbEvent(ws, data.campaign_id, p?.created_by, ok
