@@ -1,0 +1,41 @@
+name: Server diagnostics
+
+# Manual, read-only: where files are served from and where the backend looks for them. Prints no secrets.
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'A file under /uploads to look for, e.g. images/B0HCPTNRZJ-0-U9wEX44Y77.jpg'
+        required: false
+        default: ''
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FILE: ${{ inputs.file }}
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H 148.230.98.232 >> ~/.ssh/known_hosts
+      - name: Check input
+        run: printf '%s' "$FILE" | grep -Eq '^([A-Za-z0-9_-]+/)?[A-Za-z0-9_.-]*$' || { echo "bad file name"; exit 1; }
+      - name: Diagnose
+        run: |
+          ssh root@148.230.98.232 FILE="$FILE" bash -s <<'REMOTE'
+          echo "== backend unit"; systemctl cat affiliate-backend 2>/dev/null | grep -E '^(WorkingDirectory|ExecStart|EnvironmentFile|User)='
+          echo "== UPLOADS_DIR in backend .env"; grep -E '^UPLOADS_DIR=' /opt/affiliate/backend/.env || echo "(not set)"
+          echo "== UPLOADS_DIR in the running backend"; PID=$(systemctl show -p MainPID --value affiliate-backend); tr '\0' '\n' < /proc/$PID/environ 2>/dev/null | grep -E '^UPLOADS_DIR=' || echo "(not in process env)"; readlink /proc/$PID/cwd
+          echo "== nginx rules for /uploads"; grep -rn -A4 'location[^{]*/uploads' /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | grep -vE 'ssl_|add_header' | head -40
+          for d in /opt/affiliate/uploads /opt/affiliate/backend/uploads; do
+            printf '== %s: ' "$d"; [ -d "$d" ] && { printf 'images=%s refs=%s logos=%s' "$(ls "$d/images" 2>/dev/null | wc -l)" "$(ls "$d/references" 2>/dev/null | wc -l)" "$(ls "$d/logos" 2>/dev/null | wc -l)"; [ -n "$FILE" ] && { [ -e "$d/$FILE" ] && printf ' | file: YES' || printf ' | file: no'; }; echo; } || echo "missing"
+          done
+          REMOTE
