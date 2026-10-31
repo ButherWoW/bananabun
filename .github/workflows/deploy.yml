@@ -76,7 +76,7 @@ jobs:
           cat > /tmp/env.patch << 'EOF'
           PUBLIC_URL=https://nespizdili.lol
           PUBLIC_BASE_URL=https://nespizdili.lol/banana
-          UPLOADS_DIR=/opt/affiliate/uploads
+          UPLOADS_DIR=/opt/affiliate/backend/uploads
           TIKTOK_REDIRECT_URI=https://nespizdili.lol/api/tiktok/oauth/callback
           EOF
           [ -n "$TIKTOK_APP_ID" ]     && echo "TIKTOK_APP_ID=$TIKTOK_APP_ID"         >> /tmp/env.patch
@@ -148,6 +148,15 @@ jobs:
           # Public demo under /banana/demo/: own build, made-up data, no API calls.
           npx vite build --mode demo --logLevel error
           echo "demo built"
+
+          # Uploads live in /opt/affiliate/backend/uploads (scraped photos, served to the site). From 29.10 to 31.10
+          # UPLOADS_DIR pointed at /opt/affiliate/uploads; anything written there is copied back, never overwriting.
+          if [ -d /opt/affiliate/uploads ] && [ -n "$(ls -A /opt/affiliate/uploads 2>/dev/null)" ]; then
+            mkdir -p /opt/affiliate/backend/uploads
+            cp -rn /opt/affiliate/uploads/. /opt/affiliate/backend/uploads/
+            chown -R affiliate:affiliate /opt/affiliate/backend/uploads
+            echo "uploads merged from /opt/affiliate/uploads"
+          fi
 
           systemctl restart affiliate-backend
           for i in 1 2 3 4 5 6 7 8 9 10; do
