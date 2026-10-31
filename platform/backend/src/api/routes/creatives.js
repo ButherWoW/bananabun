@@ -29,8 +29,11 @@ async function saveImageUpload(req, dir, prefix) {
 }
 
 const REF_KEY = /^\/uploads\/references\/ref_[A-Za-z0-9_-]{16}\.(jpg|jpeg|png|webp)$/;
-function cleanReferenceKeys(keys) {
-  return (Array.isArray(keys) ? keys : []).filter(k => typeof k === 'string' && REF_KEY.test(k)).slice(0, 4);
+// A reference is an uploaded reference or one of this product's own scraped photos (never any other path).
+export function cleanReferenceKeys(keys, product = {}) {
+  const raw = Array.isArray(product.images) ? product.images : (() => { try { return JSON.parse(product.images || '[]'); } catch { return []; } })();
+  const own = new Set(raw.map(i => (typeof i === 'string' ? i : i?.url)).filter(u => typeof u === 'string' && u.startsWith('/uploads/')));
+  return (Array.isArray(keys) ? keys : []).filter(k => typeof k === 'string' && (REF_KEY.test(k) || own.has(k))).slice(0, 4);
 }
 
 // Accepts both our preset shape {idea, format:"1:1", count:"5"} and FA's {prompt, aspect_ratio, n}.
@@ -57,7 +60,7 @@ export async function startGeneration({ ws, userId, product, body, batchKey, dry
   if (logo_key && !/^\/uploads\/logos\/logo_[A-Za-z0-9_-]{16}\.(jpg|jpeg|png|webp)$/.test(logo_key)) throw Object.assign(new Error('Загрузите свой логотип'), { statusCode: 400 });
   if (logo_key) await localImageData(logo_key);
   const product_id = product.id;
-  const references = cleanReferenceKeys(body.reference_keys);
+  const references = cleanReferenceKeys(body.reference_keys, product);
 
   // Allow FLUX source only when API key is configured
   const requestedSource = body.source === 'flux' && fluxEnabled() ? 'flux'

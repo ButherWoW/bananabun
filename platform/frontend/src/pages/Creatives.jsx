@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api, products as productsApi, creatives as creativesApi, presets as presetsApi } from '../api/client.js';
@@ -26,6 +26,20 @@ export default function CreativesPage() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const productIdFilter = searchParams.get('product_id') || '';
+  // Opening creatives for a product puts its scraped photos into the references; they can be removed or added to.
+  const { data: refProduct } = useQuery({
+    queryKey: ['product', productIdFilter],
+    queryFn: () => productsApi.get(productIdFilter),
+    enabled: !!productIdFilter,
+  });
+  const prefilledFor = useRef(null);
+  useEffect(() => {
+    if (!refProduct || refProduct.id !== productIdFilter || prefilledFor.current === productIdFilter) return;
+    prefilledFor.current = productIdFilter;
+    const raw = Array.isArray(refProduct.images) ? refProduct.images : (() => { try { return JSON.parse(refProduct.images || '[]'); } catch { return []; } })();
+    const own = raw.map(i => (typeof i === 'string' ? i : i?.url)).filter(u => typeof u === 'string' && u.startsWith('/uploads/'));
+    setReferences(own.slice(0, 4).map(key => ({ key, url: `${API_BASE}${key}` })));
+  }, [refProduct, productIdFilter]);
 
   // Generation form state
   const [idea, setIdea] = useState('');
@@ -37,7 +51,7 @@ export default function CreativesPage() {
   const [uploading, setUploading] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
-  const [references, setReferences] = useState([]); // max 4
+  const [references, setReferences] = useState([]); // max 4: { key, url } from the product or { file, url } uploaded
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showFmtMenu, setShowFmtMenu] = useState(false);
   const [showCountMenu, setShowCountMenu] = useState(false);
@@ -186,7 +200,7 @@ export default function CreativesPage() {
         setSavedLogoKey(logo_key);
       }
       const reference_keys = [];
-      for (const reference of references) reference_keys.push(await uploadImage(reference.file,'upload-reference'));
+      for (const reference of references) reference_keys.push(reference.key || await uploadImage(reference.file,'upload-reference'));
       generateMutation.mutate({
         source: useFlux && sourceInfo?.generative_ai ? 'flux' : useBanner ? 'banner' : 'local', product_id:productIdFilter, language, format:format.replace(':','x'), count,
         headline:idea.trim() || undefined, diversify, logo_key,
