@@ -15,6 +15,7 @@ const NAV_MAIN = [
   { path: '/products', label: 'Связки', icon: '⚡' },
   { path: '/campaigns', label: 'Залив', icon: '🚀' },
   { path: '/accounts', label: 'Аккаунты', icon: '👤' },
+  { path: '/2fa', label: 'Коды 2FA', icon: '🔐' },
 ];
 const NAV_ADS = [
   { path: '/tiktok', label: 'TikTok Ads', icon: '🎵' },
@@ -28,7 +29,6 @@ const NAV_MORE = [
   { path: '/ad-presets', label: 'Пресеты (старые)', icon: '⚙️' },
   { path: '/analytics', label: 'Аналитика', icon: '📈' },
   { path: '/search', label: 'Поиск на Amazon', icon: '🔍' },
-  { path: '/2fa', label: 'Коды 2FA', icon: '🔐' },
 ];
 // Public demo build: a strip over the whole panel so nobody mistakes it for the real one.
 const DEMO = import.meta.env.MODE === 'demo';
