@@ -131,6 +131,11 @@ sed -e "s#@NODE@#$NODE#g" -e "s#@NODE_FLAGS@#$NODE_FLAGS#g" "$HERE/bananabun-age
 install -m 644 "$HERE/bananabun-adspower-fw.service" /etc/systemd/system/bananabun-adspower-fw.service
 systemctl daemon-reload
 systemctl enable --now bananabun-adspower-fw.service >/dev/null
+# The site must still reach its own backend as its own user; if not, take the loopback rule back off.
+if id -u affiliate >/dev/null 2>&1 && ! runuser -u affiliate -- curl -s -o /dev/null --max-time 5 http://127.0.0.1:4000/health; then
+  echo "site lost loopback access — removing the outbound rule" >&2
+  for ipt in iptables ip6tables; do command -v "$ipt" >/dev/null && "$ipt" -w -F BB_ADSPOWER_OUT 2>/dev/null || true; done
+fi
 systemctl enable adspower.service bananabun-agent.service >/dev/null
 systemctl restart adspower.service
 sleep 5

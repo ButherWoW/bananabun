@@ -96,7 +96,12 @@ jobs:
           echo "== listeners of adsagent outside loopback (must be empty)"
           UID_ADS="$(id -u adsagent 2>/dev/null || echo none)"
           ss -ltnHe 2>/dev/null | grep "uid:$UID_ADS " | awk '{print $4}' | grep -Ev '^(127\.0\.0\.1|\[::1\]|\[::ffff:127\.0\.0\.1\]):' || echo "(none)"
-          echo "== firewall"; iptables -S BB_ADSPOWER 2>/dev/null || echo "chain missing"
+          echo "== firewall"; iptables -S BB_ADSPOWER 2>/dev/null || echo "chain missing"; iptables -S BB_ADSPOWER_OUT 2>/dev/null || echo "out chain missing"
+          echo "== isolation (site user)"
+          if id -u affiliate >/dev/null 2>&1; then
+            printf 'site backend: %s (must be 200)\n' "$(runuser -u affiliate -- curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:4000/health)"
+            printf 'AdsPower API: %s (must be 000 = refused)\n' "$(runuser -u affiliate -- curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:50325/status)"
+          fi
           echo "== agent, last lines"; journalctl -u bananabun-agent -n 15 --no-pager -o cat 2>/dev/null | hide
           REMOTE
 
