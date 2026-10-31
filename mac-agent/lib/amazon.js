@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { api } from './adspower.js';
 import { connect } from './cdp.js';
 import { ROOT, sleep } from './common.js';
+import { assertAllowedSerial, loadAllowed } from './allowlist.js';
 
 // Product pages are opened in a normal AdsPower profile, like a person would.
 // A robot check is never solved or bypassed: the job stops and asks for a human.
@@ -16,6 +17,7 @@ export async function scrapeProfilePort() {
     throw new Error('Не выбран профиль AdsPower для скрапа: запишите его номер в ~/scripts/.scrape_profile');
   }
   const serial = fs.readFileSync(PROFILE_FILE, 'utf8').trim();
+  assertAllowedSerial(loadAllowed(), serial);
   let info = await api('GET', `/api/v1/browser/active?serial_number=${encodeURIComponent(serial)}`);
   if (info.status !== 'Active') info = await api('GET', `/api/v1/browser/start?serial_number=${encodeURIComponent(serial)}&open_tabs=1`);
   if (!info.debug_port) throw new Error('AdsPower не отдал порт отладки профиля');

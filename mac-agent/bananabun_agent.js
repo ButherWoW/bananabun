@@ -12,6 +12,7 @@ import { scrapeMarketplace } from './lib/marketplaces.js';
 import { scrapeWalmart } from './lib/walmart.js';
 import { findKey, totp } from './lib/totp.js';
 import { ROOT, readSecret, sleep, redact, readJson, writeJson } from './lib/common.js';
+import { assertAllowedUser, filterProfiles, isAllowedSerial, loadAllowed } from './lib/allowlist.js';
 
 const SERVER = process.env.BANANABUN_URL || 'https://nespizdili.lol/banana';
 const KEY = readSecret(process.env.BANANABUN_AGENT_KEY_FILE || path.join(ROOT, '.bananabun_agent_key'), 'Bananabun agent key');
@@ -44,6 +45,19 @@ function safe(p) {
   };
 }
 
+// Profiles outside the allow-list (if one is set) are never reported, opened or read.
+const allowed = loadAllowed();
+const serials = new Map();
+async function serialOf(uid) {
+  if (!serials.has(uid)) {
+    const data = await api('GET', `/api/v1/user/list?user_id=${uid}&page_size=1`);
+    const p = (data.list || []).find((x) => x.user_id === uid);
+    if (p) serials.set(uid, String(p.serial_number));
+  }
+  return serials.get(uid);
+}
+const guardUser = (uid) => assertAllowedUser(allowed, uid, serialOf);
+
 async function syncProfiles() {
   const profiles = [];
   for (let page = 1; ; page++) {
@@ -51,7 +65,8 @@ async function syncProfiles() {
     profiles.push(...data.list.map(safe));
     if (data.list.length < 100) break;
   }
-  const r = await server('POST', '/api/agent/ingest', { profiles });
+  for (const p of profiles) serials.set(p.user_id, String(p.serial_number));
+  const r = await server('POST', '/api/agent/ingest', { profiles: filterProfiles(allowed, profiles) });
   return { total: profiles.length, synced: r.synced };
 }
 
@@ -74,6 +89,7 @@ async function runPush(job) {
   const { push_id: pushId, user_id: uid, spec } = job.payload || {};
   if (!/^[A-Za-z0-9_-]+$/.test(String(pushId || ''))) throw new Error('bad push_id');
   if (!/^[a-z0-9]+$/i.test(String(uid || ''))) throw new Error('bad user_id');
+  await guardUser(uid);
   const dir = path.join(ROOT, 'push', pushId);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const stateFile = path.join(dir, 'state.json');
@@ -116,6 +132,7 @@ async function runJob(job) {
   if (job.type === 'open') {
     const uid = String(job.payload?.user_id || '');
     if (!/^[a-z0-9]+$/i.test(uid)) throw new Error('bad user_id');
+    await guardUser(uid);
     const active = await api('GET', `/api/v1/browser/active?user_id=${uid}`);
     if (active.status === 'Active') return { already_open: true };
     await api('GET', `/api/v1/browser/start?user_id=${uid}&open_tabs=1`);
@@ -124,12 +141,14 @@ async function runJob(job) {
   if (job.type === 'check_profile') {
     const uid = String(job.payload?.user_id || '');
     if (!/^[a-z0-9]+$/i.test(uid)) throw new Error('bad user_id');
+    await guardUser(uid);
     const { graph } = await openFbSession(uid);
     try { return await readFbAssets(graph); } finally { graph.close(); }
   }
   if (job.type === 'fb_campaigns' || job.type === 'fb_edit') {
     const uid = String(job.payload?.user_id || '');
     if (!/^[a-z0-9]+$/i.test(uid)) throw new Error('bad user_id');
+    await guardUser(uid);
     const { graph } = await openFbSession(uid);
     try {
       return job.type === 'fb_campaigns'
@@ -140,6 +159,7 @@ async function runJob(job) {
   if (job.type === 'totp') {
     const uid = String(job.payload?.user_id || '');
     if (!/^[a-z0-9]+$/i.test(uid)) throw new Error('bad user_id');
+    await guardUser(uid);
     const data = await api('GET', `/api/v1/user/list?user_id=${uid}&page_size=1`);
     const p = (data.list || []).find(x => x.user_id === uid);
     if (!p) throw new Error('Профиль не найден в AdsPower');
@@ -152,6 +172,7 @@ async function runJob(job) {
   if (job.type === 'close') {
     const uid = String(job.payload?.user_id || '');
     if (!/^[a-z0-9]+$/i.test(uid)) throw new Error('bad user_id');
+    await guardUser(uid);
     await api('GET', `/api/v1/browser/stop?user_id=${uid}`);
     return { closed: true };
   }
@@ -193,6 +214,7 @@ async function tick() {
 async function refreshOpenProfiles() {
   const active = await api('GET', '/api/v1/browser/local-active').catch(() => ({ list: [] }));
   for (const b of active.list || []) {
+    if (allowed && !isAllowedSerial(allowed, await serialOf(b.user_id).catch(() => null))) continue;
     const session = await openFbSession(b.user_id, { open: false }).catch(() => null);
     if (!session) continue;
     try {
@@ -224,7 +246,7 @@ async function fastLane() {
 
 let lastSync = 0;
 let lastCampaigns = 0;
-log(`agent → ${SERVER}`);
+log(`agent → ${SERVER}${allowed ? `, профили: ${[...allowed].join(', ')}` : ''}`);
 if (!once) fastLane();
 for (;;) {
   try {
