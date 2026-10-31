@@ -164,7 +164,7 @@ async function runJob(job) {
     const p = (data.list || []).find(x => x.user_id === uid);
     if (!p) throw new Error('Профиль не найден в AdsPower');
     const k = findKey(p);
-    if (!k) throw new Error('Ключ 2FA не найден: нет поля 2FA в AdsPower и нет строки «2FA: …» в заметке профиля');
+    if (!k) throw new Error('Ключ 2FA не найден: нет поля 2FA в AdsPower, а в заметке профиля нет ни «2FA: КЛЮЧ», ни ключа отдельным полем строки аккаунта (…|токен|id|КЛЮЧ)');
     const t = totp(k.key);
     // Only the code leaves this Mac — never the key.
     return { ...t, source: k.source, at: Date.now() };
