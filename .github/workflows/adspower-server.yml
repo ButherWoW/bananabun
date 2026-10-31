@@ -50,7 +50,7 @@ jobs:
           if [ -n "$DEB_URL" ] && ! printf '%s' "$DEB_URL" | grep -Eq '^https://([A-Za-z0-9-]+\.)*adspower\.(com|net|io)/[A-Za-z0-9._/%+-]+\.deb(\?[A-Za-z0-9=&._%-]*)?$'; then
             echo "deb_url must be an https .deb link on an adspower domain"; exit 1
           fi
-          if ! printf '%s' "$ALLOWED" | grep -Eq '^[0-9, ]*$'; then
+          if [ -n "$ALLOWED" ] && ! printf '%s' "$ALLOWED" | grep -Eq '^[0-9, ]*$'; then
             echo "allowed_serials: numbers and commas only"; exit 1
           fi
 
