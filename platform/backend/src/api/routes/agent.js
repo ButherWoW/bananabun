@@ -139,8 +139,12 @@ export async function agentRoutes(app) {
     const { type, payload } = rows[0];
     if (type === 'check_profile' && payload?.account_id) {
       if (ok && Array.isArray(result.data?.bms)) await saveAssets(req.agentWs, payload.account_id, result.data.bms);
-      await db.query(`UPDATE fb_accounts SET status = $1, status_label = $2, last_checked_at = NOW() WHERE id = $3 AND workspace_id = $4`,
-        [ok ? 'active' : 'error', ok ? null : result.error, payload.account_id, req.agentWs]);
+      const CODE_MAP = { fb_logged_out: 'logged_out', fb_checkpoint: 'checkpoint', fb_timeout: 'timeout' };
+      const fbSession = ok ? 'ok' : (CODE_MAP[result.data?.code] || 'unknown');
+      await db.query(
+        `UPDATE fb_accounts SET status = $1, status_label = $2, last_checked_at = NOW(), fb_session = $5, fb_session_at = NOW() WHERE id = $3 AND workspace_id = $4`,
+        [ok ? 'active' : 'error', ok ? null : result.error, payload.account_id, req.agentWs, fbSession]
+      );
     }
     if (type === 'fb_campaigns' && ok) await saveFbCampaigns(req.agentWs, payload?.user_id, result.data);
     if (type === 'fb_edit') {
