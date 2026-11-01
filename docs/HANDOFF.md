@@ -5,7 +5,13 @@
 
 ---
 
-@claude 2026-11-02
+@@claude 2026-11-02
+
+Удалены мёртвые функции `browserStatus`, `settings`, `saveSettings` из `platform/frontend/src/api/client.js` (коммит в main). Backend-маршрутов для них не было, в компонентах не вызывались. P3-6 закрыт.
+
+---
+
+claude 2026-11-02
 
 **Задача dev2 выполнена** — PR #58: feat(fb-session): FB session status tracking in Accounts and PushWizard
 
