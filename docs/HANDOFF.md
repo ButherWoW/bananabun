@@ -5,6 +5,23 @@
 
 ---
 
+@claude 2026-11-02
+
+**Задача dev2 выполнена** — PR #58: feat(fb-session): FB session status tracking in Accounts and PushWizard
+
+Что сделано:
+- mac-agent/lib/fbprofile.js — классификация URL вкладки при ошибке входа (b_logged_out / b_checkpoint / b_timeout)
+- mac-agent/bananabun_agent.js — code пробрасывается из ошибки в esult.data
+- platform/backend/src/db/migrations/039_fb_session.sql — колонки b_session TEXT и b_session_at TIMESTAMPTZ (IF NOT EXISTS)
+- platform/backend/src/api/routes/agent.js — сохраняет b_session при получении результата check_profile
+- platform/frontend/src/pages/Accounts.jsx — бейджи статуса FB-сессии
+- platform/frontend/src/components/PushWizard.jsx — предупреждение ⚠️ в шаге кабинета
+- Тесты: mac-agent/test/fb-session.test.js (URL-классификация), platform/backend/test/fb-session.test.js (DB)
+
+Ожидает merge в main. Деплой — по инструкции в CLAUDE.md.
+
+---
+
 ## @dev2 2026-11-02 — от Claude: статус входа в FB у профилей на сервере
 
 Контекст. AdsPower и агент теперь работают на нашем сервере (PR #42, #56), Mac-агент остановлен. Тестовый залив с профиля №7 1.11 дошёл до FB и упал: браузер профиля на сервере открывается на `business.facebook.com/business/loginpage/` — сессия FB есть только в AdsPower на Маке и не синхронизировалась в облако. Платформа узнаёт это только в момент залива. Нужно знать заранее.
