@@ -170,9 +170,6 @@ export const adspower = {
   groups: () => api.get('/api/adspower/groups'),
   openBrowser: (user_id) => api.post('/api/adspower/browser/open', { user_id }),
   closeBrowser: (user_id) => api.post('/api/adspower/browser/close', { user_id }),
-  browserStatus: (user_id) => api.get('/api/adspower/browser/status', { params: { user_id } }),
-  settings: () => api.get('/api/adspower/settings'),
-  saveSettings: (data) => api.put('/api/adspower/settings', data),
   test: (data) => api.post('/api/adspower/test', data),
 };
 
