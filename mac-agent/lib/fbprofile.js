@@ -31,7 +31,7 @@ export async function openFbSession(userId, { open = true } = {}) {
 
   const cdp = await connect(tab.webSocketDebuggerUrl);
   let token = '';
-  for (let i = 0; i < 30 && !token; i++) {
+  for (let i = 0; i < 60 && !token; i++) {
     const r = await cdp.send('Runtime.evaluate', {
       expression: `(() => { const t = window.__accessToken; return typeof t === 'string' && t.startsWith('EAA') ? t : '' })()`,
       returnByValue: true,
@@ -39,8 +39,16 @@ export async function openFbSession(userId, { open = true } = {}) {
     token = r?.result?.value || '';
     if (!token) await sleep(1000);
   }
+  if (!token) {
+    // Where the tab ended up (login, checkpoint…): host, path and title only, never the query or cookies.
+    const r = await cdp.send('Runtime.evaluate', {
+      expression: `(location.host + location.pathname).slice(0, 120) + ' «' + document.title.slice(0, 80) + '»'`,
+      returnByValue: true,
+    }).catch(() => null);
+    cdp.close();
+    throw new Error(`В профиле не открылся Ads Manager: проверьте, что Facebook залогинен (вкладка: ${r?.result?.value || 'не прочитать'})`);
+  }
   cdp.close();
-  if (!token) throw new Error('В профиле не открылся Ads Manager: проверьте, что Facebook залогинен');
 
   const profile = await api('GET', `/api/v1/user/list?user_id=${userId}&page=1&page_size=1`);
   const serial = profile.list?.[0]?.serial_number || userId;
