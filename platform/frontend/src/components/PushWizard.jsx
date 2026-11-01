@@ -268,6 +268,8 @@ function cabinetHint(c) {
 
 const cabinetReady = (c) => (!c.ready_kind || c.ready_kind === 'ready') && !c.payment_missing && (c.limit_left == null || c.limit_left > 0);
 
+const FB_SESSION_HINT = 'Открой профиль в AdsPower на Маке, проверь, что Ads Manager открывается, и закрой профиль — сессия уйдёт на сервер. Потом нажми «Проверить» в разделе Аккаунты.';
+
 function StepCabinet({ opts, form, set }) {
   const cabinets = opts.cabinets || [];
   const selected = cabinets.find(c => c.id === form.cabinet_id);
@@ -275,6 +277,17 @@ function StepCabinet({ opts, form, set }) {
   const batch = form.extra_cabinets || [];
   const inBatch = (id) => batch.some(b => b.cabinet_id === id);
   const canAdd = selected && form.page_id && form.pixel_id && !inBatch(selected.id);
+
+  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => api.get('/api/accounts'), staleTime: 60000 });
+  const fbSessionOf = (cabId) => {
+    for (const acc of accounts) {
+      for (const bm of acc.bms || []) {
+        if ((bm.cabinets || []).some(c => c?.id === cabId)) return acc.fb_session;
+      }
+    }
+    return null;
+  };
+  const selectedSession = selected ? fbSessionOf(selected.id) : null;
 
   // The current choice joins the batch; the form is cleared for the next cabinet.
   const addToBatch = () => {
@@ -353,6 +366,12 @@ function StepCabinet({ opts, form, set }) {
         ))}
         {!batch.length && <div className="text-[10px] text-gray-600">Один кабинет — просто выбери его выше. Для нескольких: выбери кабинет, страницу и пиксель, нажми «добавить в пачку», затем следующий.</div>}
       </div>
+
+      {selectedSession && selectedSession !== 'ok' && (
+        <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          ⚠️ {selectedSession === 'logged_out' ? 'Профиль не залогинен в Facebook на сервере.' : 'Сессия Facebook на сервере недоступна.'} {FB_SESSION_HINT}
+        </div>
+      )}
     </div>
   );
 }
