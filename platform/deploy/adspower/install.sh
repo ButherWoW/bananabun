@@ -117,6 +117,8 @@ chmod 600 "$SCRIPTS/.adspower_key" "$SCRIPTS/.bananabun_agent_key"
 touch "$ETC/adspower.env"
 grep -v '^ADSPOWER_API_KEY=' "$ETC/adspower.env" > "$ETC/adspower.env.new" || true
 printf 'ADSPOWER_API_KEY=%s\n' "$(cat "$SCRIPTS/.adspower_key")" >> "$ETC/adspower.env.new"
+# Profile browsers need a display even when the client runs headless: a virtual one unless set by hand.
+grep -q '^ADSPOWER_XVFB=' "$ETC/adspower.env.new" || echo 'ADSPOWER_XVFB=1' >> "$ETC/adspower.env.new"
 mv "$ETC/adspower.env.new" "$ETC/adspower.env"
 chmod 600 "$ETC/adspower.env"
 if [ "$SET_ALLOWED" = 1 ] || [ ! -f "$ETC/agent.env" ]; then
