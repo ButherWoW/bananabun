@@ -336,7 +336,8 @@ export async function pushRoutes(app) {
            json_agg(DISTINCT jsonb_build_object('id', p.id, 'external_id', p.external_id, 'name', p.name))
              FILTER (WHERE p.id IS NOT NULL) as pages
          FROM fb_cabinets c
-         LEFT JOIN fb_pages p ON p.bm_id = c.bm_id AND p.workspace_id = c.workspace_id
+         -- Pages of the cabinet's BM and every page of the same FB user: FB lets a user advertise any page they manage.
+         LEFT JOIN fb_pages p ON p.workspace_id = c.workspace_id AND (p.bm_id = c.bm_id OR p.fb_account_id = c.fb_account_id)
          LEFT JOIN fb_accounts fa ON fa.id = c.fb_account_id
          LEFT JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
          LEFT JOIN LATERAL (
