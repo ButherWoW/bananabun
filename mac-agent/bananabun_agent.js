@@ -109,7 +109,9 @@ async function runPush(job) {
     return summary();
   } catch (e) {
     save();
-    throw Object.assign(e, { data: summary() });
+    const d = summary();
+    if (e.data?.code) d.code = e.data.code;
+    throw Object.assign(e, { data: d });
   } finally { graph.close(); }
 }
 
