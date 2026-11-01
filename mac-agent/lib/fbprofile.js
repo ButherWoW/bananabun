@@ -41,12 +41,23 @@ export async function openFbSession(userId, { open = true } = {}) {
   }
   if (!token) {
     // Where the tab ended up (login, checkpoint…): host, path and title only, never the query or cookies.
-    const r = await cdp.send('Runtime.evaluate', {
-      expression: `(location.host + location.pathname).slice(0, 120) + ' «' + document.title.slice(0, 80) + '»'`,
-      returnByValue: true,
-    }).catch(() => null);
+    const [locR, pathR] = await Promise.all([
+      cdp.send('Runtime.evaluate', {
+        expression: `(location.host + location.pathname).slice(0, 120) + ' «' + document.title.slice(0, 80) + '»'`,
+        returnByValue: true,
+      }).catch(() => null),
+      cdp.send('Runtime.evaluate', { expression: `location.pathname`, returnByValue: true }).catch(() => null),
+    ]);
     cdp.close();
-    throw new Error(`В профиле не открылся Ads Manager: проверьте, что Facebook залогинен (вкладка: ${r?.result?.value || 'не прочитать'})`);
+    const tabInfo = locR?.result?.value || 'не прочитать';
+    const pathname = pathR?.result?.value || '';
+    const code = /\/(login|loginpage)/i.test(pathname) ? 'fb_logged_out'
+      : /\/checkpoint/i.test(pathname) ? 'fb_checkpoint'
+      : 'fb_timeout';
+    throw Object.assign(
+      new Error(`В профиле не открылся Ads Manager: проверьте, что Facebook залогинен (вкладка: ${tabInfo})`),
+      { data: { code } }
+    );
   }
   cdp.close();
 
