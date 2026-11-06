@@ -405,7 +405,7 @@ export async function campaignRoutes(app) {
   });
 
   app.post('/', auth, async (req) => {
-    const { name, product_id, daily_budget, targeting } = req.body;
+    const { name, product_id, daily_budget, targeting } = req.body || {};
     const { ws, id: userId } = req.user;
 
     return db.insert('campaigns', {

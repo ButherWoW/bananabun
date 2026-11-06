@@ -58,9 +58,9 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     INSERT INTO fb_accounts(id,workspace_id,ap_profile_id) VALUES ('fba','w1','apa'),('fbb','w1','apb');
     INSERT INTO fb_cabinets(id,workspace_id,fb_account_id,external_id,name) VALUES
       ('cab_a1','w1','fba','act_111','A1'),('cab_a2','w1','fba','act_222','A2'),('cab_b','w1','fbb','act_333','B');
-    INSERT INTO fb_campaigns(id,workspace_id,fb_account_id,act_id,name,status,currency,adsets) VALUES
-      ('fbc_a','w1','fba','act_111','A camp','PAUSED','EUR','[{"id":"as_a","name":"A #1","daily_budget":1000,"ads":[{"id":"ad_a","name":"A ad"}]}]'),
-      ('fbc_b','w1','fbb','act_333','B camp','PAUSED','EUR','[{"id":"as_b","name":"B #1","daily_budget":1000,"ads":[{"id":"ad_b","name":"B ad"}]}]');
+    INSERT INTO fb_campaigns(id,workspace_id,fb_account_id,act_id,name,status,currency,spend_today,spend_yesterday,adsets) VALUES
+      ('fbc_a','w1','fba','act_111','A camp','PAUSED','EUR',10,7,'[{"id":"as_a","name":"A #1","daily_budget":1000,"ads":[{"id":"ad_a","name":"A ad"}]}]'),
+      ('fbc_b','w1','fbb','act_333','B camp','PAUSED','EUR',100,200,'[{"id":"as_b","name":"B #1","daily_budget":1000,"ads":[{"id":"ad_b","name":"B ad"}]}]');
   `);
   const users = Object.fromEntries((await db.query('SELECT id,workspace_id AS ws,role,email FROM users')).rows.map(u => [u.id, u]));
   app.decorate('authenticate', async (req, reply) => {
@@ -217,7 +217,8 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
       assert.equal(data.compare.totals.revenue, 0, 'bob\'s previous revenue must not leak into the buyer comparison');
       assert.deepEqual(data.compare.change.revenue, { abs: 30, pct: null });
       assert.deepEqual(data.rows[0].change.profit, { abs: 30, pct: 300 });
-      assert.deepEqual(ranges.slice(-2), [{ from: '2026-10-08', to: '2026-10-14' }, { from: '2026-10-01', to: '2026-10-07' }]);
+      // The two Keitaro calls run in parallel: compare as a set, not by arrival order.
+      assert.deepEqual(ranges.slice(-2).sort((x, y) => x.from.localeCompare(y.from)), [{ from: '2026-10-01', to: '2026-10-07' }, { from: '2026-10-08', to: '2026-10-14' }]);
 
       const all = (await req('POST', '/api/analytics/query', 'owner', plan)).json();
       assert.equal(all.rows.length, 2);
@@ -240,7 +241,12 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
     // Spend and revenue left /overview (they were stale); only the daily series carries money now.
     assert.equal(data.total_spend,undefined);
     assert.equal((await get('/api/analytics/overview','owner')).products_count,3);
-    assert.equal((await get('/api/analytics/daily'))[0].spend,10);
+    // /daily reads fb_campaigns: a buyer gets only their own group's spend, never a colleague's, and no revenue at all.
+    const mine = await get('/api/analytics/daily');
+    assert.deepEqual(mine.map(r => [r.currency, r.spend, r.revenue]), [['EUR', 7, null], ['EUR', 10, null]]);
+    assert.ok(!JSON.stringify(mine).includes('100') && !JSON.stringify(mine).includes('200'));
+    const all = await get('/api/analytics/daily', 'owner');
+    assert.deepEqual(all.map(r => r.spend), [207, 110]);
   });
   await t.test('TikTok: foreign products, foreign campaigns and internal video addresses are refused', async () => {
     await denied('POST','/api/tiktok/generate-video',{ product_id:'pb' });

@@ -7,7 +7,7 @@ export async function searchRoutes(app) {
   const auth = { onRequest: [app.authenticate] };
 
   app.post('/amazon', auth, async (req) => {
-    const { queries, marketplace = 'fr', min_price, max_price } = req.body;
+    const { queries, marketplace = 'fr', min_price, max_price } = req.body || {};
     const { ws } = req.user;
 
     const job = await db.insert('scrape_jobs', {

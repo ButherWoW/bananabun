@@ -37,7 +37,7 @@ export async function folderRoutes(app) {
 
   // Create folder
   app.post('/', auth, async (req) => {
-    const { name, parent_id, shared } = req.body;
+    const { name, parent_id, shared } = req.body || {};
     const { ws, id: userId } = req.user;
 
     await assertFolderAccess(req, parent_id);

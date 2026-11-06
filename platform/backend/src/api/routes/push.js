@@ -265,7 +265,7 @@ export async function pushRoutes(app) {
 
   // Compile landing HTML from local template + product data
   app.post('/compile-landing', auth, async (req, reply) => {
-    const { template_id, product_id, geo = 'FR' } = req.body;
+    const { template_id, product_id, geo = 'FR' } = req.body || {};
     if (!template_id || !product_id) return reply.status(400).send({ error: 'template_id and product_id required' });
     await assertProductAccess(req, product_id);
     await assertRecordAccess(req, 'landing_templates', template_id);
@@ -280,7 +280,7 @@ export async function pushRoutes(app) {
 
   // Compile landing + upload to Keitaro
   app.post('/upload-landing-keitaro', auth, async (req, reply) => {
-    const { template_id, product_id, geo = 'FR', name } = req.body;
+    const { template_id, product_id, geo = 'FR', name } = req.body || {};
     if (!template_id || !product_id) return reply.status(400).send({ error: 'template_id and product_id required' });
     await assertProductAccess(req, product_id);
     await assertRecordAccess(req, 'landing_templates', template_id);
@@ -400,7 +400,7 @@ export async function pushRoutes(app) {
 
   // Generate FB ad texts via Claude
   app.post('/generate-texts', auth, async (req) => {
-    const { product_id, geo, language } = req.body;
+    const { product_id, geo, language } = req.body || {};
     const { ws } = req.user;
 
     const product = await db.findOne('products', { id: product_id, workspace_id: ws });

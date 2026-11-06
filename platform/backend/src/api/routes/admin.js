@@ -25,7 +25,7 @@ export async function adminRoutes(app) {
 
   // Create user (owner or lead)
   app.post('/users', authLead, async (req, reply) => {
-    const { name, password, role = 'buyer' } = req.body;
+    const { name, password, role = 'buyer' } = req.body || {};
     const email = String(req.body?.email || '').trim().toLowerCase();
     if (!email) return reply.status(400).send({ error: 'Нужен email' });
     if (!name || !email || !password) return reply.status(400).send({ error: 'name, email, password обязательны' });
@@ -56,7 +56,7 @@ export async function adminRoutes(app) {
   // Update user (change role or name)
   app.patch('/users/:id', authOwner, async (req, reply) => {
     const { id } = req.params;
-    const { name, role, password, keitaro_tag } = req.body;
+    const { name, role, password, keitaro_tag } = req.body || {};
 
     const user = await db.findOne('users', { id, workspace_id: req.user.ws });
     if (!user) return reply.status(404).send({ error: 'Пользователь не найден' });
@@ -102,7 +102,7 @@ export async function adminRoutes(app) {
   // Reset password (owner only)
   app.post('/users/:id/reset-password', authOwner, async (req, reply) => {
     const { id } = req.params;
-    const { password } = req.body;
+    const { password } = req.body || {};
     if (!password || password.length < 6) return reply.status(400).send({ error: 'Минимум 6 символов' });
 
     const user = await db.findOne('users', { id, workspace_id: req.user.ws });

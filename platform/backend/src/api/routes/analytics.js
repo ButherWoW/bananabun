@@ -101,26 +101,30 @@ export async function analyticsRoutes(app) {
     const days = Math.min(Number(req.query.days) || 30, 90);
     const { ws } = req.user;
 
-    // Try to get real data from campaigns
+    // The old `campaigns` table is empty since the move off FA. The live source is fb_campaigns (read from the
+    // cabinets through the agent), which keeps only today's and yesterday's spend, no history, revenue or clicks:
+    // those are null rather than invented. Spend is in the cabinet's currency, so rows are split by currency.
+    // Buyers see campaigns of their AdsPower group only; `days` can only cut off the two days kept (days = 1 → today).
+    const group = req.user.role === 'buyer' ? String(req.user.email || '').toLowerCase() : null;
     const { rows } = await db.query(
-      `SELECT DATE(created_at) as date, SUM(spend) as spend, SUM(revenue) as revenue, SUM(clicks) as clicks
-       FROM campaigns WHERE workspace_id = $1 AND ($2::text IS NULL OR created_by=$2) AND created_at >= NOW() - ($3 * INTERVAL '1 day')
-       GROUP BY DATE(created_at) ORDER BY date`,
-      [ws, ownUser(req), days]
+      `SELECT UPPER(COALESCE(c.currency, '')) AS currency, SUM(c.spend_today) AS today, SUM(c.spend_yesterday) AS yesterday
+         FROM fb_campaigns c JOIN fb_accounts fa ON fa.id = c.fb_account_id
+         LEFT JOIN ap_profiles ap ON ap.id = fa.ap_profile_id
+        WHERE c.workspace_id = $1 AND ($2::text IS NULL OR LOWER(ap.group_name) = $2)
+        GROUP BY 1 ORDER BY 1`,
+      [ws, group]
     );
-
-    if (rows.length > 0) {
-      return rows.map(r => ({
-        date: r.date,
-        spend: Number(r.spend),
-        revenue: Number(r.revenue),
-        roi: r.spend > 0 ? Number(r.revenue) / Number(r.spend) : 0,
-        clicks: Number(r.clicks),
-      }));
+    const day = (offset) => new Date(Date.now() - offset * 86400e3).toISOString().slice(0, 10);
+    const out = [];
+    for (const [offset, col] of [[1, 'yesterday'], [0, 'today']]) {
+      if (offset >= days) continue;
+      for (const r of rows) {
+        if (r[col] === null || r[col] === undefined) continue;
+        out.push({ date: day(offset), currency: r.currency || null, spend: Number(r[col]), revenue: null, roi: null, clicks: null });
+      }
     }
-
     // No data is shown as no data — never as made-up numbers.
-    return [];
+    return out;
   });
 
   // Landing funnel and behaviour from our own tracker on the landings (no third-party analytics).

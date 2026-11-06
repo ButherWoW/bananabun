@@ -19,7 +19,7 @@ export async function adPresetRoutes(app) {
       optimization_goal, billing_event,
       fb_cabinet_id, fb_page_id, fb_pixel_id, pixel_event,
       countries, age_min, age_max
-    } = req.body;
+    } = req.body || {};
 
     const { rows } = await db.query(
       `INSERT INTO ad_presets (

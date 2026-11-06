@@ -36,6 +36,7 @@ import { mcpRoutes, mcpTokenRoutes } from './api/routes/mcp.js';
 import { telegramRoutes } from './api/routes/telegram.js';
 import { startTelegramWorker } from './services/telegram.js';
 import { registerAuthenticate } from './middleware/authenticate.js';
+import { registerHardening } from './hardening.js';
 import { startScrapeRecovery } from './services/scrape-jobs.js';
 import { startPushRecovery } from './services/push.js';
 import { pool } from './db/client.js';
@@ -56,6 +57,7 @@ await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 const uploadsDir = process.env.UPLOADS_DIR ? resolve(process.env.UPLOADS_DIR) : join(__dirname, '..', 'uploads');
 await app.register(staticPlugin, { root: uploadsDir, prefix: '/uploads/', decorateReply: false });
 
+registerHardening(app);
 registerAuthenticate(app);
 
 // Routes

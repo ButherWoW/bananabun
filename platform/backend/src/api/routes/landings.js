@@ -14,7 +14,7 @@ export async function landingRoutes(app) {
   });
 
   app.post('/templates', auth, async (req) => {
-    const { name, html, geo } = req.body;
+    const { name, html, geo } = req.body || {};
     return db.insert('landing_templates', {
       id: `lt_${nanoid(20)}`,
       workspace_id: req.user.ws,
@@ -26,7 +26,7 @@ export async function landingRoutes(app) {
   });
 
   app.put('/templates/:id', adminOnly(app), async (req) => {
-    const { name, html, geo } = req.body;
+    const { name, html, geo } = req.body || {};
     await db.query(
       'UPDATE landing_templates SET name=$1, html=$2, geo=$3, updated_at=NOW() WHERE id=$4 AND workspace_id=$5',
       [name, html, geo, req.params.id, req.user.ws]

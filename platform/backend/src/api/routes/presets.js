@@ -11,7 +11,7 @@ export async function presetRoutes(app) {
   });
 
   app.post('/bundles', auth, async (req) => {
-    const { name, currency, config } = req.body;
+    const { name, currency, config } = req.body || {};
     return db.insert('bundle_presets', {
       id: `bp_${nanoid(20)}`,
       workspace_id: req.user.ws,
@@ -36,7 +36,7 @@ export async function presetRoutes(app) {
   });
 
   app.post('/creatives', auth, async (req) => {
-    const { name, template, formats, params } = req.body;
+    const { name, template, formats, params } = req.body || {};
     return db.insert('creative_presets', {
       id: `cp_${nanoid(20)}`,
       workspace_id: req.user.ws,

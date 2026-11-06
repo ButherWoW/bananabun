@@ -105,7 +105,7 @@ export async function scrapeRoutes(app) {
 
   app.post('/product', auth, async (req) => {
     const { ws, id: userId } = req.user;
-    const { asin, link, marketplace = 'fr', folder_id, bundle_preset_id, creative_preset_id } = req.body;
+    const { asin, link, marketplace = 'fr', folder_id, bundle_preset_id, creative_preset_id } = req.body || {};
     await assertScrapeRefs(req, folder_id, bundle_preset_id, creative_preset_id);
     const { engine, products } = await startScrapes({
       ws, userId, inputs: [link || asin].filter(Boolean), marketplace, folderId: folder_id,
@@ -117,7 +117,7 @@ export async function scrapeRoutes(app) {
   // `links` — product URLs or ASINs; `asins` kept for older clients
   app.post('/bulk', auth, async (req) => {
     const { ws, id: userId } = req.user;
-    const { links, asins, marketplace = 'fr', folder_id, bundle_preset_id, creative_preset_id } = req.body;
+    const { links, asins, marketplace = 'fr', folder_id, bundle_preset_id, creative_preset_id } = req.body || {};
     const inputs = (Array.isArray(links) ? links : Array.isArray(asins) ? asins : []).map(s => String(s).trim()).filter(Boolean);
     if (!inputs.length) throw badRequest('Нужна хотя бы одна ссылка');
     if (inputs.length > 50) throw badRequest('Не больше 50 ссылок за раз');
