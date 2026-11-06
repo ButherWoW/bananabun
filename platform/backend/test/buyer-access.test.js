@@ -217,7 +217,8 @@ test('buyer access against real PostgreSQL and Fastify routes', { skip: !testUrl
       assert.equal(data.compare.totals.revenue, 0, 'bob\'s previous revenue must not leak into the buyer comparison');
       assert.deepEqual(data.compare.change.revenue, { abs: 30, pct: null });
       assert.deepEqual(data.rows[0].change.profit, { abs: 30, pct: 300 });
-      assert.deepEqual(ranges.slice(-2), [{ from: '2026-10-08', to: '2026-10-14' }, { from: '2026-10-01', to: '2026-10-07' }]);
+      // The two Keitaro calls run in parallel: compare as a set, not by arrival order.
+      assert.deepEqual(ranges.slice(-2).sort((x, y) => x.from.localeCompare(y.from)), [{ from: '2026-10-01', to: '2026-10-07' }, { from: '2026-10-08', to: '2026-10-14' }]);
 
       const all = (await req('POST', '/api/analytics/query', 'owner', plan)).json();
       assert.equal(all.rows.length, 2);
