@@ -49,7 +49,7 @@ export async function authRoutes(app) {
       role: 'buyer',
     });
 
-    const token = app.jwt.sign({ id: user.id, ws: ws.id, role: user.role, email });
+    const token = app.jwt.sign({ id: user.id, ws: ws.id, role: user.role, email, tv: user.token_version ?? 0 });
     return { token, user: { id: user.id, name, email, role: user.role }, workspace: { id: ws.id, name: ws.name } };
   });
 
@@ -70,7 +70,7 @@ export async function authRoutes(app) {
     }
     loginLimit.clear(key);
 
-    const token = app.jwt.sign({ id: user.id, ws: user.workspace_id, role: user.role, email });
+    const token = app.jwt.sign({ id: user.id, ws: user.workspace_id, role: user.role, email, tv: user.token_version ?? 0 });
     return { token, user: { id: user.id, name: user.name, email, role: user.role } };
   });
 

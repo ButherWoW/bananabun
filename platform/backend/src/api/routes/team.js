@@ -59,6 +59,7 @@ export async function teamRoutes(app) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
     }
     const updated = await db.update('users', member.id, data);
+    if (data.role !== undefined && data.role !== member.role) await db.query('UPDATE users SET token_version = token_version + 1 WHERE id = $1', [member.id]);
     return { id: updated.id, name: updated.name, email: updated.email, role: updated.role };
   });
 

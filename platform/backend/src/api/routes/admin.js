@@ -81,7 +81,9 @@ export async function adminRoutes(app) {
     const keys = Object.keys(updates);
     const vals = Object.values(updates);
     const set = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
-    await db.query(`UPDATE users SET ${set} WHERE id = $${keys.length + 1}`, [...vals, id]);
+    // A new password or a different role ends the user's existing sessions (see authenticate.js).
+    const revoke = Boolean(password) || (role && role !== user.role);
+    await db.query(`UPDATE users SET ${set}${revoke ? ', token_version = token_version + 1' : ''} WHERE id = $${keys.length + 1}`, [...vals, id]);
 
     return { ok: true };
   });
@@ -107,7 +109,7 @@ export async function adminRoutes(app) {
     if (!user) return reply.status(404).send({ error: 'Пользователь не найден' });
 
     const hash = await bcrypt.hash(password, 10);
-    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id]);
+    await db.query('UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2', [hash, id]);
     return { ok: true };
   });
 }
