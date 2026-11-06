@@ -16,7 +16,7 @@ export async function teamRoutes(app) {
   });
 
   app.post('/invite', adminOnly(app), async (req, reply) => {
-    const { name, role, password } = req.body;
+    const { name, role, password } = req.body || {};
     const email = String(req.body?.email || '').trim().toLowerCase();
     if (!email) return reply.status(400).send({ error: 'Нужен email' });
     if (!password || password.length < 6) return reply.status(400).send({ error: 'Пароль — минимум 6 символов' });
@@ -42,21 +42,22 @@ export async function teamRoutes(app) {
   });
 
   app.patch('/members/:id', adminOnly(app), async (req, reply) => {
-    if (req.user.role !== 'owner' && req.body.role !== undefined) return reply.status(403).send({ error: 'Менять роли может только owner' });
+    const body = req.body || {};
+    if (req.user.role !== 'owner' && body.role !== undefined) return reply.status(403).send({ error: 'Менять роли может только owner' });
     const member = await db.findOne('users', { id: req.params.id, workspace_id: req.user.ws });
     if (!member) return reply.status(404).send({ error: 'Not found' });
     // Same policy as /admin/users: nobody changes their own role, so the team never loses its last owner this way.
-    if (req.body.role !== undefined && member.id === req.user.id && req.body.role !== member.role) {
+    if (body.role !== undefined && member.id === req.user.id && body.role !== member.role) {
       return reply.status(400).send({ error: 'Нельзя изменить свою роль' });
     }
-    if (req.body.role !== undefined && !['owner', 'lead', 'buyer'].includes(req.body.role)) {
+    if (body.role !== undefined && !['owner', 'lead', 'buyer'].includes(body.role)) {
       return reply.status(400).send({ error: 'Недопустимая роль' });
     }
 
     const allowed = ['role', 'name'];
     const data = {};
     for (const key of allowed) {
-      if (req.body[key] !== undefined) data[key] = req.body[key];
+      if (body[key] !== undefined) data[key] = body[key];
     }
     const updated = await db.update('users', member.id, data);
     return { id: updated.id, name: updated.name, email: updated.email, role: updated.role };

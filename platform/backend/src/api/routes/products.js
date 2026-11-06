@@ -13,6 +13,12 @@ function parseList(raw) {
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v : null; } catch { return null; }
 }
 
+const TRANSLATE_MAX = 2000;
+const TRANSLATE_TARGETS = ['ru', 'en', 'fr', 'de', 'es', 'it', 'pl', 'nl'];
+const TRANSLATE_SOURCE = { fr: 'fr', be: 'fr', de: 'de', es: 'es', it: 'it', uk: 'en', com: 'en', nl: 'nl', pl: 'pl', se: 'sv' };
+// Same list as the products_status_check constraint (migration 004).
+export const PRODUCT_STATUSES = ['draft', 'active', 'paused', 'archived', 'ready', 'no_offer'];
+
 const OWN_IMAGE = /^\/uploads\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+$/;
 function isOwnOrHttpsImage(item) {
   const src = typeof item === 'string' ? item : item?.url;
@@ -126,6 +132,9 @@ export async function productRoutes(app) {
     for (const key of allowed) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
     }
+    if (data.status !== undefined && !PRODUCT_STATUSES.includes(data.status)) {
+      return reply.status(400).send({ error: 'Недопустимый статус товара' });
+    }
     if (data.folder_id) await assertFolderAccess(req, data.folder_id);
     if (data.bundle_preset_id) await assertRecordAccess(req, 'bundle_presets', data.bundle_preset_id);
     if (data.specs !== undefined) data.specs = JSON.stringify(cleanSpecs(data.specs));
@@ -152,11 +161,14 @@ export async function productRoutes(app) {
 
   // Bulk edit products (status / tags)
   app.patch('/bulk', auth, async (req, reply) => {
-    const { ids, updates } = req.body;
+    const { ids, updates } = req.body || {};
     if (!Array.isArray(ids) || !ids.length) return reply.status(400).send({ error: 'ids required' });
     await assertProductAccess(req, ids);
     const { ws } = req.user;
     const allowed = ['status', 'tags', 'notes'];
+    if (updates?.status !== undefined && !PRODUCT_STATUSES.includes(updates.status)) {
+      return reply.status(400).send({ error: 'Недопустимый статус товара' });
+    }
     const fields = Object.keys(updates || {}).filter(k => allowed.includes(k));
     if (!fields.length) return reply.status(400).send({ error: 'No valid fields to update' });
     const setClauses = [];
@@ -180,7 +192,7 @@ export async function productRoutes(app) {
 
   // Delete products (bulk)
   app.delete('/', auth, async (req) => {
-    const { ids } = req.body;
+    const { ids } = req.body || {};
     await assertProductAccess(req, ids);
     const { ws } = req.user;
     await db.query(
@@ -192,7 +204,7 @@ export async function productRoutes(app) {
 
   // Move to folder (bulk)
   app.post('/move', auth, async (req) => {
-    const { ids, folder_id } = req.body;
+    const { ids, folder_id } = req.body || {};
     await assertFolderAccess(req, folder_id);
     await assertProductAccess(req, ids);
     const { ws } = req.user;
@@ -206,10 +218,17 @@ export async function productRoutes(app) {
   // Translate field (title/description) to Russian via simple approach
   app.post('/:id/translate', auth, async (req, reply) => {
     await assertProductAccess(req, req.params.id);
-    const { field, text, target = 'ru' } = req.body;
-    // Use MyMemory free translation API
+    const { field, text, target } = req.body || {};
+    // MyMemory free API: only the (capped) text leaves the server. Source language follows the product's
+    // marketplace; the target is limited to the languages we offer, default ru.
+    if (typeof text !== 'string' || !text.trim()) return reply.status(400).send({ error: 'text required' });
+    if (text.length > TRANSLATE_MAX) return reply.status(400).send({ error: `Текст длиннее ${TRANSLATE_MAX} символов` });
+    const to = TRANSLATE_TARGETS.includes(target) ? target : 'ru';
+    const product = await db.findOne('products', { id: req.params.id, workspace_id: req.user.ws });
+    const from = TRANSLATE_SOURCE[product?.marketplace] || 'fr';
+    if (from === to) return { translated: text, field };
     try {
-      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=fr|ru&de=noreply@example.com`;
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}&de=noreply@example.com`;
       const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
       const d = await r.json();
       const translated = d?.responseData?.translatedText || text;

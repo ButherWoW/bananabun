@@ -19,6 +19,23 @@ function parseBundles(raw) {
   } catch { return []; }
 }
 
+// Fast-path outcome. Only a failed FETCH hands the job to the agent. Once the page is in, the job is done for good:
+// an error while applying it (parsing, photos) must not reset it to pending, that would scrape the page twice.
+// A failed apply leaves the product 'processing' with a done job, which recoverScrapes() retries.
+export function settleFastScrape(ws, jobId, label, fetched, apply = applyScrapeResult) {
+  return fetched.then(
+    async (data) => {
+      await db.query(`UPDATE agent_jobs SET status = 'done', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
+        [JSON.stringify({ ok: true, data }), jobId]);
+      await apply(ws, jobId, true, data, null);
+    },
+    async (e) => {
+      console.warn(`[scraperapi] ${label} failed, handing the job to the agent:`, e.message);
+      await db.query(`UPDATE agent_jobs SET status = 'pending', taken_at = NULL, result = NULL WHERE id = $1`, [jobId]);
+    },
+  ).catch((e) => console.error(`[scraperapi] ${label} not applied (recovery will retry):`, e.message));
+}
+
 // Own engine: Amazon (any of our marketplaces) and Walmart (walmart.com item id).
 export async function enqueueOwnScrape(ws, productId, asin, marketplace, source = 'amazon', sourceUrl) {
   let type, url;
@@ -35,16 +52,7 @@ export async function enqueueOwnScrape(ws, productId, asin, marketplace, source 
       const jobId = job.id;
       await db.query(`UPDATE products SET scrape_job_id = $1, scrape_status = 'processing', scrape_error = NULL,
                        scrape_started_at = NOW() WHERE id = $2 AND workspace_id = $3`, [jobId, productId, ws]);
-      scrapeWalmartViaScraperApi(asin)
-        .then(async (data) => {
-          await db.query(`UPDATE agent_jobs SET status = 'done', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
-            [JSON.stringify({ ok: true, data }), jobId]);
-          await applyScrapeResult(ws, jobId, true, data, null);
-        })
-        .catch(async (e) => {
-          console.warn(`[scraperapi] walmart/${asin} failed, falling back to Mac agent:`, e.message);
-          await db.query(`UPDATE agent_jobs SET status = 'pending', taken_at = NULL, result = NULL WHERE id = $1`, [jobId]);
-        });
+      settleFastScrape(ws, jobId, `walmart/${asin}`, scrapeWalmartViaScraperApi(asin));
       return jobId;
     }
   } else if (['target', 'bestbuy', 'etsy'].includes(source)) {
@@ -66,17 +74,7 @@ export async function enqueueOwnScrape(ws, productId, asin, marketplace, source 
       await db.query(`UPDATE products SET scrape_job_id = $1, scrape_status = 'processing', scrape_error = NULL,
                        scrape_started_at = NOW() WHERE id = $2 AND workspace_id = $3`, [jobId, productId, ws]);
 
-      scrapeAmazonViaScraperApi(asin, marketplace)
-        .then(async (data) => {
-          await db.query(
-            `UPDATE agent_jobs SET status = 'done', done_at = NOW(), result = $1::jsonb WHERE id = $2`,
-            [JSON.stringify({ ok: true, data }), jobId]);
-          await applyScrapeResult(ws, jobId, true, data, null);
-        })
-        .catch(async (e) => {
-          console.warn(`[scraperapi] amazon/${asin} failed, falling back to Mac agent:`, e.message);
-          await db.query(`UPDATE agent_jobs SET status = 'pending', taken_at = NULL, result = NULL WHERE id = $1`, [jobId]);
-        });
+      settleFastScrape(ws, jobId, `amazon/${asin}`, scrapeAmazonViaScraperApi(asin, marketplace));
       return jobId;
     }
   }

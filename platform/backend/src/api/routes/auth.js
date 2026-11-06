@@ -11,7 +11,7 @@ const TOO_MANY = (minutes) => ({ error: `Слишком много неудач�
 export async function authRoutes(app) {
   // Register — requires invite code
   app.post('/register', async (req, reply) => {
-    const { name, password, workspace_name, invite_code } = req.body;
+    const { name, password, workspace_name, invite_code } = req.body || {};
     const email = String(req.body?.email || '').trim().toLowerCase();
     if (!email) return reply.status(400).send({ error: 'Нужен email' });
 
@@ -55,7 +55,7 @@ export async function authRoutes(app) {
 
   // Login
   app.post('/login', async (req, reply) => {
-    const { password } = req.body;
+    const { password } = req.body || {};
     const email = String(req.body?.email || '').trim().toLowerCase();
     if (!email) return reply.status(400).send({ error: 'Нужен email' });
 

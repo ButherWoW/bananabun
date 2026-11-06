@@ -15,7 +15,9 @@ async function agentWorkspace(req, reply) {
   const { rows } = await db.query('SELECT id FROM workspaces WHERE agent_key_hash = $1', [hash(key)]);
   if (!rows[0]) return reply.status(401).send({ error: 'invalid agent key' });
   req.agentWs = rows[0].id;
-  await db.query('UPDATE workspaces SET agent_seen_at = NOW() WHERE id = $1', [req.agentWs]);
+  // The agent polls every 1-2 s; the "seen" mark only needs to be fresh to within seconds.
+  await db.query(`UPDATE workspaces SET agent_seen_at = NOW()
+                   WHERE id = $1 AND (agent_seen_at IS NULL OR agent_seen_at < NOW() - INTERVAL '10 seconds')`, [req.agentWs]);
 }
 
 export async function enqueueAgentJob(ws, type, payload, userId) {
@@ -132,10 +134,20 @@ export async function agentRoutes(app) {
   app.post('/jobs/:id/result', { ...agent, bodyLimit: 10 * 1024 * 1024 }, async (req, reply) => {
     const ok = !!req.body?.ok;
     const result = { ok, error: ok ? null : String(req.body?.error || 'failed').slice(0, 500), data: req.body?.data ?? null };
+    // Only an open job takes a result. A late answer to a job the reaper already failed is still accepted
+    // (applyPushResult records the FB objects it created); a repeated or stale answer to a closed job is ignored,
+    // so assets, campaigns and scrapes are not applied twice.
     const { rows } = await db.query(
-      `UPDATE agent_jobs SET status = $1, result = $2, done_at = NOW() WHERE id = $3 AND workspace_id = $4 RETURNING type, payload`,
+      `UPDATE agent_jobs SET status = $1, result = $2, done_at = NOW()
+        WHERE id = $3 AND workspace_id = $4
+          AND (status IN ('pending', 'taken') OR (status = 'failed' AND result->>'reaped' = 'true'))
+        RETURNING type, payload`,
       [ok ? 'done' : 'failed', JSON.stringify(result), req.params.id, req.agentWs]);
-    if (!rows[0]) return reply.status(404).send({ error: 'Not found' });
+    if (!rows[0]) {
+      const { rowCount } = await db.query('SELECT 1 FROM agent_jobs WHERE id = $1 AND workspace_id = $2', [req.params.id, req.agentWs]);
+      if (!rowCount) return reply.status(404).send({ error: 'Not found' });
+      return { ok: true, ignored: true }; // closed already: 200 so the agent does not retry it
+    }
     const { type, payload } = rows[0];
     if (type === 'check_profile' && payload?.account_id) {
       if (ok && Array.isArray(result.data?.bms)) await saveAssets(req.agentWs, payload.account_id, result.data.bms);
