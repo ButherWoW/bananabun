@@ -31,7 +31,7 @@ async function userForToken(header) {
     `UPDATE mcp_tokens t SET last_used_at = NOW()
        FROM users u
       WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND u.id = t.user_id
-      RETURNING u.id, u.workspace_id AS ws, u.role, u.email, u.name`, [hashToken(m[1])]);
+      RETURNING u.id, u.workspace_id AS ws, u.role, u.email, u.name, u.token_version`, [hashToken(m[1])]);
   return row || null;
 }
 
@@ -113,7 +113,7 @@ function buildServer(app, user) {
 
   // Our own routes, as this user: same validation and access checks as the site.
   const call = async (method, url, payload) => {
-    const token = app.jwt.sign({ id: user.id }, { expiresIn: '2m' });
+    const token = app.jwt.sign({ id: user.id, tv: user.token_version ?? 0 }, { expiresIn: '2m' });
     const res = await app.inject({ method, url, payload, headers: { authorization: `Bearer ${token}` } });
     let body;
     try { body = res.json(); } catch { body = res.body; }
