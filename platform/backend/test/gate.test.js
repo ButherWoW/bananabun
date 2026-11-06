@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { gateRoutes } from '../src/api/routes/gate.js';
-import { createLimiter, hasPass, makePass, parsePins } from '../src/services/gate.js';
+import { clientKey, createLimiter, hasPass, makePass, parsePins } from '../src/services/gate.js';
 
 const SECRET = 'test-only-gate-secret-0123456789abcdef';
 const env = { GATE_SECRET: SECRET, GATE_PINS: '2000:bd, 0401:ul,1234:nope,12:bl' };
@@ -53,16 +53,42 @@ test('wrong PINs lock the IP, other IPs still get in', async (t) => {
   assert.equal((await unlock(app, 'abc', '5.6.7.8')).statusCode, 401);
 });
 
-test('too many wrong PINs from everyone close every door for a while', () => {
+test('one slow client cannot lock the door for everyone', () => {
+  const l = createLimiter();
+  const now = Date.now();
+  // 60 wrong PINs from 60 different addresses within an hour (the old global lock) leave other clients in.
+  for (let i = 0; i < 60; i++) l.fail(`10.0.0.${i}`, now + i * 60e3);
+  assert.ok(!l.blocked('203.0.113.9', now + 60 * 60e3 - 1));
+});
+
+test('global tripwire still closes the door against a wide distributed guess', () => {
   const l = createLimiter({ total: 3 });
   const now = Date.now();
   ['a', 'b', 'c'].forEach((ip) => l.fail(ip, now));
   assert.ok(l.blocked('d', now + 1000));
   assert.ok(!l.blocked('d', now + 61 * 60e3));
+});
+
+test('per-client lock: 5 wrong PINs, doubles on repeat, expires', () => {
+  const now = Date.now();
   const one = createLimiter();
   for (let i = 0; i < 5; i++) one.fail('x', now);
   assert.ok(one.blocked('x', now + 59 * 60e3));
   assert.ok(!one.blocked('x', now + 61 * 60e3));
+  for (let i = 0; i < 5; i++) one.fail('x', now + 62 * 60e3);
+  assert.ok(one.blocked('x', now + 62 * 60e3 + 119 * 60e3));
+  assert.ok(!one.blocked('x', now + 62 * 60e3 + 121 * 60e3));
+});
+
+test('IPv6 addresses of one /64 count as one client', () => {
+  assert.equal(clientKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), clientKey('2001:DB8:1:2::1'));
+  assert.notEqual(clientKey('2001:db8:1:2::1'), clientKey('2001:db8:1:3::1'));
+  assert.equal(clientKey('::ffff:1.2.3.4'), '1.2.3.4');
+  assert.equal(clientKey('1.2.3.4'), '1.2.3.4');
+  const l = createLimiter();
+  const now = Date.now();
+  for (let i = 0; i < 5; i++) l.fail(`2001:db8:1:2::${i + 1}`, now);
+  assert.ok(l.blocked('2001:db8:1:2:ffff::9', now + 1000));
 });
 
 test('without a secret or pins every door stays closed', async (t) => {
