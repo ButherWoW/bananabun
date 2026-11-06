@@ -16,6 +16,29 @@ function StatusDot({ status }) {
   );
 }
 
+const FB_SESSION_HINT = 'Открой профиль в AdsPower на Маке, проверь, что Ads Manager открывается, и закрой профиль — сессия уйдёт на сервер. Потом нажми «Проверить».';
+
+function FbSessionBadge({ account }) {
+  const s = account.fb_session;
+  if (!s) return null;
+  if (s === 'ok') return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/20 flex-shrink-0 whitespace-nowrap">
+      FB вход есть
+    </span>
+  );
+  if (s === 'logged_out') return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded border bg-red-500/10 text-red-400 border-red-500/20 flex-shrink-0 whitespace-nowrap flex items-center gap-1 cursor-help" title={FB_SESSION_HINT}>
+      Не залогинен на сервере <span className="opacity-60">?</span>
+    </span>
+  );
+  if (s === 'checkpoint') return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded border bg-yellow-500/10 text-yellow-400 border-yellow-500/20 flex-shrink-0 whitespace-nowrap">
+      Чекпоинт
+    </span>
+  );
+  return null;
+}
+
 function AccountRow({ account, onOpen, onEditBM }) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
@@ -64,6 +87,7 @@ function AccountRow({ account, onOpen, onEditBM }) {
             {account.geo && (
               <span className="text-[11px] text-indigo-400 uppercase font-mono bg-indigo-500/10 px-1.5 py-0.5 rounded">{account.geo}</span>
             )}
+            <FbSessionBadge account={account} />
           </div>
           <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-600">
             {account.email && <span>{account.email}</span>}

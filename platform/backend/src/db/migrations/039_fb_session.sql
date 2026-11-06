@@ -1,0 +1,3 @@
+ALTER TABLE fb_accounts
+  ADD COLUMN IF NOT EXISTS fb_session     TEXT,
+  ADD COLUMN IF NOT EXISTS fb_session_at  TIMESTAMPTZ;
