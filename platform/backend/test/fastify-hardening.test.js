@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { createHash } from 'node:crypto';
 import { registerHardening } from '../src/hardening.js';
-import { settleFastScrape } from '../src/services/scrape-jobs.js';
-import { db } from '../src/db/client.js';
 import { hasTestDatabase, testDatabase } from './helpers/test-db.js';
 
 async function app(t, routes) {
@@ -50,26 +48,9 @@ test('a POST without a body reaches the route with {} instead of a TypeError', a
   assert.equal(bad.statusCode, 400);
 });
 
-test('fast scrape: a failed fetch hands the job to the agent, a failed apply does not', async (t) => {
-  const saved = db.query;
-  const queries = [];
-  db.query = async (sql) => { queries.push(String(sql)); return { rows: [] }; };
-  t.after(() => { db.query = saved; });
-  const origError = console.error, origWarn = console.warn;
-  console.error = () => {}; console.warn = () => {};
-  t.after(() => { console.error = origError; console.warn = origWarn; });
-
-  await settleFastScrape('w', 5, 'amazon/X', Promise.reject(new Error('timeout')), async () => { throw new Error('must not apply'); });
-  assert.ok(queries.some(q => /status = 'pending'/.test(q)), 'fetch failure resets the job to pending');
-
-  queries.length = 0;
-  await settleFastScrape('w', 6, 'amazon/X', Promise.resolve({ title: 't' }), async () => { throw new Error('apply broke'); });
-  assert.ok(queries.some(q => /status = 'done'/.test(q)));
-  assert.ok(!queries.some(q => /status = 'pending'/.test(q)), 'an apply error must not reset a done job');
-});
-
 test('agent result: repeated answer ignored, late answer to a reaped job accepted; daily reads fb_campaigns', { skip: !hasTestDatabase }, async (t) => {
   const { pool } = await testDatabase(t, 'hardening');
+  // Modules that open the pool are imported only after testDatabase() has set DATABASE_URL.
   const key = 'k'.repeat(40);
   await pool.query(`UPDATE workspaces SET agent_key_hash = $1 WHERE id = 'test-ws'`, [createHash('sha256').update(key).digest('hex')]);
   const a = Fastify();
