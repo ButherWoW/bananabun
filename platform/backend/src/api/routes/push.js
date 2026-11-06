@@ -253,7 +253,7 @@ export async function pushRoutes(app) {
       return blocked('Агент не сообщил итог этого залива — в кабинете уже могут быть созданные кампания, адсеты или объявления. Проверьте кабинет; если там пусто, запустите новый залив');
     }
     const { rows } = await db.query(
-      `UPDATE pushes SET status='pending', error=NULL, started_at=NULL, finished_at=NULL
+      `UPDATE pushes SET status='pending', error=NULL, started_at=NULL, finished_at=NULL, updated_at=NOW()
         WHERE id=$1 AND workspace_id=$2 AND status='failed' RETURNING id`,
       [p.id, req.user.ws]);
     if (!rows.length) return reply.status(409).send({ error: 'Повторить можно только упавший залив' });

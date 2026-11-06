@@ -37,6 +37,7 @@ import { telegramRoutes } from './api/routes/telegram.js';
 import { startTelegramWorker } from './services/telegram.js';
 import { registerAuthenticate } from './middleware/authenticate.js';
 import { startScrapeRecovery } from './services/scrape-jobs.js';
+import { startPushRecovery } from './services/push.js';
 import { pool } from './db/client.js';
 import { startCreativeWorker } from './services/creative-jobs.js';
 
@@ -99,6 +100,7 @@ try {
   await app.listen({ port: Number(process.env.PORT) || 4000, host: process.env.HOST || '0.0.0.0' });
   console.log('Backend running on port 4000');
   startScrapeRecovery();
+  startPushRecovery();
   stopCreatives = startCreativeWorker();
   stopTelegram = startTelegramWorker();
 } catch (err) {

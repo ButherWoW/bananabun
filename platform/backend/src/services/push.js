@@ -60,6 +60,37 @@ function makeAlias(productName) {
   return `${base}-${Math.random().toString(36).slice(2, 6)}-promo`;
 }
 
+// "Alias already taken" from Keitaro: a 4xx whose text mentions the alias.
+export function isAliasTaken(e) {
+  return /^Keitaro (400|409|422)/.test(e?.message || '') && /alias/i.test(e.message);
+}
+
+export function lastLoggedAlias(logEntries) {
+  const list = Array.isArray(logEntries) ? logEntries : [];
+  for (let i = list.length - 1; i >= 0; i--) if (list[i]?.step === 'keitaro_creating' && list[i].alias) return list[i].alias;
+  return null;
+}
+
+// Creates the campaign once per push. If a previous attempt already logged an alias, the campaign may exist
+// in Keitaro without us knowing its id: look it up by that alias (read-only) and adopt it. An alias collision
+// ("alias is already used") is retried with a fresh alias; every other error is thrown as is.
+export async function createCampaignIdempotent(kt, data, productName, prevAlias, beforeCreate = async () => {}, attempts = 4) {
+  if (prevAlias) {
+    const found = (await kt.allCampaigns()).find(c => c.alias === prevAlias);
+    if (found) return { campaign: found, adopted: true };
+  }
+  let alias = prevAlias || makeAlias(productName);
+  for (let i = 1; ; i++) {
+    await beforeCreate(alias);
+    try {
+      return { campaign: await kt.createCampaign({ ...data, alias }), adopted: false };
+    } catch (e) {
+      if (!isAliasTaken(e) || i >= attempts) throw e;
+      alias = makeAlias(productName);
+    }
+  }
+}
+
 function shares(ids) {
   const base = Math.floor(100 / ids.length);
   return ids.map((id, i) => ({ offer_id: Number(id), share: i === 0 ? 100 - base * (ids.length - 1) : base, state: 'active' }));
@@ -77,10 +108,11 @@ async function ensureKeitaro(kt, push, params, productName) {
     });
   }
   if (!campaign) {
-    const alias = makeAlias(productName);
-    campaign = await kt.createCampaign({
+    // The alias is written to the push log BEFORE the campaign is created: if the process dies between the
+    // Keitaro call and saving kt_campaign_id, the rerun finds the campaign by this alias instead of making a second one.
+    const prevAlias = lastLoggedAlias(push.log);
+    const created = await createCampaignIdempotent(kt, {
       name: params.campaign_name,
-      alias,
       type: 'position',
       state: 'active',
       domain_id: Number(params.domain_id),
@@ -89,9 +121,10 @@ async function ensureKeitaro(kt, push, params, productName) {
       cost_auto: true,
       uniqueness_method: 'ip_ua',
       parameters: KT_PARAMETERS,
-    });
+    }, productName, prevAlias, (alias) => log(push.id, 'keitaro_creating', { alias }));
+    campaign = created.campaign;
     await db.query(`UPDATE pushes SET kt_campaign_id=$1 WHERE id=$2`, [String(campaign.id), push.id]);
-    await log(push.id, 'keitaro_campaign_created', { id: campaign.id, alias: campaign.alias });
+    await log(push.id, created.adopted ? 'keitaro_campaign_adopted' : 'keitaro_campaign_created', { id: campaign.id, alias: campaign.alias });
   }
 
   const streams = await kt.campaignStreams(campaign.id);
@@ -256,4 +289,47 @@ export async function applyPushResult(ws, pushId, ok, error, data, jobId) {
       ? `Залита платформой: ${data.adset_ids?.length || 0} адсетов, ${data.ad_ids?.length || 0} объявлений, всё на паузе`
       : `Залив оборвался: ${error || 'ошибка'}`).catch(() => {});
   }
+}
+
+// After a restart (every deploy) a push can hang: `pending` that nobody started, or `running` that died before
+// the agent job was queued. Pending ones are started again (runPush claims them atomically, so a concurrent
+// start is harmless). A running one with no agent job for PUSH_STUCK_MIN minutes is failed with a reason,
+// unless its job was queued just before the crash — then the job is attached. A failed push can be retried
+// from the UI; the retry reuses the Keitaro campaign saved or logged on the push.
+const PUSH_STUCK_MIN = 15;
+export async function recoverPushes() {
+  const { rows: pending } = await db.query(`
+    SELECT id FROM pushes
+     WHERE status = 'pending' AND COALESCE(updated_at, created_at) < NOW() - INTERVAL '1 minute'
+     ORDER BY created_at LIMIT 20`);
+  for (const r of pending) {
+    // Touch first: a push that keeps failing validation is not restarted every cycle.
+    await db.query(`UPDATE pushes SET updated_at = NOW() WHERE id = $1 AND status = 'pending'`, [r.id]);
+    await runPush(r.id).catch(e => console.error('[push] recover:', e.message));
+  }
+  const { rows: stuck } = await db.query(`
+    SELECT id FROM pushes
+     WHERE status = 'running' AND agent_job_id IS NULL
+       AND COALESCE(started_at, updated_at, created_at) < NOW() - INTERVAL '${PUSH_STUCK_MIN} minutes'
+     LIMIT 50`);
+  for (const r of stuck) {
+    const { rows: [job] } = await db.query(
+      `SELECT j.id FROM agent_jobs j JOIN pushes p ON p.workspace_id = j.workspace_id
+        WHERE p.id = $1 AND j.type = 'push' AND j.payload->>'push_id' = $1 ORDER BY j.id DESC LIMIT 1`, [r.id]);
+    if (job) {
+      await db.query(`UPDATE pushes SET agent_job_id = $2, updated_at = NOW() WHERE id = $1 AND status = 'running' AND agent_job_id IS NULL`, [r.id, job.id]);
+      continue;
+    }
+    const { rowCount } = await db.query(
+      `UPDATE pushes SET status='failed', finished_at=NOW(), updated_at=NOW(),
+              error='Залив прервался (перезапуск сервера) до постановки задачи агенту — в FB ничего не создано, нажмите «Повторить»'
+        WHERE id = $1 AND status = 'running' AND agent_job_id IS NULL`, [r.id]);
+    if (rowCount) await pushEvent(r.id, false, 'Залив прервался (перезапуск сервера)').catch(() => {});
+  }
+}
+
+export function startPushRecovery() {
+  const run = () => recoverPushes().catch(e => console.error('[push] recover:', e.message));
+  setTimeout(run, 10000);
+  setInterval(run, 2 * 60 * 1000).unref?.();
 }
