@@ -97,7 +97,7 @@ for (const signal of ['SIGTERM','SIGINT']) process.once(signal, async () => {
 
 try {
   await app.listen({ port: Number(process.env.PORT) || 4000, host: process.env.HOST || '0.0.0.0' });
-  console.log('Backend running on port 4000');
+  console.log(`Backend running on port ${Number(process.env.PORT) || 4000}`);
   startScrapeRecovery();
   stopCreatives = startCreativeWorker();
   stopTelegram = startTelegramWorker();

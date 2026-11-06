@@ -9,12 +9,12 @@
 - Закончил шаг — допиши СВЕРХУ в `docs/HANDOFF.md` запись, начинающуюся с `## @claude …` (или `@chatgpt`, `@dev2`, `@owner`): ветка и коммит, что сделано, что проверено, что осталось. Claude следит за этим файлом и сам проверяет ветку.
 - Журнал правится только в `main`.
 - Не правь чужую незакоммиченную работу. Не переписывай историю (`--force`, `reset --hard`) общих веток.
-- На сервер выкатывает и агента Mac перезапускает только Claude после проверки. Порядок: сервер (`platform/ship.sh`), потом агент.
+- Выкатка автоматическая: каждый push/merge в `main` запускает workflow `deploy.yml` (rsync, миграции, сборка, рестарт `affiliate-backend`, проверка gate). Поэтому в `main` попадает только проверенное: Claude (или владелец) сливает после ревью и `npm test`. `platform/ship.sh` — ручной запасной путь, только Claude/владелец; агент отдельно не перезапускается, он живёт на сервере.
 
 ## Устройство
-- `platform/backend` — Node 20, Fastify, PostgreSQL; `platform/frontend` — React 18, Vite; `mac-agent/` — агент на Mac владельца (AdsPower, FB, Amazon, 2FA).
+- `platform/backend` — Node 20, Fastify, PostgreSQL; `platform/frontend` — React 18, Vite; `mac-agent/` — код агента (AdsPower, FB, Amazon, 2FA); с PR #42/#56 агент и AdsPower работают на сервере, Mac-агент остановлен.
 - Прод: https://nespizdili.lol. Работаем полностью без FA (клиент FA — заглушка).
-- Проверки: `node --test platform/backend/test/standalone.test.js`, `npm run build --prefix platform/frontend`.
+- Проверки: `npm test --prefix platform/backend` (тесты с PostgreSQL без `BANANABUN_TEST_DATABASE_URL` пропускаются; см. `docs/ONBOARDING.md` §3), `npm run build --prefix platform/frontend`.
 
 ## Правила — обязательны
 1. Чужие кампании не трогать. Keitaro общий: никаких пробных POST, алиасы не менять, без фильтра FR в обычном потоке.
